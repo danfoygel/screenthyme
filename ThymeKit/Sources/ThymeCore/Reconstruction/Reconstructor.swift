@@ -99,18 +99,19 @@ public enum Reconstructor {
         }
         crossings.sort { $0.at < $1.at }
 
-        // Catch-up crossings are paid from the pre-tracking minutes first, so they can't claim today's later use.
+        var owners = assign(minutes: inUse, demands: &demands)
+
+        // What a catch-up crossing claims beyond the in-use minutes was used before tracking started. Paying only the
+        // shortfall keeps real crossings during the catch-up window on the timeline.
         var pool = preTracking
         var preTrackingByItem: [UUID: Int] = [:]
         for index in demands.indices.sorted(by: { demands[$0].crossingAt < demands[$1].crossingAt })
-        where pool > 0 && inCatchUp(demands[index].crossingAt, starts: input.trackingStarts) {
+        where pool > 0 && demands[index].remaining > 0 && inCatchUp(demands[index].crossingAt, starts: input.trackingStarts) {
             let take = min(pool, demands[index].remaining)
             pool -= take
             demands[index].remaining -= take
             preTrackingByItem[demands[index].item, default: 0] += take
         }
-
-        var owners = assign(minutes: inUse, demands: &demands)
         let unfulfilled = demands.reduce(0) { $0 + $1.remaining }
 
         // Confidence for assigned minutes.

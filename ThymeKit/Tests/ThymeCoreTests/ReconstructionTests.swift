@@ -144,6 +144,22 @@ struct ReconstructionTests {
         #expect(result.unfulfilledMinutes == 0)
     }
 
+    /// A real crossing a few minutes after a re-registration stays on the timeline.
+    @Test func realCrossingInsideCatchUpWindowStaysOnTimeline() {
+        let registered = at(18, 0)
+        var total = (1...100).map { FirePoint(minute: $0, at: registered.addingTimeInterval(10)) }
+        var items = [youtube: [5, 10, 15, 20].map { FirePoint(minute: $0, at: registered.addingTimeInterval(30)) }]
+        for minute in 1...6 {
+            total.append(FirePoint(minute: 100 + minute, at: registered.addingTimeInterval(60 + Double(minute) * 60)))
+        }
+        items[youtube]!.append(FirePoint(minute: 25, at: registered.addingTimeInterval(60 + 5 * 60 + 0.5)))
+        let result = Reconstructor.build(DayInput(dayStart: dayStart, total: total, items: items, trackingStarts: [registered]))
+        #expect(result.preTrackingMinutes == 100)
+        #expect(result.preTrackingByItem[youtube] == 20)
+        #expect(result.minutes(for: youtube, atLeast: .high) == 5)
+        #expect(result.unfulfilledMinutes == 0)
+    }
+
     @Test func categoriesGetTotalsButNoTimeline() {
         let games = UUID()
         var entries = SyntheticTrace.entries(sessions: [SyntheticSession(item: roblox, start: at(16, 0), minutes: 20)])
