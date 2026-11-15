@@ -83,7 +83,10 @@ final class AppModel {
         isRefreshing = true
         defer { isRefreshing = false }
         do {
+            let fullFetch = data.needsFullFetch
+            if fullFetch { ChangeFetcher.resetToken(for: store) }
             let batch = try await ChangeFetcher.fetch(store: store)
+            if fullFetch { data.fullFetchDone() }
             let newAlerts = data.ingest(batch)
             if isKid, let kid = config.kid {
                 let rules = data.rules(for: kid.id)

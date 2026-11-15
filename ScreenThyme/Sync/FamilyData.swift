@@ -45,6 +45,9 @@ struct IngestBatch: Sendable {
 @MainActor @Observable
 final class FamilyData {
     private struct Snapshot: Codable {
+        /// Bump when stored types change: an older (or unreadable) snapshot triggers a full re-fetch.
+        static let currentVersion = 2
+        var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
         var epochs: [UUID: LadderEpoch] = [:]
@@ -81,11 +84,22 @@ final class FamilyData {
         snapshot.kids.values.sorted { ($0.isTest ? 1 : 0, $0.displayName) < ($1.isTest ? 1 : 0, $1.displayName) }
     }
 
+    /// The snapshot couldn't be used, so records fetched before it was written are missing here: the next refresh
+    /// must ignore its change token and fetch everything.
+    @ObservationIgnored private(set) var needsFullFetch = false
+
     init() {
-        if let data = try? Data(contentsOf: directory.appending(path: "snapshot.json")),
-           let saved = try? JSONDecoder.thyme.decode(Snapshot.self, from: data) {
+        guard let data = try? Data(contentsOf: directory.appending(path: "snapshot.json")) else { return }
+        if let saved = try? JSONDecoder.thyme.decode(Snapshot.self, from: data), saved.version == Snapshot.currentVersion {
             snapshot = saved
+        } else {
+            needsFullFetch = true
         }
+    }
+
+    func fullFetchDone() {
+        needsFullFetch = false
+        saveSnapshot()
     }
 
     /// Returns alerts that weren't known before, for local notifications.
