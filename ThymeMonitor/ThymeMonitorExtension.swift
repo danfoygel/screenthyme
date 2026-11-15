@@ -18,7 +18,9 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         // Only total fires; anything else is a leftover registration from the old per-app ladders.
         guard let parsed = entry.parsedEvent, parsed.itemID == nil else { return }
 
-        let sampled = config.kid.flatMap { kid in Sampler.isAuthorized ? Sampler.sampleBlocking(kid: kid) : nil }
+        // No authorization check: `authorizationStatus` is unreliable in the extension (sampling never ran behind
+        // it). A phone without data access fails the fetch, which `sampleBlocking` journals.
+        let sampled = config.kid.flatMap { Sampler.sampleBlocking(kid: $0) }
         let wake = WakeObservation(at: entry.at, totalMinute: parsed.minute,
                                    itemSeconds: sampled?.itemSeconds ?? [:],
                                    intervalSeconds: sampled?.intervalSeconds ?? [:],

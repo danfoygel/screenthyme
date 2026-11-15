@@ -31,10 +31,6 @@ enum Sampler {
         var seconds: Double
     }
 
-    static var isAuthorized: Bool {
-        AuthorizationCenter.shared.authorizationStatus == .approvedWithDataAccess
-    }
-
     /// Fetches, writes samples and new items to the outbox, and returns what changed. Serialized across processes.
     static func sample(kid: Kid, now: Date = Date()) async throws -> Result {
         let fetched = try await fetch(now: now)
