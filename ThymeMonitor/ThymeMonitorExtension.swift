@@ -1,5 +1,7 @@
 import DeviceActivity
 import Foundation
+// Only for DeviceActivityData.activitySegments (declared in the SwiftUI overlay), used by the S4 probe.
+import SwiftUI
 import ThymeCore
 
 /// Capture (PLAN.md §4.1): journal first, then rules and the next rolling thresholds, then a short best-effort
@@ -29,8 +31,41 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
                 return state
             }
             Roller.roll(activityName: activity.rawValue, fire: parsed, state: state)
+            if parsed.itemID == nil, parsed.minute % 5 == 0 {
+                probeDataAccess(minute: parsed.minute)
+            }
         }
         upload(config)
+    }
+
+    /// S4 probe: can the extension read the iOS 26.4 activity data, and how fast? Result goes to the journal.
+    private func probeDataAccess(minute: Int) {
+        let done = DispatchSemaphore(value: 0)
+        let started = Date()
+        Task.detached {
+            let text: String
+            do {
+                let today = Calendar.current.dateInterval(of: .day, for: Date())!
+                var apps = 0
+                var seconds: TimeInterval = 0
+                for try await data in DeviceActivityData.activityData(filteredBy: DeviceActivityFilter(segment: .daily(during: today))) {
+                    for await segment in data.activitySegments {
+                        seconds += segment.totalActivityDuration
+                        for await category in segment.categories {
+                            for await _ in category.applications { apps += 1 }
+                        }
+                    }
+                }
+                text = "S4 probe at total \(minute): ok, \(Int(seconds / 60)) min, \(apps) app rows"
+            } catch {
+                text = "S4 probe at total \(minute): \(error)"
+            }
+            try? AppGroup.journal.append(.note(text + String(format: " (%.2f s)", Date().timeIntervalSince(started))))
+            done.signal()
+        }
+        if done.wait(timeout: .now() + 5) == .timedOut {
+            try? AppGroup.journal.append(.note("S4 probe at total \(minute): timed out after 5 s"))
+        }
     }
 
     override func intervalDidStart(for activity: DeviceActivityName) {

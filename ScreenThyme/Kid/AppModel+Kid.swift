@@ -19,6 +19,14 @@ extension AppModel {
         if let failure, !isAuthorized {
             show(failure)
         }
+        // A new grant (e.g. upgrading to data access) makes iOS stop every activity (PLAN.md §12): start them again.
+        if isAuthorized, let epoch = config.epoch, let kid = config.kid {
+            do {
+                _ = try Roller.registerAll(epochID: epoch.id, kid: kid, items: config.items.filter(\.active))
+            } catch {
+                show(error)
+            }
+        }
         await sendHeartbeat(.manual)
     }
 

@@ -2,6 +2,7 @@ import DeviceActivity
 import FamilyControls
 import ManagedSettings
 import SwiftUI
+import ThymeCore
 
 /// Test S4: does the iOS 26.4 data-access option work here (development build, this region, this authorization
 /// kind), and what does its data look like? Debug-only; nothing here feeds capture or sync.
@@ -44,6 +45,9 @@ struct DataAccessView: View {
         Task {
             do { try await work() } catch { log("ERROR: \(error)") }
             running = false
+            // Also appended to a file, so the full results can be copied off the phone (devicectl).
+            let file = JSONLinesFile<String>(url: AppGroup.container.appending(path: "s4-results.jsonl"))
+            try? file.append(contentsOf: ["--- \(Date().formatted(date: .omitted, time: .standard))"] + lines)
         }
     }
 

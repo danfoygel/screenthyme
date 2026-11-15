@@ -75,6 +75,7 @@ targets:
       path: ThymeMonitor/ThymeMonitor.entitlements
       properties:
         com.apple.developer.family-controls: true
+        com.apple.developer.family-controls.app-and-website-usage: true
         com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
         com.apple.developer.icloud-container-identifiers: [iCloud.com.danfoygel.screenthyme]
         com.apple.developer.icloud-services: [CloudKit]

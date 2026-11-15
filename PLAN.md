@@ -445,3 +445,22 @@ A kid's iPhone SE (3rd gen, iOS 26.6, Family Sharing child account, `.child` aut
 
 **Still open:** S1(c) on the kid phone over a full day; whether the daemon's memory stays healthy with rolling (check
 the logs); S5 (alert pushes); S6 (a week untouched); the midnight reset of rolling ladders; S4 (optional).
+
+## 13. S4: Apple's data-access option works (Nov 15, 2026, Xcode 27.2)
+
+| Question | Result |
+|---|---|
+| Entitlement `family-controls.app-and-website-usage` for development builds | ✅ granted to our team. It must also be on the **monitor extension** to fetch there. |
+| `approvedWithDataAccess` on a **US** account | ✅ after one re-request (no new prompt type) on both an adult (`.individual`) and a child (`.child`) phone |
+| `DeviceActivityData.activityData(...)` | ✅ exact per-app minutes with **bundle IDs** (no display names), including Safari and Settings; hourly is the finest segment; fresh to the second; 0.1 s in the app |
+| From the **monitor extension**, in the background | ✅ 0.04 s on the kid's iPhone SE. It needs `import SwiftUI` for `activitySegments` (memory cost not yet measured). |
+| `FamilyActivityData.installedApplications` | ⚠️ hung for 90+ s; not needed |
+| Side effect | ⚠️ **a new authorization grant stops every DeviceActivity schedule.** The app re-registers right after any authorization request. |
+| Totals | Apple's data runs ~13 min above our total-threshold count on the same day, on both phones. The data-access numbers match Apple's Screen Time. |
+
+**Proposed capture redesign (not built yet):** keep only the rolling *total* thresholds, as a once-every-N-minutes-of-use
+alarm. On each wake the extension fetches today's per-app data, takes the difference from the previous fetch, and uploads
+exact per-app minutes for that interval. Per-app thresholds, scans and tokens are no longer needed, and new apps, Safari and
+Settings are covered. Keep the per-app rolling thresholds as a fallback when authorization isn't `approvedWithDataAccess`
+(officially EU-only for customers, one app per phone, and Apple can change it). Fire every ~2 min and upload every ~5
+min (immediately for alerts); measure battery under Settings → Battery.
