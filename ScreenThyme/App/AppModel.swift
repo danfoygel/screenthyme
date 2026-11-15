@@ -58,6 +58,7 @@ final class AppModel {
             await refresh()
         case .parent:
             await refresh()
+            await addTestRulesIfRequested()
         case .unset:
             break
         }

@@ -20,6 +20,33 @@ extension AppModel {
         do { try await store?.save([rule]) } catch { show(error) }
     }
 
+    /// Development: launched with `-addTestRules <kid name>`, saves one rule of each kid-side kind for that kid, set
+    /// to fire soon. Once per process; the ids are stable, so launching again updates the rules instead of adding more.
+    func addTestRulesIfRequested(now: Date = Date()) async {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard !testRulesAdded, let flag = arguments.firstIndex(of: "-addTestRules"), flag + 1 < arguments.count,
+              let kid = data.sortedKids.first(where: { $0.displayName == arguments[flag + 1] }) else { return }
+        testRulesAdded = true
+        let total = data.fires(kid: kid.id, day: DayKey(now)).map(\.minute).max() ?? 0
+        let hour = Calendar.current.component(.hour, from: now) * 60
+        func id(_ name: String) -> UUID { Replay.stableUUID("test-rule", kid.id.uuidString, name) }
+        let rules = [
+            Rule(id: id("total"), kidID: kid.id, condition: .dailyThreshold(itemID: nil, minutes: (total / 5 + 3) * 5)),
+            Rule(id: id("session"), kidID: kid.id, condition: .longSession(minutes: 15)),
+            Rule(id: id("quiet"), kidID: kid.id, condition: .quietHours(name: "Test quiet hours", startMinute: hour,
+                                                                       endMinute: min(hour + 120, 24 * 60 - 1),
+                                                                       weekdays: [], repeatEvery: 30)),
+            Rule(id: id("new"), kidID: kid.id, condition: .newApp),
+        ]
+        data.ingest(IngestBatch(rules: rules))
+        do {
+            try await store?.save(rules)
+            message = "Added \(rules.count) test rules for \(kid.displayName)."
+        } catch {
+            show(error)
+        }
+    }
+
     func delete(_ rule: Rule) async {
         let name = "\(Rule.recordType).\(rule.id.uuidString)"
         data.ingest(IngestBatch(deletedRecordNames: [name]))
@@ -73,3 +100,5 @@ extension HealthIssue {
         }
     }
 }
+
+@MainActor private var testRulesAdded = false
