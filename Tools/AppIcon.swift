@@ -131,22 +131,19 @@ struct Sprig {
     var leaf: (CGFloat, CGFloat) // leaf length at the first and last node
 }
 
-// Main stem runs left to right, rising; two branches climb, one dips.
-let main = Sprig(points: [CGPoint(x: 196, y: 548), CGPoint(x: 380, y: 520), CGPoint(x: 610, y: 488), CGPoint(x: 836, y: 372)],
-                 width: (15, 7), nodes: [0.16, 0.27, 0.38, 0.49, 0.6, 0.7, 0.79, 0.87, 0.94], leaf: (66, 42))
-let up1 = Sprig(points: [bezier(main.points, 0.4), CGPoint(x: 432, y: 450), CGPoint(x: 420, y: 380), CGPoint(x: 452, y: 300)],
-                width: (9, 5), nodes: [0.25, 0.45, 0.63, 0.8], leaf: (56, 36))
-let up2 = Sprig(points: [bezier(main.points, 0.66), CGPoint(x: 680, y: 420), CGPoint(x: 660, y: 340), CGPoint(x: 700, y: 278)],
-                width: (9, 5), nodes: [0.25, 0.45, 0.63, 0.8], leaf: (56, 36))
-let down = Sprig(points: [bezier(main.points, 0.53), CGPoint(x: 560, y: 540), CGPoint(x: 560, y: 580), CGPoint(x: 590, y: 612)],
-                 width: (8, 5), nodes: [0.4, 0.7], leaf: (50, 38))
-let sprigs = [main, up1, up2, down]
+// Kept simple so it reads at phone size: one stem rising left to right, one branch climbing from its middle,
+// a few big leaf pairs.
+let main = Sprig(points: [CGPoint(x: 210, y: 590), CGPoint(x: 390, y: 565), CGPoint(x: 600, y: 505), CGPoint(x: 776, y: 392)],
+                 width: (22, 12), nodes: [0.22, 0.46, 0.7], leaf: (122, 92))
+let up = Sprig(points: [bezier(main.points, 0.58), CGPoint(x: 550, y: 450), CGPoint(x: 506, y: 400), CGPoint(x: 514, y: 338)],
+               width: (14, 10), nodes: [0.5], leaf: (96, 96))
+let sprigs = [main, up]
 
 func drawThyme() {
     ctx.saveGState()
     ctx.addPath(screenPath)
     ctx.clip()
-    ctx.setShadow(offset: CGSize(width: 0, height: -16), blur: 32, color: rgb(0x0A2A5A, 0.6))
+    ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 24, color: rgb(0x2C3A20, 0.3))
     ctx.beginTransparencyLayer(auxiliaryInfo: nil)
     for s in sprigs {
         ctx.setStrokeColor(rgb(0x7E8A3E))
@@ -158,9 +155,6 @@ func drawThyme() {
             let l = s.leaf.0 + (s.leaf.1 - s.leaf.0) * f
             let p = bezier(s.points, t), a = angle(s.points, t)
             let spread: CGFloat = 0.95 - 0.25 * f
-            // Young leaves in the axils, then the main pair over them
-            leaf(at: p, angle: a - 0.4, length: l * 0.55)
-            leaf(at: p, angle: a + 0.4, length: l * 0.5)
             leaf(at: p, angle: a - spread, length: l)
             leaf(at: p, angle: a + spread, length: l * 0.92)
         }
@@ -186,21 +180,11 @@ let face = renderFace {
     ctx.strokePath()
 
     clipped(screenPath) {
-        linear([rgb(0x63B4F2), rgb(0x2C7FD6), rgb(0x1757AE)],
+        // White, with a faint cool falloff toward the far corner so it reads as glass
+        linear([rgb(0xFFFFFF), rgb(0xFFFFFF), rgb(0xE6ECF1)],
                from: CGPoint(x: screen.minX, y: screen.minY), to: CGPoint(x: screen.maxX, y: screen.maxY))
-        radial([rgb(0xE9F6FF, 0.75), rgb(0xBFE3FF, 0.25), rgb(0xBFE3FF, 0)],
-               at: CGPoint(x: screen.midX - 10, y: screen.midY - 10), radius: 380)
     }
     drawThyme()
-
-    // Glass sheen across the top-left of the screen
-    clipped(screenPath) {
-        clipped(polygon([CGPoint(x: screen.minX, y: screen.minY), CGPoint(x: screen.minX + 430, y: screen.minY),
-                         CGPoint(x: screen.minX, y: screen.minY + 300)])) {
-            linear([rgb(0xFFFFFF, 0.18), rgb(0xFFFFFF, 0)],
-                   from: CGPoint(x: screen.minX, y: screen.minY), to: CGPoint(x: screen.minX + 200, y: screen.minY + 160))
-        }
-    }
 }
 
 // The monitor's back, seen as its left side edge: the bezel silhouette in a lighter grey.
