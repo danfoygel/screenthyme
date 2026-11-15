@@ -59,8 +59,8 @@ final class AppModel {
             await refresh()
         case .parent:
             await refresh()
-            await addTestRulesIfRequested()
-            await PushDiagnostics.write(family: config.family)
+            await handleTestRuleArguments()
+            await PushDiagnostics.write(family: config.family, kids: data.sortedKids)
         case .unset:
             break
         }
@@ -92,8 +92,7 @@ final class AppModel {
             if fullFetch { data.fullFetchDone() }
             let newAlerts = data.ingest(batch)
             if isKid, let kid = config.kid {
-                let rules = data.rules(for: kid.id)
-                if rules != config.rules { update { $0.rules = rules } }
+                RuleSync.save(data.rules(for: kid.id), checkedAt: Date())
                 if batch.pings.contains(where: { $0.kidID == kid.id && $0.at > (lastHeartbeatAt ?? .distantPast) }) {
                     await sendHeartbeat(.ping)
                 }
@@ -179,7 +178,7 @@ final class AppModel {
             config.epoch = nil
             config.rules = []
         }
-        for url in [AppGroup.itemsURL, AppGroup.snapshotURL, AppGroup.samples.url, AppGroup.newItems.url] {
+        for url in [AppGroup.itemsURL, AppGroup.rulesURL, AppGroup.snapshotURL, AppGroup.samples.url, AppGroup.newItems.url] {
             try? FileManager.default.removeItem(at: url)
         }
         MonitorStateStore.save(MonitorDayState(day: DayKey(Date())))

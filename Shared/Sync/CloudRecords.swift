@@ -104,6 +104,12 @@ extension Rule: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+extension RuleSet: CloudRecordable {
+    static let recordType = "RuleSet"
+    var recordUUID: UUID { kidID }
+    var ownerKidID: UUID { kidID }
+}
+
 extension Ping: CloudRecordable {
     static let recordType = "Ping"
     var recordUUID: UUID { id }

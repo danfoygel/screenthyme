@@ -482,7 +482,7 @@ Test rules were seeded from the parent phone with `-addTestRules <kid name>` (se
 | Step | Result |
 |---|---|
 | Live capture | ✅ one wake every 2 min of use, each with per-app samples (e.g. 120 s of one app per wake), once the extension stopped gating on `authorizationStatus` (it never reads `approvedWithDataAccess` there) |
-| Rules → kid phone | ✅ silent push to the kid app; the rules arrived ~1–2 min after the parent saved them |
+| Rules → kid phone | ⚠️ the silent push to the kid app delivered new rules within ~2 min once, then not at all for a deletion (iOS rations silent pushes, and the kid gets one for every change in the zone). Fix: parents also save the kid's whole list as `RuleSet.<kid id>`; the monitor extension fetches it by name at most every 10 min of use (`RuleSync`), into App Group `rules.json`. |
 | Quiet hours | ✅ "phone in use" at the first wake in the window; "still on the phone" 30+ min later at the next wake |
 | Daily total | ✅ fired one minute past the limit |
 | Alert → parent | ✅ uploaded at the same wake; in the parent's Alerts tab within about a minute |

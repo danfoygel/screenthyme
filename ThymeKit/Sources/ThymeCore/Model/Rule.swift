@@ -15,6 +15,20 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// All of one kid's rules in one record with a fixed name, so the kid's monitor extension can fetch it directly
+/// (`RuleSet.<kid id>`) instead of depending on a silent push reaching the app.
+public struct RuleSet: Codable, Sendable, Hashable {
+    public var kidID: UUID
+    public var rules: [Rule]
+    public var updatedAt: Date
+
+    public init(kidID: UUID, rules: [Rule], updatedAt: Date = Date()) {
+        self.kidID = kidID
+        self.rules = rules
+        self.updatedAt = updatedAt
+    }
+}
+
 public enum RuleCondition: Codable, Sendable, Hashable {
     /// Minutes of day; `endMinute < startMinute` wraps past midnight. `weekdays` uses Calendar numbering (1 = Sunday)
     /// and refers to the day the window starts. `repeatEvery` minutes between "still using" alerts.

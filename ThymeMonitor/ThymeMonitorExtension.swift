@@ -3,7 +3,8 @@ import Foundation
 import ThymeCore
 
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
-/// data and record what changed, evaluate rules, keep the alarm registered, then a short best-effort upload.
+/// data and record what changed, evaluate rules, keep the alarm registered, then a short best-effort upload (and a
+/// rules check every 10 minutes).
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
@@ -31,7 +32,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             if let kid = config.kid {
                 let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
                 let engine = RuleEngine(kidID: kid.id, kidName: kid.displayName, items: items)
-                try? AppGroup.outbox.append(contentsOf: engine.process(wake, state: &state, rules: config.rules))
+                try? AppGroup.outbox.append(contentsOf: engine.process(wake, state: &state, rules: config.currentRules))
             } else {
                 state.record(wake)
             }
@@ -57,7 +58,9 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         guard config.family != nil else { return }
         let done = DispatchSemaphore(value: 0)
         Task.detached {
+            async let rules: Void = RuleSync.refreshIfDue(config: config)
             _ = try? await Uploader.flush(config: config, days: 2)
+            await rules
             done.signal()
         }
         _ = done.wait(timeout: .now() + Self.uploadWait)

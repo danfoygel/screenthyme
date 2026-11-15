@@ -23,6 +23,7 @@ ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
 - Logic belongs in ThymeKit with Swift Testing tests; the app targets are thin.
 - The monitor extension reads `SharedConfig` (App Group `config.json`) on every fire and never writes it; the app owns it.
+  Rules live in `rules.json`, which both write (`RuleSync.save`, under a lock).
 
 ## Identifiers
 
@@ -53,7 +54,8 @@ xcrun devicectl device copy from --device <udid> --domain-type appDataContainer 
 xcodebuild -project ScreenThyme.xcodeproj -scheme ScreenThyme \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build build
 
-# On a parent phone (unlocked): save one test rule of each kind for a kid, set to fire soon (stable ids)
+# On a parent phone (unlocked): save one test rule of each kind for a kid, set to fire soon (stable ids);
+# -removeTestRules <kid name> deletes them
 xcrun devicectl device process launch --device <udid> --terminate-existing com.danfoygel.screenthyme -- -addTestRules <kid name>
 # Parent phones write notification settings and installed subscriptions to
 # Library/Application Support/push-diagnostics.txt (copy with --domain-type appDataContainer)
@@ -78,6 +80,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   `FamilyActivityData.installedApplications` hangs.
 - `AuthorizationCenter.shared.authorizationStatus` is unreliable in the extension: don't gate on it there.
 - Any new authorization grant stops all monitoring; `requestAuthorization` re-registers.
+- Silent pushes are rationed: don't depend on one reaching the kid app. Rules reach the extension through the
+  `RuleSet.<kid id>` record (`RuleSync`, App Group `rules.json`); parents must publish it after every rule change.
 - **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.
 - Every registration replays today's already-passed thresholds (counted from midnight), in random order, sometimes ~2/s.
   A first registration late in the day becomes a chain of rolls for a few minutes, each journalled as an

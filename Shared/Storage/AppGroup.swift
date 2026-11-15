@@ -62,6 +62,8 @@ enum AppGroup {
     static var energyLedgerURL: URL { container.appending(path: "energy.json") }
     /// Every app and website seen on this phone (written by `Sampler`).
     static var itemsURL: URL { container.appending(path: "items.json") }
+    /// The rules this kid phone evaluates (`LocalRules`), written by the app and by `RuleSync` in the extension.
+    static var rulesURL: URL { container.appending(path: "rules.json") }
     /// `Sampler`'s last fetch of Apple's per-hour, per-app totals, to take differences from.
     static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
 
@@ -72,6 +74,15 @@ enum AppGroup {
     static var samplesLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/samples-uploaded.jsonl")) }
     static var newItems: JSONLinesFile<TrackedItem> { JSONLinesFile(url: container.appending(path: "Outbox/items.jsonl")) }
     static var newItemsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/items-uploaded.jsonl")) }
+
+    static func loadRules() -> LocalRules? {
+        guard let data = try? Data(contentsOf: rulesURL) else { return nil }
+        return try? JSONDecoder.thyme.decode(LocalRules.self, from: data)
+    }
+
+    static func saveRules(_ rules: LocalRules) {
+        try? JSONEncoder.thyme.encode(rules).write(to: rulesURL, options: .atomic)
+    }
 
     static func loadItems() -> [TrackedItem] {
         guard let data = try? Data(contentsOf: itemsURL) else { return [] }
@@ -107,6 +118,12 @@ struct FamilyLocation: Codable, Sendable, Hashable {
 }
 
 /// Written by the app, read by the extension on every wake.
+/// A kid phone's copy of its rules, and when it last checked them against CloudKit.
+struct LocalRules: Codable, Sendable {
+    var rules: [Rule]
+    var checkedAt: Date
+}
+
 struct SharedConfig: Codable, Sendable {
     enum Role: String, Codable, Sendable { case unset, kid, parent }
     enum AuthMode: String, Codable, Sendable { case child, individual }
@@ -118,7 +135,11 @@ struct SharedConfig: Codable, Sendable {
     var testMode = false
     var family: FamilyLocation?
     var epoch: LadderEpoch?
+    /// Superseded by `AppGroup.loadRules()`; read only until a phone has written rules.json.
     var rules: [Rule] = []
+
+    /// The rules to evaluate on this kid phone.
+    var currentRules: [Rule] { AppGroup.loadRules()?.rules ?? rules }
 
     static func load() -> SharedConfig {
         guard let data = try? Data(contentsOf: AppGroup.configURL),

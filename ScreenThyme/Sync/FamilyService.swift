@@ -86,7 +86,7 @@ enum PushDiagnostics {
     /// The last failure of `installSubscriptions` at launch.
     @MainActor static var installError: String?
 
-    @MainActor static func write(family: FamilyLocation?) async {
+    @MainActor static func write(family: FamilyLocation?, kids: [Kid]) async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         var lines = [
             "at \(Date().formatted(.iso8601))",
@@ -108,6 +108,17 @@ enum PushDiagnostics {
                 }
             } catch {
                 lines.append("subscriptions: \(error)")
+            }
+            let store = CloudStore(family: family)
+            for kid in kids {
+                let id = CKRecord.ID(recordName: "\(RuleSet.recordType).\(kid.id.uuidString)", zoneID: store.zoneID)
+                do {
+                    let set = try await store.database.record(for: id)
+                    let count = RuleSet.decode(set).map { "\($0.rules.count) rules" } ?? "undecodable"
+                    lines.append("RuleSet \(kid.displayName): \(count)")
+                } catch {
+                    lines.append("RuleSet \(kid.displayName): \(error)")
+                }
             }
         }
         let url = URL.applicationSupportDirectory.appending(path: "push-diagnostics.txt")

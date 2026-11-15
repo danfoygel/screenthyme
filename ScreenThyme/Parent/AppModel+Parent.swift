@@ -17,40 +17,79 @@ extension AppModel {
 
     func save(_ rule: Rule) async {
         data.ingest(IngestBatch(rules: [rule]))
-        do { try await store?.save([rule]) } catch { show(error) }
-    }
-
-    /// Development: launched with `-addTestRules <kid name>`, saves one rule of each kid-side kind for that kid, set
-    /// to fire soon. Once per process; the ids are stable, so launching again updates the rules instead of adding more.
-    func addTestRulesIfRequested(now: Date = Date()) async {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard !testRulesAdded, let flag = arguments.firstIndex(of: "-addTestRules"), flag + 1 < arguments.count,
-              let kid = data.sortedKids.first(where: { $0.displayName == arguments[flag + 1] }) else { return }
-        testRulesAdded = true
-        let total = data.fires(kid: kid.id, day: DayKey(now)).map(\.minute).max() ?? 0
-        let hour = Calendar.current.component(.hour, from: now) * 60
-        func id(_ name: String) -> UUID { Replay.stableUUID("test-rule", kid.id.uuidString, name) }
-        let rules = [
-            Rule(id: id("total"), kidID: kid.id, condition: .dailyThreshold(itemID: nil, minutes: (total / 5 + 3) * 5)),
-            Rule(id: id("session"), kidID: kid.id, condition: .longSession(minutes: 15)),
-            Rule(id: id("quiet"), kidID: kid.id, condition: .quietHours(name: "Test quiet hours", startMinute: hour,
-                                                                       endMinute: min(hour + 120, 24 * 60 - 1),
-                                                                       weekdays: [], repeatEvery: 30)),
-            Rule(id: id("new"), kidID: kid.id, condition: .newApp),
-        ]
-        data.ingest(IngestBatch(rules: rules))
         do {
-            try await store?.save(rules)
-            message = "Added \(rules.count) test rules for \(kid.displayName)."
+            try await store?.save([rule])
+            try await publishRuleSet(for: rule.kidID)
         } catch {
             show(error)
         }
     }
 
+    /// The kid's whole rule list as one record, which the kid's monitor extension fetches by name (`RuleSync`).
+    private func publishRuleSet(for kidID: UUID) async throws {
+        try await store?.save([RuleSet(kidID: kidID, rules: data.rules(for: kidID))])
+    }
+
+    /// Development: launched with `-addTestRules <kid name>`, saves one rule of each kid-side kind for that kid, set
+    /// to fire soon; `-removeTestRules <kid name>` deletes them. Once per process; the ids are stable, so adding again
+    /// updates the rules instead of adding more.
+    func handleTestRuleArguments(now: Date = Date()) async {
+        let arguments = ProcessInfo.processInfo.arguments
+        func kid(after flag: String) -> Kid? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return data.sortedKids.first { $0.displayName == arguments[index + 1] }
+        }
+        guard !testRulesHandled else { return }
+        if let kid = kid(after: "-addTestRules") {
+            testRulesHandled = true
+            let total = data.fires(kid: kid.id, day: DayKey(now)).map(\.minute).max() ?? 0
+            let hour = Calendar.current.component(.hour, from: now) * 60
+            let rules = [
+                Rule(id: testRuleID("total", kid: kid), kidID: kid.id,
+                     condition: .dailyThreshold(itemID: nil, minutes: (total / 5 + 3) * 5)),
+                Rule(id: testRuleID("session", kid: kid), kidID: kid.id, condition: .longSession(minutes: 15)),
+                Rule(id: testRuleID("quiet", kid: kid), kidID: kid.id,
+                     condition: .quietHours(name: "Test quiet hours", startMinute: hour,
+                                            endMinute: min(hour + 120, 24 * 60 - 1), weekdays: [], repeatEvery: 30)),
+                Rule(id: testRuleID("new", kid: kid), kidID: kid.id, condition: .newApp),
+            ]
+            data.ingest(IngestBatch(rules: rules))
+            do {
+                try await store?.save(rules)
+                try await publishRuleSet(for: kid.id)
+                message = "Added \(rules.count) test rules for \(kid.displayName)."
+            } catch {
+                show(error)
+            }
+        } else if let kid = kid(after: "-removeTestRules") {
+            testRulesHandled = true
+            let names = ["total", "session", "quiet", "new"].map {
+                "\(Rule.recordType).\(testRuleID($0, kid: kid).uuidString)"
+            }
+            data.ingest(IngestBatch(deletedRecordNames: names))
+            do {
+                try await store?.delete(recordNames: names)
+                try await publishRuleSet(for: kid.id)
+                message = "Removed the test rules for \(kid.displayName)."
+            } catch {
+                show(error)
+            }
+        }
+    }
+
+    private func testRuleID(_ name: String, kid: Kid) -> UUID {
+        Replay.stableUUID("test-rule", kid.id.uuidString, name)
+    }
+
     func delete(_ rule: Rule) async {
         let name = "\(Rule.recordType).\(rule.id.uuidString)"
         data.ingest(IngestBatch(deletedRecordNames: [name]))
-        do { try await store?.delete(recordNames: [name]) } catch { show(error) }
+        do {
+            try await store?.delete(recordNames: [name])
+            try await publishRuleSet(for: rule.kidID)
+        } catch {
+            show(error)
+        }
     }
 
     func healthIssues(for kid: Kid, now: Date = Date()) -> [HealthIssue] {
@@ -101,4 +140,4 @@ extension HealthIssue {
     }
 }
 
-@MainActor private var testRulesAdded = false
+@MainActor private var testRulesHandled = false
