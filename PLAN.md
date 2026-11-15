@@ -64,12 +64,12 @@ This section drives the whole design. Apple deliberately prevents third-party ap
 
 Each token becomes a `TrackedItem` with our own stable UUID.
 
-**One ladder shape for every app, domain and category:**
-- every **5 min** from 5 to 60 min (12 events)
-- then every **15 min** from 75 min to 12 h (44 events)
-- **56 events per item**, so about 100 apps plus categories comes to roughly **6,000 events**
+**Ladders:**
+- **Apps and categories:** every **5 min** from 5 to 60 min (12 events), then every **15 min** from 75 min to 12 h (44 events): **56 events per item**.
+- **Websites:** every 5 min up to 60 min only (12 events). Their time also counts as Safari's, and a real scan returns hundreds of sites (§11).
+- If everything doesn't fit, the app ladder is cut from the top (5–60 is always kept), and a total at the top of its ladder shows as "60+ min".
 
-Event names encode the item and the minute, e.g. `a:<itemUUID>:<minute>`.
+Event names encode the item and the minute, e.g. `i.<itemUUID>.<minute>`.
 
 **Plus one total ladder:** `includesAllActivity`, every **1 min** up to 16 h (960 events). This is cheap: a single series. It gives us:
 - **"phone in use right now"**, within about 1 minute
@@ -80,10 +80,10 @@ Event names encode the item and the minute, e.g. `a:<itemUUID>:<minute>`.
 **Schedules:** each activity is a repeating **daily** `DeviceActivitySchedule` (00:00–23:59).
 
 **Activity budget (max 20):**
-- app/domain ladders: 1–4 activities, split by item count if the per-activity cap requires it (S1)
-- categories: 1
 - total: 1
-- spare: the rest, for re-scans without gaps
+- apps and categories: as many as needed at ≤ 1,000 events each
+- websites: their own activities (83 sites each)
+- spare: whatever is left. A re-scan registers the new epoch before stopping the old one if both fit; otherwise it stops the old one first, and catch-up covers the gap
 
 When an event fires, the monitor extension:
 1. Appends `{eventName, firedAt}` to an **append-only JSONL file** in the App Group, with an fsync. This step must survive the extension being killed.
@@ -387,3 +387,33 @@ This is for developing the parent side and the reconstruction without waiting fo
 - **Region:** are any of our Apple Accounts EU accounts? That affects S4 beyond development builds.
 - **Waking hours** per kid, for staleness alerts.
 - Should kids see their own timeline in their app (transparency), or just the status?
+
+## 11. Findings from the first device run (Nov 14, 2026, iOS 26.6, adult phone, `.individual`)
+
+**S1(b), scale: passed.**
+- 20 activities were accepted and kept: 1 × 960 total events plus 19 × 980 app events, 19,580 in total.
+- "All Apps & Categories" returned **222 apps, 297 websites and 13 categories**.
+- Settings and Safari are **not offered** by the picker. Their use only shows in the total and the categories (as "unexplained").
+
+**S1(c), accuracy: promising.**
+- Same day, matched by token in the report extension: **24 of 25 tracked apps and sites** within ±1 minute of Apple's numbers.
+- Misses: one app ran 2–6 min below Apple's number; another passed only because of the ±1 allowance.
+- The **total runs about 14 min below Apple's**. Cause unknown; keep watching.
+
+**S3, upload from the extension: works.** The parent's synced copy matched the kid journal fire for fire.
+
+**Platform behaviour learned:**
+- `DeviceActivityCenter.stopMonitoring([])` stops **every** activity. Never pass an empty list.
+- Each registration replays today's already-passed thresholds:
+  - counted from **midnight** (not the round hour)
+  - in **random order**
+  - all at once or throttled to ~2/s
+  - for up to **~8 minutes**
+
+  That use is reported as "before tracking started". The kid uploads a tracking-start marker (a total fire at minute 0).
+- Categories and websites overlap apps, so they get totals only, not timeline minutes.
+- `Label(token)` renders names and icons on the kid's own phone. Cross-device rendering is still S2.
+- The report extension **can read the App Group**, which is how the on-phone comparison works.
+- On an adult phone, `.individual` authorization succeeded despite an `authorizationConflict` error, probably caused by another Screen Time app on the phone.
+
+**Still open:** S2 (names on another device), S4, S5 (second parent's push), S6 (a week without opening the app), and `.child` on a real kid phone.
