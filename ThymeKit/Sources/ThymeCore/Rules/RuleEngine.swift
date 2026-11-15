@@ -119,9 +119,9 @@ public struct RuleEngine: Sendable {
             let key = "d.\(rule.id)"
             guard !state.fired.contains(key) else { return [] }
             state.fired.insert(key)
-            let what = itemID.map(name(of:)) ?? "the phone"
-            return [alert(rule, item: itemID, at: at, title: "\(kidName): \(what) over \(limit) min",
-                          body: "\(used) min on \(what) today.")]
+            let what = itemID.map(name(of:))
+            return [alert(rule, item: itemID, at: at, title: "\(kidName): \(what ?? "phone") over \(limit) min",
+                          body: "\(used) min on \(what ?? "the phone") today.")]
 
         case let .longSession(limit):
             guard wake.totalMinute != nil, let runStart = state.runStart,

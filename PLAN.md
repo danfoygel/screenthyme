@@ -184,9 +184,9 @@ Rules are edited on the parent device and synced to the kid device. They are eva
 | Rule | How it works |
 |---|---|
 | **Quiet hours** (bedtime, school) | A total fire inside the window → "Phone in use during bedtime" within about 1 min. Updated with the app name once it crosses a threshold. Throttled, with a "still using" alert every N min. |
-| **Daily threshold** (app or category) | Thresholds snap to the ladder (multiples of 5 up to 60, multiples of 15 above). If the parent wants an exact value off the ladder, add one extra event for it. |
-| **Long session** | The extension tracks the current in-use run (from total fires) and the app crossings within it. The run passes N min and is dominated by one app → alert. Precision is about ±5 min. |
-| **New / untracked usage** | Untracked in-use time over N min → alert ("9 min on apps added since the last scan, category Games") plus a prompt to re-scan. If S4 works, real new-bundle-ID detection is also possible. |
+| **Daily threshold** (whole phone or one app) | Checked at each wake against today's total or Apple's per-app seconds, so it fires within one 2-minute wake of the limit. |
+| **Long session** | The extension tracks the current in-use run (from total fires) and Apple's per-app seconds within it. The run passes N min → alert naming the dominant app. |
+| **New app** | An app or website never seen on this phone before (by bundle ID or domain) → alert. |
 | **Staleness / tamper** | Evaluated on the **parent** device. See §4.7. |
 
 All alerts are recorded in the timeline, so the alert feed and the timeline match.
@@ -468,9 +468,28 @@ the logs); S5 (alert pushes); S6 (a week untouched); the midnight reset of rolli
 | Side effect | ⚠️ **a new authorization grant stops every DeviceActivity schedule.** The app re-registers right after any authorization request. |
 | Totals | Apple's data runs ~13 min above our total-threshold count on the same day, on both phones. The data-access numbers match Apple's Screen Time. |
 
-**Proposed capture redesign (not built yet):** keep only the rolling *total* thresholds, as a once-every-N-minutes-of-use
+**Capture redesign (built in `a860884`; the per-app fallback below was not kept):** keep only the rolling *total* thresholds, as a once-every-N-minutes-of-use
 alarm. On each wake the extension fetches today's per-app data, takes the difference from the previous fetch, and uploads
 exact per-app minutes for that interval. Per-app thresholds, scans and tokens are no longer needed, and new apps, Safari and
 Settings are covered. Keep the per-app rolling thresholds as a fallback when authorization isn't `approvedWithDataAccess`
 (officially EU-only for customers, one app per phone, and Apple can change it). Fire every ~2 min and upload every ~5
 min (immediately for alerts); measure battery under Settings → Battery.
+
+## 14. Alerts end to end (Nov 15, 2026, the kid's iPhone SE → the parent's iPhone 17)
+
+Test rules were seeded from the parent phone with `-addTestRules <kid name>` (see CLAUDE.md).
+
+| Step | Result |
+|---|---|
+| Live capture | ✅ one wake every 2 min of use, each with per-app samples (e.g. 120 s of one app per wake), once the extension stopped gating on `authorizationStatus` (it never reads `approvedWithDataAccess` there) |
+| Rules → kid phone | ✅ silent push to the kid app; the rules arrived ~1–2 min after the parent saved them |
+| Quiet hours | ✅ "phone in use" at the first wake in the window; "still on the phone" 30+ min later at the next wake |
+| Daily total | ✅ fired one minute past the limit |
+| Alert → parent | ✅ uploaded at the same wake; in the parent's Alerts tab within about a minute |
+| Visible banner on the owner's phone | ✅ after a fix. The `alerts-visible` CKQuerySubscription was missing: the phone set up the family as a test kid, and `modifySubscriptions` only reports per-subscription failures in its results. Every launch now ensures the role's subscriptions and checks each result; `Application Support/push-diagnostics.txt` shows what a phone has. |
+| Long session, new app | not yet triggered (short sessions; no new app) |
+| Second parent (participant: local notification after a silent push) | not tested; there is no second parent phone yet |
+
+Unrelated observation: the kid phone's Screen Time settings (limits, downtime, Always Allowed) were found reset on Nov 15.
+ScreenThyme never writes ManagedSettings. The likeliest trigger is the re-authorization for data access, which
+also cleared all of our DeviceActivity schedules. Watch whether they reset again.

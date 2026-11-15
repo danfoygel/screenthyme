@@ -1,6 +1,8 @@
 import CloudKit
 import Foundation
 import ThymeCore
+import UIKit
+import UserNotifications
 
 /// Family zone, sharing and subscriptions (PLAN.md §4.3).
 enum FamilyService {
@@ -34,6 +36,8 @@ enum FamilyService {
         return FamilyLocation(zoneName: zoneID.zoneName, ownerName: zoneID.ownerName, isOwner: false)
     }
 
+    static let alertsSubscriptionID = "alerts-visible"
+
     /// Silent pushes for every zone change; on the owner's parent device also a visible push per Alert, built by
     /// CloudKit from the record's title/body without waking the app.
     static func installSubscriptions(family: FamilyLocation, isParent: Bool) async throws {
@@ -45,9 +49,12 @@ enum FamilyService {
             let zone = CKRecordZoneSubscription(zoneID: store.zoneID, subscriptionID: "family-zone")
             zone.notificationInfo = silent
             var subscriptions: [CKSubscription] = [zone]
-            if isParent {
+            if !isParent {
+                // A phone that switched from parent to kid (test mode) must stop getting alert banners.
+                _ = try await store.database.modifySubscriptions(saving: [], deleting: [alertsSubscriptionID])
+            } else {
                 let alerts = CKQuerySubscription(recordType: AlertRecord.recordType, predicate: NSPredicate(value: true),
-                                                 subscriptionID: "alerts-visible", options: [.firesOnRecordCreation])
+                                                 subscriptionID: alertsSubscriptionID, options: [.firesOnRecordCreation])
                 alerts.zoneID = store.zoneID
                 let info = CKSubscription.NotificationInfo()
                 info.titleLocalizationKey = "%1$@"
@@ -58,12 +65,53 @@ enum FamilyService {
                 alerts.notificationInfo = info
                 subscriptions.append(alerts)
             }
-            _ = try await store.database.modifySubscriptions(saving: subscriptions, deleting: [])
+            try await save(subscriptions, in: store.database)
         } else {
             let shared = CKDatabaseSubscription(subscriptionID: "shared-db")
             shared.notificationInfo = silent
-            _ = try await store.database.modifySubscriptions(saving: [shared], deleting: [])
+            try await save([shared], in: store.database)
         }
+    }
+
+    /// `modifySubscriptions` throws only when the whole request fails; each subscription's own error is in its result.
+    private static func save(_ subscriptions: [CKSubscription], in database: CKDatabase) async throws {
+        let (saved, _) = try await database.modifySubscriptions(saving: subscriptions, deleting: [])
+        for result in saved.values { _ = try result.get() }
+    }
+}
+
+/// Development: what this phone knows about push delivery, written to Application Support/push-diagnostics.txt so it
+/// can be pulled off the device with devicectl.
+enum PushDiagnostics {
+    /// The last failure of `installSubscriptions` at launch.
+    @MainActor static var installError: String?
+
+    @MainActor static func write(family: FamilyLocation?) async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        var lines = [
+            "at \(Date().formatted(.iso8601))",
+            "authorization \(settings.authorizationStatus.rawValue), alert \(settings.alertSetting.rawValue), "
+                + "lockScreen \(settings.lockScreenSetting.rawValue), center \(settings.notificationCenterSetting.rawValue), "
+                + "banner style \(settings.alertStyle.rawValue), sound \(settings.soundSetting.rawValue)",
+            "registered for remote notifications: \(UIApplication.shared.isRegisteredForRemoteNotifications)",
+            "subscription install at launch: \(installError ?? "ok")",
+        ]
+        if let family {
+            lines.append("family owner \(family.isOwner), zone \(family.zoneName) / \(family.ownerName)")
+            do {
+                for subscription in try await CloudStore(family: family).database.allSubscriptions() {
+                    let info = subscription.notificationInfo
+                    lines.append("subscription \(subscription.subscriptionID) type \(subscription.subscriptionType.rawValue), "
+                                 + "alert \(info?.alertLocalizationKey ?? info?.alertBody ?? "-"), "
+                                 + "title \(info?.titleLocalizationKey ?? info?.title ?? "-"), "
+                                 + "content-available \(info?.shouldSendContentAvailable ?? false)")
+                }
+            } catch {
+                lines.append("subscriptions: \(error)")
+            }
+        }
+        let url = URL.applicationSupportDirectory.appending(path: "push-diagnostics.txt")
+        try? lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 }
 

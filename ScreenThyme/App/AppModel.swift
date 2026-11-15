@@ -49,6 +49,7 @@ final class AppModel {
         defer { isLaunching = false }
         BackgroundRefresh.schedule()
         migrateToWakeAlarm()
+        await ensureSubscriptions()
         switch config.role {
         case .kid:
             ensureMonitoring()
@@ -59,6 +60,7 @@ final class AppModel {
         case .parent:
             await refresh()
             await addTestRulesIfRequested()
+            await PushDiagnostics.write(family: config.family)
         case .unset:
             break
         }
@@ -134,6 +136,19 @@ final class AppModel {
         }
     }
 
+    /// Once per process: the subscriptions this role needs. Saving them again is harmless; a phone that set up the
+    /// family under another role (or whose earlier install failed) would otherwise miss alert banners.
+    func ensureSubscriptions() async {
+        guard !subscriptionsEnsured, let family = config.family else { return }
+        do {
+            try await FamilyService.installSubscriptions(family: family, isParent: isParent)
+            subscriptionsEnsured = true
+            PushDiagnostics.installError = nil
+        } catch {
+            PushDiagnostics.installError = "\(error)"
+        }
+    }
+
     /// Re-installs subscriptions, e.g. after switching roles in test mode.
     func reinstallSubscriptions() async {
         guard let family = config.family else { return }
@@ -196,3 +211,5 @@ final class AppModel {
         #endif
     }
 }
+
+@MainActor private var subscriptionsEnsured = false
