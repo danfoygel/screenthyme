@@ -37,6 +37,8 @@ targets:
       path: ScreenThyme/ScreenThyme.entitlements
       properties:
         com.apple.developer.family-controls: true
+        # S4: iOS 26.4 data access (approvedWithDataAccess, DeviceActivityData.activityData). PLAN.md §3, §12.
+        com.apple.developer.family-controls.app-and-website-usage: true
         com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
         com.apple.developer.icloud-container-identifiers: [iCloud.com.danfoygel.screenthyme]
         com.apple.developer.icloud-services: [CloudKit]

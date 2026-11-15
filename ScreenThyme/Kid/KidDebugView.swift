@@ -46,6 +46,9 @@ struct KidDebugView: View {
                     LabeledContent { Text(Format.range(total)).monospacedDigit() } label: { ItemName(item: items[id]) }
                 }
             }
+            Section("Apple's data-access option (S4)") {
+                NavigationLink("Data access test") { DataAccessView() }
+            }
             Section("Apple's numbers (on this phone only)") {
                 NavigationLink("Compare with Apple (S1c)") { AppleReportView(day: day, context: "comparison") }
                 NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day, context: "appTotals") }
