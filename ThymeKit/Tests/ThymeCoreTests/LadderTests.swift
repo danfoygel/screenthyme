@@ -39,74 +39,55 @@ struct EventNameTests {
     }
 }
 
-struct LadderPlannerTests {
-    @Test func splitsItemsUnderCap() throws {
-        let planner = LadderPlanner(maxEventsPerActivity: 1000)
-        let items = (0..<100).map { _ in UUID() }
-        let plan = try planner.plan(epochID: UUID(), itemIDs: items)
-        // 1000 / 56 = 17 items per activity → 6 item activities + 1 total.
-        #expect(plan.activities.count == 7)
-        #expect(!plan.isShortened)
-        #expect(plan.activities[0].includesTotal && plan.activities[0].itemIDs.isEmpty)
-        #expect(plan.activities.dropFirst().allSatisfy { $0.eventCount(spec: plan.spec) <= 1000 })
-        #expect(Set(plan.activities.flatMap(\.itemIDs)) == Set(items))
+struct RollingLadderTests {
+    let ladder = RollingLadder()
+
+    @Test func nextItemThresholds() {
+        #expect(ladder.itemThresholds(after: 0, short: false) == [5, 10])
+        #expect(ladder.itemThresholds(after: 55, short: false) == [60, 75])
+        #expect(ladder.itemThresholds(after: 705, short: false) == [720])
+        #expect(ladder.itemThresholds(after: 720, short: false).isEmpty)
+        #expect(ladder.itemThresholds(after: 55, short: true) == [60])
+        #expect(ladder.itemThresholds(after: 60, short: true).isEmpty)
     }
 
-    @Test func namesShareEpochPrefix() throws {
+    @Test func totalWindowAndRefill() {
+        #expect(ladder.totalThresholds(after: 0) == Array(1...20))
+        #expect(ladder.totalThresholds(after: 950) == Array(951...960))
+        #expect(!ladder.totalNeedsRefill(crossed: 5, registeredUpTo: 20))
+        #expect(ladder.totalNeedsRefill(crossed: 11, registeredUpTo: 20))
+    }
+
+    @Test func activitiesSpreadItemsEvenly() {
         let epoch = UUID()
-        let plan = try LadderPlanner().plan(epochID: epoch, itemIDs: [UUID()])
-        #expect(plan.activities.allSatisfy { $0.name.hasPrefix(LadderPlanner.prefix(for: epoch)) })
+        let items = (0..<180).map { _ in UUID() }
+        let activities = RollingLadder.itemActivities(epochID: epoch, itemIDs: items)
+        #expect(activities.count == 18)  // 10 per activity
+        #expect(activities.allSatisfy { $0.itemIDs.count <= 10 })
+        #expect(activities.flatMap(\.itemIDs) == items)
+        #expect(activities.allSatisfy { $0.name.hasPrefix(RollingLadder.prefix(for: epoch)) })
+        #expect(RollingLadder.itemActivities(epochID: epoch, itemIDs: (0..<532).map { _ in UUID() }).count == 19)
+        #expect(RollingLadder.itemActivities(epochID: epoch, itemIDs: [UUID()]).count == 1)
+        #expect(!RollingLadder.totalActivity(epochID: epoch).hasSuffix(".total"))
     }
 
-    @Test func shortensLadderToFitManyItems() throws {
-        let planner = LadderPlanner(maxEventsPerActivity: 1000)
-        let items = (0..<400).map { _ in UUID() }
-        let plan = try planner.plan(epochID: UUID(), itemIDs: items)
-        // 19 item activities; 400 items need ≥ 22 per activity → at most 45 steps.
-        #expect(plan.isShortened)
-        #expect(plan.spec.itemMinutes.count == 45)
-        #expect(plan.spec.itemMinutes.prefix(12) == LadderSpec.standard.itemMinutes.prefix(12))
-        #expect(plan.activities.count <= 20)
-        #expect(plan.activities.allSatisfy { $0.eventCount(spec: plan.spec) <= 1000 })
-        #expect(Set(plan.activities.flatMap(\.itemIDs)) == Set(items))
+    /// A day of rolling registrations stays tiny: ~2 events per item plus 20, versus 56 per item before.
+    @Test func registeredEventCountIsSmall() {
+        let items = 180
+        #expect(items * ladder.itemLookahead + ladder.totalLookahead == 380)
     }
+}
 
-    /// The real scan: 222 apps + 13 categories on the full ladder, 297 websites on the short one.
-    @Test func websitesGetOwnShortActivities() throws {
-        let planner = LadderPlanner(maxEventsPerActivity: 1000)
-        let long = (0..<235).map { _ in UUID() }
-        let short = (0..<297).map { _ in UUID() }
-        let plan = try planner.plan(epochID: UUID(), itemIDs: long, shortItemIDs: short)
-        #expect(!plan.isShortened)
-        #expect(plan.activities.count <= 20)
-        #expect(plan.activities.filter(\.short).count == 4)  // 1000 / 12 = 83 per activity
-        #expect(Set(plan.activities.filter(\.short).flatMap(\.itemIDs)) == Set(short))
-        #expect(Set(plan.activities.filter { !$0.short }.flatMap(\.itemIDs)) == Set(long))
-        #expect(plan.activities.allSatisfy { $0.eventCount(spec: plan.spec) <= 1000 })
-        #expect(Set(plan.activities.map(\.name)).count == plan.activities.count)
-    }
-
-    @Test func refusesWhenEvenShortestLadderDoesNotFit() {
-        let planner = LadderPlanner(maxEventsPerActivity: 1000)
-        let items = (0..<2000).map { _ in UUID() }
-        // 1000 / 12 = 83 per activity × 19 = 1577.
-        #expect(throws: LadderPlanError.tooManyItems(items: 2000, capacity: 1577)) {
-            try planner.plan(epochID: UUID(), itemIDs: items)
-        }
-    }
-
-    @Test func leavesRoomForOldEpoch() throws {
-        let planner = LadderPlanner(maxEventsPerActivity: 1000)
-        let plan = try planner.plan(epochID: UUID(), itemIDs: (0..<100).map { _ in UUID() }, inUse: 10)
-        #expect(plan.activities.count <= 10)
-        #expect(throws: LadderPlanError.noActivitiesFree(available: 1)) {
-            try planner.plan(epochID: UUID(), itemIDs: [], inUse: 19)
-        }
-    }
-
-    @Test func refusesCapBelowTotalLadder() {
-        #expect(throws: LadderPlanError.ladderLongerThanCap(events: 960, cap: 500)) {
-            try LadderPlanner(maxEventsPerActivity: 500).plan(epochID: UUID(), itemIDs: [])
-        }
+struct MonitorDayStateTests {
+    @Test func recordsAndResetsDaily() {
+        var state = MonitorDayState(day: testDay)
+        let id = UUID()
+        state.record(.init(itemID: nil, minute: 3), at: at(10, 0), calendar: utc)
+        state.record(.init(itemID: id, minute: 5), at: at(10, 0, 1), calendar: utc)
+        state.record(.init(itemID: id, minute: 5), at: at(10, 0, 2), calendar: utc)
+        #expect(state.totalMinute == 3 && state.itemMinutes[id] == 5)
+        state.record(.init(itemID: nil, minute: 1), at: at(24, 1), calendar: utc)
+        #expect(state.day == testDay.adding(days: 1, calendar: utc))
+        #expect(state.totalMinute == 1 && state.itemMinutes.isEmpty)
     }
 }

@@ -95,6 +95,7 @@ struct KidSettingsView: View {
                     LabeledContent("App version", value: heartbeat.appVersion)
                 }
                 Button("Ping now") { Task { await model.ping(kid) } }
+                NavigationLink("Tracked apps (\(model.data.items(for: kid.id).count))") { TrackedItemsView(kid: kid) }
             }
             Section("Rules") {
                 ForEach(model.data.rules(for: kid.id)) { rule in
@@ -180,14 +181,16 @@ struct RuleEditor: View {
                         }
                     }
                 case let .dailyThreshold(itemID, minutes):
+                    // A navigation-link picker shows a real list; menus can only draw plain text, not Apple's labels.
                     Picker("What", selection: Binding(get: { itemID }, set: {
                         rule.condition = .dailyThreshold(itemID: $0, minutes: minutes)
                     })) {
                         Text("Whole phone").tag(UUID?.none)
-                        ForEach(items.values.sorted { $0.ordinal < $1.ordinal }) { item in
-                            ItemName(item: item, showIcon: false).tag(UUID?.some(item.id))
+                        ForEach(items.values.filter { $0.kind == .app }.sorted { $0.ordinal < $1.ordinal }) { item in
+                            ItemName(item: item).tag(UUID?.some(item.id))
                         }
                     }
+                    .pickerStyle(.navigationLink)
                     Stepper("After \(Format.minutes(minutes))", value: Binding(get: { minutes }, set: {
                         let snapped = itemID == nil ? $0 : LadderSpec.standard.snapItemThreshold($0)
                         rule.condition = .dailyThreshold(itemID: itemID, minutes: snapped)
@@ -233,5 +236,32 @@ struct RuleEditor: View {
                 let parts = Calendar.current.dateComponents([.hour, .minute], from: $0)
                 set(parts.hour! * 60 + parts.minute!)
             }), displayedComponents: .hourAndMinute)
+    }
+}
+
+/// Everything the kid's last scan tracks, as this device renders it: Apple's labels if it can (S2), else "App #n".
+struct TrackedItemsView: View {
+    @Environment(AppModel.self) private var model
+    let kid: Kid
+
+    var body: some View {
+        let items = model.data.items(for: kid.id).values.filter(\.active)
+        List {
+            ForEach(ItemKind.allCases, id: \.self) { kind in
+                let group = items.filter { $0.kind == kind }.sorted { $0.ordinal < $1.ordinal }
+                if !group.isEmpty {
+                    Section("\(kind.rawValue.capitalized)s · \(group.count)") {
+                        ForEach(group) { item in
+                            HStack {
+                                ItemName(item: item)
+                                Spacer()
+                                Text("#\(item.ordinal)").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("\(kid.displayName)'s apps")
     }
 }

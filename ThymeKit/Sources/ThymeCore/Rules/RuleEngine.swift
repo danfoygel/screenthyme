@@ -19,6 +19,29 @@ public struct MonitorDayState: Codable, Sendable, Equatable {
     public init(day: DayKey) {
         self.day = day
     }
+
+    /// Updates the state with a fire, starting over on a new day. The extension keeps this even without rules:
+    /// rolling ladders register each item's next thresholds after `itemMinutes`.
+    public mutating func record(_ fire: EventName.Parsed, at: Date, calendar: Calendar = .current) {
+        let today = DayKey(at, calendar: calendar)
+        if day != today {
+            self = MonitorDayState(day: today)
+        }
+        if let itemID = fire.itemID {
+            itemMinutes[itemID] = max(itemMinutes[itemID] ?? 0, fire.minute)
+            if let last = lastTotalFireAt, at.timeIntervalSince(last) <= Reconstructor.runGap {
+                runCrossings[itemID, default: 0] += 1
+            }
+        } else {
+            guard fire.minute > totalMinute else { return }
+            if lastTotalFireAt.map({ at.timeIntervalSince($0) > Reconstructor.runGap }) ?? true {
+                runStart = at.addingTimeInterval(-60)
+                runCrossings = [:]
+            }
+            lastTotalFireAt = at
+            totalMinute = fire.minute
+        }
+    }
 }
 
 /// Evaluates kid-side rules on each fire (PLAN.md §4.6). Pure: the extension persists `MonitorDayState`.
@@ -39,36 +62,13 @@ public struct RuleEngine: Sendable {
     }
 
     public func process(_ fire: EventName.Parsed, at: Date, state: inout MonitorDayState, rules: [Rule]) -> [AlertRecord] {
-        let day = DayKey(at, calendar: calendar)
-        if state.day != day {
-            state = MonitorDayState(day: day)
-        }
-        update(&state, fire: fire, at: at)
+        state.record(fire, at: at, calendar: calendar)
 
         var alerts: [AlertRecord] = []
         for rule in rules where rule.enabled && rule.kidID == kidID {
             alerts += evaluate(rule, fire: fire, at: at, state: &state)
         }
         return alerts
-    }
-
-    func update(_ state: inout MonitorDayState, fire: EventName.Parsed, at: Date) {
-        if let itemID = fire.itemID {
-            state.itemMinutes[itemID] = max(state.itemMinutes[itemID] ?? 0, fire.minute)
-            if let last = state.lastTotalFireAt, at.timeIntervalSince(last) <= Reconstructor.runGap {
-                state.runCrossings[itemID, default: 0] += 1
-            }
-        } else {
-            guard fire.minute > state.totalMinute else { return }
-            if let last = state.lastTotalFireAt, at.timeIntervalSince(last) <= Reconstructor.runGap {
-                // Same run continues.
-            } else {
-                state.runStart = at.addingTimeInterval(-60)
-                state.runCrossings = [:]
-            }
-            state.lastTotalFireAt = at
-            state.totalMinute = fire.minute
-        }
     }
 
     func evaluate(_ rule: Rule, fire: EventName.Parsed, at: Date, state: inout MonitorDayState) -> [AlertRecord] {

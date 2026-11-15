@@ -64,8 +64,8 @@ This section drives the whole design. Apple deliberately prevents third-party ap
 
 Each token becomes a `TrackedItem` with our own stable UUID.
 
-**Ladders:**
-- **Apps and categories:** every **5 min** from 5 to 60 min (12 events), then every **15 min** from 75 min to 12 h (44 events): **56 events per item**.
+**Ladders (rolling, see §12):** registration holds only each item's **next 2** thresholds and the total's next 20 minutes. The monitor extension re-registers an activity after each crossing in it, and at midnight resets it to the first steps. The step sequence is:
+- **Apps and categories:** every **5 min** from 5 to 60 min, then every **15 min** from 75 min to 12 h.
 - **Websites:** every 5 min up to 60 min only (12 events). Their time also counts as Safari's, and a real scan returns hundreds of sites (§11).
 - If everything doesn't fit, the app ladder is cut from the top (5–60 is always kept), and a total at the top of its ladder shows as "60+ min".
 
@@ -417,3 +417,28 @@ This is for developing the parent side and the reconstruction without waiting fo
 - On an adult phone, `.individual` authorization succeeded despite an `authorizationConflict` error, probably caused by another Screen Time app on the phone.
 
 **Still open:** S2 (names on another device), S4, S5 (second parent's push), S6 (a week without opening the app), and `.child` on a real kid phone.
+
+## 12. Second device run (Nov 15, 2026): a real kid phone
+
+A kid's iPhone SE (3rd gen, iOS 26.6, Family Sharing child account, `.child` authorization) as kid; the parent's iPhone 17 as parent (owner).
+
+- **S2 passed:** the parent's phone renders the kid's tokens as real app names and icons (`Label(token)` in a List).
+  `Picker` in menu style draws them blank, so use list-style UI for token labels.
+- **Child authorization works:** approved with the parent's Apple Account on the kid's phone. The kid's phone joined the
+  family as a CKShare participant and writes to the shared zone. The share sheet's options page is blank when only
+  read/write is offered, and that's fine.
+- **After child authorization the phone needed a restart.** Until then, neither thresholds nor Apple's own report
+  extension got any data.
+- **Full ladders crashed Apple's Screen Time daemon.** With ~7,300 registered events, `UsageTrackingAgent` grew to
+  ~1.7 GB and was killed by jetsam (`JETSAM_REASON_MEMORY_HIGHWATER`) every 1–2 minutes, so no thresholds were delivered.
+  The same daemon enforces Apple's own limits and Downtime. The parent's iPhone 17 survived 19,600 events, but only thanks to
+  its memory. **Fix: rolling ladders** (§4.1): ~20 events per activity, 380 in total on the kid's phone.
+  Live delivery then worked: total minute by minute, per-app crossings 5→10→…→30 as the extension re-registers.
+- Settings and Safari aren't offered by the picker on the kid's phone either. "FamilyControlsAgent" (the approval
+  sheet) shows up in Apple's report as an app.
+- **Toolchain:** Xcode 27.2 (iOS 27.2 SDK) adds `AuthorizationStatus.approvedWithDataAccess` and
+  `DeviceActivityData.activityData(...)`, so **S4 is now buildable**. The minimum deployment target is raised to iOS 26.4.
+  Its `devicectl` only copies from the App Group's `Library/`, so app files moved to `Library/ScreenThyme/`.
+
+**Still open:** S1(c) on the kid phone over a full day; whether the daemon's memory stays healthy with rolling (check
+the logs); S5 (alert pushes); S6 (a week untouched); the midnight reset of rolling ladders; S4 (optional).

@@ -78,8 +78,9 @@ public struct DayInput: Sendable {
 }
 
 extension JournalEntry {
-    /// The total ladder's interval started: a registration (or midnight).
+    /// A registration. Before rolling ladders there was no explicit marker; the total activity's interval start
+    /// (named "….total") stood in for it.
     public var isTrackingStart: Bool {
-        kind == .intervalStart && activity.hasSuffix(".total")
+        kind == .trackingStart || (kind == .intervalStart && activity.hasSuffix(".total"))
     }
 }

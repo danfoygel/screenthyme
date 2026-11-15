@@ -16,15 +16,20 @@ extension AppModel {
         }
         authorizationStatus = AuthorizationCenter.shared.authorizationStatus
         // iOS can report authorizationConflict (another Screen Time app on the phone) yet still approve us.
-        if let failure, authorizationStatus != .approved {
+        if let failure, !isAuthorized {
             show(failure)
         }
         await sendHeartbeat(.manual)
     }
 
+    /// Either kind of approval: plain, or with the iOS 26.4 data-access option (PLAN.md test 4).
+    var isAuthorized: Bool {
+        authorizationStatus == .approved || authorizationStatus == .approvedWithDataAccess
+    }
+
     var authorizationLabel: String {
         switch authorizationStatus {
-        case .approved: "approved"
+        case .approved, .approvedWithDataAccess: "approved"
         case .denied: "denied"
         case .notDetermined: "notDetermined"
         @unknown default: "unknown"
@@ -67,13 +72,12 @@ extension AppModel {
         }
 
         do {
-            let epoch = try LadderRegistrar.register(items: items.filter(\.active), kid: kid, epochID: epochID,
-                                                     maxEventsPerActivity: config.maxEventsPerActivity)
+            let epoch = try Roller.registerAll(epochID: epochID, kid: kid, items: items.filter(\.active))
             update { config in
                 config.items = items
                 config.epoch = epoch
             }
-            message = "Tracking \(scanSummary(items)) in \(epoch.activityNames.count) schedules, up to \(Format.minutes(epoch.spec.itemMinutes.last ?? 0)) per app per day."
+            message = "Tracking \(scanSummary(items)) in \(epoch.activityNames.count) rolling schedules."
             if let store {
                 try await store.save(items)
                 try await store.save([epoch])
@@ -104,8 +108,20 @@ extension AppModel {
         let names = missing.map { String($0.split(separator: ".").last ?? "") }
         try? AppGroup.journal.append(.note("re-registering; missing \(missing.count)/\(epoch.activityNames.count): \(names.joined(separator: ","))"))
         do {
-            _ = try LadderRegistrar.register(items: config.items.filter(\.active), kid: kid, epochID: epoch.id,
-                                             maxEventsPerActivity: config.maxEventsPerActivity)
+            _ = try Roller.registerAll(epochID: epoch.id, kid: kid, items: config.items.filter(\.active))
+        } catch {
+            show(error)
+        }
+    }
+
+    /// Scans registered before rolling ladders hold thousands of events, which Apple's Screen Time daemon can't
+    /// handle on smaller phones (PLAN.md §11). Re-registers them as rolling, whatever this device's current role.
+    func migrateToRollingLadders() {
+        guard let epoch = config.epoch, let kid = config.kid,
+              !epoch.activityNames.contains(RollingLadder.totalActivity(epochID: epoch.id)) else { return }
+        do {
+            let rolling = try Roller.registerAll(epochID: epoch.id, kid: kid, items: config.items.filter(\.active))
+            update { $0.epoch = rolling }
         } catch {
             show(error)
         }

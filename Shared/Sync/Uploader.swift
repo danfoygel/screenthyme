@@ -14,7 +14,7 @@ enum Uploader {
         let store = CloudStore(family: family)
         let journal = AppGroup.journal
         let pending = journal.pending(days: days)
-        let epochPrefix = config.epoch.map { LadderPlanner.prefix(for: $0.id) }
+        let epochPrefix = config.epoch.map { RollingLadder.prefix(for: $0.id) }
 
         var fires: [UsageFire] = []
         for entry in pending {

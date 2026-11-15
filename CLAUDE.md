@@ -31,7 +31,8 @@ ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own 
 | App Group | `group.com.danfoygel.screenthyme` |
 | iCloud container | `iCloud.com.danfoygel.screenthyme` (CloudKit; zone `Family`) |
 | Signing team | `ZVU48K8YCD`, automatic signing, development builds only (no Family Controls distribution entitlement) |
-| Deployment target | iOS 26.0; Swift 6 language mode |
+| Deployment target | iOS 26.4; Swift 6 language mode (toolchain: Xcode 27.2, Swift 6.4.2) |
+| Devices | The parent's iPhone 17 and the kid's iPhone SE (child account); their UDIDs are in `CLAUDE.local.md` (git-ignored) |
 
 ## Commands
 
@@ -39,9 +40,9 @@ ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own 
 xcodegen generate
 (cd ThymeKit && swift test)                       # unit tests, run on the Mac
 
-# Pull the App Group off the phone and run the reconstruction on it
-xcrun devicectl device copy from --device <coredevice-id> --domain-type appGroupDataContainer \
-  --domain-identifier group.com.danfoygel.screenthyme --source Journal --destination /tmp/st/Journal
+# Pull the App Group off a phone (Xcode 27's devicectl only copies from Library/) and reconstruct
+xcrun devicectl device copy from --device <udid> --domain-type appGroupDataContainer \
+  --domain-identifier group.com.danfoygel.screenthyme --source Library/ScreenThyme/Journal --destination /tmp/st/Journal
 (cd ThymeKit && swift run thyme-inspect /tmp/st/Journal/journal-YYYY-MM-DD.jsonl [/tmp/st/config.json])
 
 xcodebuild -project ScreenThyme.xcodeproj -scheme ScreenThyme \
@@ -52,15 +53,21 @@ xcodebuild -project ScreenThyme.xcodeproj -scheme ScreenThyme \
 
 - **Simulator:** parent UI, test mode, replay tool with "This phone only". No DeviceActivity fires and no iCloud account, so no capture or sync.
 - **Real device:** everything else. The first device build with `-allowProvisioningUpdates` registers the App IDs, App Group and iCloud container on the team. CloudKit containers can't be deleted.
-- **Not buildable yet:** the iOS 26.4 data-access API (spike S4). Xcode 26.3 ships the iOS 26.2 SDK.
+- **Device logs:** `sudo log collect --device-udid <udid> --last 30m --output ~/Dev/screenthyme/x.logarchive` (needs
+  the user's password). `*.logarchive` is git-ignored; it holds private data, so delete it after use.
 
 ## Gotchas
 
-- **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Always go through `LadderRegistrar.stop(_:center:)`.
+- **Never register whole ladders.** Thousands of events crash Apple's `UsageTrackingAgent` on smaller phones
+  (PLAN.md §12). Capture is rolling (`Shared/ScreenTime/Roller.swift`, `RollingLadder`): a few events per item,
+  re-registered by the extension after each crossing and at midnight.
+- **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.
 - Every registration replays today's already-passed thresholds (counted from midnight), in random order, sometimes ~2/s.
   The reconstruction treats them as one burst; avoid needless re-registration (`ensureMonitoring` is throttled).
-- On a real phone (Nov 2026): 20 activities × ~980 events were accepted and kept. "All Apps & Categories" on an adult
-  phone returned 222 apps, 297 websites and 13 categories.
+- "All Apps & Categories" on an adult phone returned 222 apps, 297 websites and 13 categories. Settings and Safari
+  aren't offered.
+- After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
+- Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the total ladder).
 - Event names are `i.<itemUUID>.<minute>` / `t.<minute>`; activities are `st.<epoch8>.<n|total>`.

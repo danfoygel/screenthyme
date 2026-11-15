@@ -6,6 +6,8 @@ public struct JournalEntry: Codable, Sendable, Hashable, Identifiable {
         case threshold, intervalStart, intervalEnd
         /// Diagnostics from the app (registrations, missing schedules); `event` holds the text.
         case note
+        /// The app (re)registered monitoring: iOS will replay today's already-passed thresholds as a catch-up.
+        case trackingStart
     }
 
     public var id: UUID

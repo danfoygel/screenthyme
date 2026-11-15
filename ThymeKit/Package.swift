@@ -5,7 +5,7 @@ import PackageDescription
 // No FamilyControls, DeviceActivity or CloudKit here, so `swift test` runs on the Mac.
 let package = Package(
     name: "ThymeKit",
-    platforms: [.iOS(.v26), .macOS(.v26)],
+    platforms: [.iOS("26.4"), .macOS(.v26)],
     products: [
         .library(name: "ThymeCore", targets: ["ThymeCore"]),
         .executable(name: "thyme-inspect", targets: ["thyme-inspect"]),

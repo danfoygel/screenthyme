@@ -13,3 +13,6 @@ ThymeKit/.build/
 ThymeKit/.swiftpm/
 .DS_Store
 xcuserdata/
+
+# Device logs (private; never commit)
+*.logarchive

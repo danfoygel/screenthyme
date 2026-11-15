@@ -48,6 +48,7 @@ final class AppModel {
         isLaunching = true
         defer { isLaunching = false }
         BackgroundRefresh.schedule()
+        migrateToRollingLadders()
         switch config.role {
         case .kid:
             ensureMonitoring()

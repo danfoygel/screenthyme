@@ -25,18 +25,12 @@ struct KidDebugView: View {
                 }
                 .buttonStyle(.borderless)
             }
-            Section("Ladders (S1)") {
+            Section("Rolling ladders (S1)") {
                 ladderInfo
-                Stepper("Max events per schedule: \(model.config.maxEventsPerActivity)",
-                        value: Binding(get: { model.config.maxEventsPerActivity },
-                                       set: { value in model.update { $0.maxEventsPerActivity = value } }),
-                        in: 112...5000, step: 112)
                 Button("Re-register current scan") {
                     guard let kid = model.config.kid, let epoch = model.config.epoch else { return }
                     do {
-                        _ = try LadderRegistrar.register(items: model.config.items.filter(\.active), kid: kid,
-                                                         epochID: epoch.id,
-                                                         maxEventsPerActivity: model.config.maxEventsPerActivity)
+                        _ = try Roller.registerAll(epochID: epoch.id, kid: kid, items: model.config.items.filter(\.active))
                     } catch { model.show(error) }
                 }
                 Button("Stop all monitoring", role: .destructive) { model.stopMonitoring() }

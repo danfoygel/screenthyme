@@ -27,7 +27,7 @@ struct KidHomeView: View {
                     }
                 }
                 Section {
-                    if model.authorizationStatus != .approved {
+                    if !model.isAuthorized {
                         Button("Allow Screen Time access") {
                             Task { await model.requestAuthorization() }
                         }
@@ -36,7 +36,7 @@ struct KidHomeView: View {
                         selection = FamilyActivitySelection(includeEntireCategory: true)
                         showPicker = true
                     }
-                    .disabled(model.authorizationStatus != .approved)
+                    .disabled(!model.isAuthorized)
                     NavigationLink("Name apps") { NamingView() }
                         .disabled(model.config.items.isEmpty)
                     Button("Upload now") {
