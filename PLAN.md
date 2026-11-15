@@ -493,3 +493,52 @@ Test rules were seeded from the parent phone with `-addTestRules <kid name>` (se
 Unrelated observation: the kid phone's Screen Time settings (limits, downtime, Always Allowed) were found reset on Nov 15.
 ScreenThyme never writes ManagedSettings. The likeliest trigger is the re-authorization for data access, which
 also cleared all of our DeviceActivity schedules. Watch whether they reset again.
+
+## 15. Enforcement: ScreenThyme replaces Apple's Screen Time limits (Nov 15, 2026)
+
+Apple's Screen Time and an app with data access can't share a phone. Only one "app or service" holds usage data
+(`approvedWithDataAccess` docs; the consent sheet says Screen Time "will lose access"). Granting ScreenThyme data access
+reset the kid's Downtime, App Limits and Always Allowed at 11:19. Restoring them at ~12:31 took the data back
+(ScreenThyme's fetches failed with `unauthorized` from 12:33). We keep exact data and rebuild the limits.
+Communication Limits are out of scope (no API).
+
+**What stays Apple's:** nothing usage-based. The parent must not configure Screen Time for the kid in Settings
+again, or it takes the data back. The kid's phone reports that as a health issue ("data access lost").
+
+### 15.1 Model (ThymeCore, synced as one `Policy.<kid id>` record)
+
+| Part | Meaning |
+|---|---|
+| Downtime windows | name, start/end minute (may wrap midnight), weekdays (of the day the window starts) |
+| Always allowed | apps, websites or categories (TrackedItem ids) exempt from Downtime and limits |
+| App limits | name, items (apps, websites, **categories**), minutes per day, optional per-weekday minutes |
+| Blocked | items never allowed |
+| Restrictions | App Store (install, delete, in-app purchases, password, max rating), media (explicit, movie/TV ratings, books, Apple Music), web filter (unrestricted / limit adult with allow+block lists / allowed sites only), Siri, Game Center (multiplayer, friends), account and passcode locks, cellular locks, automatic date and time |
+
+Targets are TrackedItems, the kid's apps, websites and now categories as found in Apple's data, with their tokens. The
+parent picks from names; no Apple picker. An app never used yet is covered through its category.
+
+Ask for more time: the kid's **TimeRequest** (item, reason, 15 min / 1 h / rest of day) becomes an Alert (banner on
+parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, the grant adds
+minutes to that limit today. For Downtime, it exempts the item for that many minutes of use, or until the window ends.
+
+### 15.2 Kid phone
+
+- `EnforcementPlanner` (pure, ThymeCore) computes what should be blocked now from the policy, the clock, today's per-item
+  use (from the Sampler), limit threshold fires and applied grants: Downtime on or off, its exceptions, exhausted limits,
+  blocked items.
+- `Enforcer` (Shared) applies the plan to three ManagedSettingsStores: `restrictions` (restrictions plus blocked
+  items), `downtime` (`shield.applicationCategories = .all(except: allowed)`, the same for web), and `limits` (exhausted
+  limits' apps, websites and categories, minus always allowed). iOS shows the union of the stores.
+- DeviceActivity activities (≤ 20 in total): the wake alarm `st.<epoch8>.tot`; one per Downtime window `dt.<id8>`
+  (split `.a`/`.b` when it wraps midnight); one per limit `lim.<id8>` with one event at its budget (limit plus grants)
+  over the limit's tokens. Interval starts and ends and limit fires call the Enforcer. **Every 2-minute wake also
+  reconciles**, so a missed callback corrects itself within one wake of use.
+- `Roller.registerAll` no longer stops every activity, only the wake alarm's.
+- Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
+  "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" has a submenu (iOS 26.4) with
+  15 minutes / 1 hour / Rest of today. The ShieldAction extension writes the TimeRequest to the App Group and opens
+  ScreenThyme (`openParentalControlsApp`, iOS 26.5) or closes with a local notification. ScreenThyme uploads the
+  request and, while open, checks for the grant every few seconds.
+- The kid's policy and grants arrive through a fetch by name (`Policy.<kid>`, `RuleSet.<kid>`,
+  `TimeGrant.<open request ids>`) at wakes and app launches, plus the kid app's zone fetch on silent pushes.

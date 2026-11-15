@@ -110,6 +110,26 @@ extension RuleSet: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+/// One per kid, fetched by name on the kid's phone (`KidSync`).
+extension Policy: CloudRecordable {
+    static let recordType = "Policy"
+    var recordUUID: UUID { kidID }
+    var ownerKidID: UUID { kidID }
+}
+
+extension TimeRequest: CloudRecordable {
+    static let recordType = "TimeRequest"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+}
+
+/// Named after its request, so the kid's phone can fetch the answer by name.
+extension TimeGrant: CloudRecordable {
+    static let recordType = "TimeGrant"
+    var recordUUID: UUID { requestID }
+    var ownerKidID: UUID { kidID }
+}
+
 extension Ping: CloudRecordable {
     static let recordType = "Ping"
     var recordUUID: UUID { id }

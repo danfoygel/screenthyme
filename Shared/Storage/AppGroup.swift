@@ -62,8 +62,16 @@ enum AppGroup {
     static var energyLedgerURL: URL { container.appending(path: "energy.json") }
     /// Every app and website seen on this phone (written by `Sampler`).
     static var itemsURL: URL { container.appending(path: "items.json") }
-    /// The rules this kid phone evaluates (`LocalRules`), written by the app and by `RuleSync` in the extension.
+    /// The rules this kid phone evaluates (`LocalRules`), written by the app and by `KidSync` in the extension.
     static var rulesURL: URL { container.appending(path: "rules.json") }
+    /// What ScreenThyme enforces on this kid phone (`Policy`), written by the app and `KidSync`.
+    static var policyURL: URL { container.appending(path: "policy.json") }
+    /// Today's limit fires and applied grants (`EnforcementDayState`), written by the `Enforcer`.
+    static var enforcementStateURL: URL { container.appending(path: "enforcement-state.json") }
+    /// The plan last applied (`AppliedPlan`), read by the block page to say why something is blocked.
+    static var enforcementURL: URL { container.appending(path: "enforcement.json") }
+    /// DeviceActivity registrations made by the `Enforcer`: activity name → signature.
+    static var enforcementActivitiesURL: URL { container.appending(path: "enforcement-activities.json") }
     /// `Sampler`'s last fetch of Apple's per-hour, per-app totals, to take differences from.
     static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
 
@@ -73,6 +81,8 @@ enum AppGroup {
     static var samples: JSONLinesFile<UsageSample> { JSONLinesFile(url: container.appending(path: "Outbox/samples.jsonl")) }
     static var samplesLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/samples-uploaded.jsonl")) }
     static var newItems: JSONLinesFile<TrackedItem> { JSONLinesFile(url: container.appending(path: "Outbox/items.jsonl")) }
+    static var requests: JSONLinesFile<TimeRequest> { JSONLinesFile(url: container.appending(path: "Outbox/requests.jsonl")) }
+    static var requestsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/requests-uploaded.jsonl")) }
     static var newItemsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/items-uploaded.jsonl")) }
 
     static func loadRules() -> LocalRules? {
@@ -82,6 +92,18 @@ enum AppGroup {
 
     static func saveRules(_ rules: LocalRules) {
         try? JSONEncoder.thyme.encode(rules).write(to: rulesURL, options: .atomic)
+    }
+
+    static func loadPolicy() -> Policy? { load(Policy.self, from: policyURL) }
+    static func savePolicy(_ policy: Policy) { save(policy, to: policyURL) }
+
+    static func load<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder.thyme.decode(T.self, from: data)
+    }
+
+    static func save<T: Encodable>(_ value: T, to url: URL) {
+        try? JSONEncoder.thyme.encode(value).write(to: url, options: .atomic)
     }
 
     static func loadItems() -> [TrackedItem] {

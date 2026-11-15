@@ -6,6 +6,10 @@ ThymeMonitor/Info.plist
 ThymeMonitor/ThymeMonitor.entitlements
 ThymeReport/Info.plist
 ThymeReport/ThymeReport.entitlements
+ThymeShield/Info.plist
+ThymeShield/ThymeShield.entitlements
+ThymeShieldAction/Info.plist
+ThymeShieldAction/ThymeShieldAction.entitlements
 
 build/
 .build/

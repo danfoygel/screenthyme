@@ -89,7 +89,7 @@ struct RuleEngineTests {
 struct HealthEvaluatorTests {
     let kidID = UUID()
 
-    func heartbeat(at date: Date, auth: String = "approved", active: [String] = ["a", "b"]) -> Heartbeat {
+    func heartbeat(at date: Date, auth: String = HealthEvaluator.dataAccessStatus, active: [String] = ["a", "b"]) -> Heartbeat {
         Heartbeat(kidID: kidID, at: date, source: .backgroundRefresh, authStatus: auth, activeActivities: active,
                   expectedActivities: ["a", "b"], appVersion: "1", backlogCount: 0, lastFireAt: nil)
     }
@@ -109,5 +109,7 @@ struct HealthEvaluatorTests {
         #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc)
             == [.notAuthorized(status: "denied"), .activitiesMissing(["b"])])
         #expect(HealthEvaluator.issues(latest: nil, lastFireAt: nil, now: at(10, 0), calendar: utc) == [.neverReported])
+        #expect(HealthEvaluator.issues(latest: heartbeat(at: at(10, 0), auth: "approved"), lastFireAt: nil, now: at(10, 5),
+                                       calendar: utc) == [.dataAccessLost])
     }
 }

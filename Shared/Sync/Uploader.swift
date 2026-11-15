@@ -36,6 +36,7 @@ enum Uploader {
 
         _ = try await send(AppGroup.newItems, ledger: AppGroup.newItemsLedger, to: store)
         let samples = try await send(AppGroup.samples, ledger: AppGroup.samplesLedger, to: store)
+        _ = try await send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
         let alerts = try await send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
         return Result(fires: fires.count, samples: samples, alerts: alerts, energyReports: energy.count)
     }

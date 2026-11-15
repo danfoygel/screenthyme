@@ -54,9 +54,11 @@ final class AppModel {
         case .kid:
             ensureMonitoring()
             await sampleNow()
+            Enforcer.reconcile()
             await flush()
             await sendHeartbeat(.launch)
             await refresh()
+            await KidSync.refreshIfDue(config: config, force: true)
         case .parent:
             await refresh()
             await handleTestRuleArguments()
@@ -92,7 +94,9 @@ final class AppModel {
             if fullFetch { data.fullFetchDone() }
             let newAlerts = data.ingest(batch)
             if isKid, let kid = config.kid {
-                RuleSync.save(data.rules(for: kid.id), checkedAt: Date())
+                KidSync.saveRules(data.rules(for: kid.id), checkedAt: Date())
+                if let policy = data.storedPolicy(for: kid.id) { KidSync.savePolicy(policy) }
+                for grant in batch.grants where grant.kidID == kid.id { Enforcer.apply(grant) }
                 if batch.pings.contains(where: { $0.kidID == kid.id && $0.at > (lastHeartbeatAt ?? .distantPast) }) {
                     await sendHeartbeat(.ping)
                 }

@@ -3,8 +3,8 @@ import Foundation
 import ThymeCore
 
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
-/// data and record what changed, evaluate rules, keep the alarm registered, then a short best-effort upload (and a
-/// rules check every 10 minutes).
+/// data and record what changed, evaluate rules, keep the alarm registered, enforce (§15), then a short best-effort
+/// upload (and a policy and rules check every 10 minutes). Downtime intervals and limit fires also enforce.
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
@@ -13,6 +13,11 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
 
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
+        if activity.rawValue.hasPrefix(Enforcer.limitPrefix) {
+            try? AppGroup.journal.append(.note("limit reached: \(event.rawValue)"))
+            Enforcer.limitFired(event.rawValue)
+            return
+        }
         let entry = JournalEntry(kind: .threshold, activity: activity.rawValue, event: event.rawValue, at: Date())
         try? AppGroup.journal.append(entry)
         let config = SharedConfig.load()
@@ -40,25 +45,39 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             return state
         }
         Roller.roll(after: parsed.minute, state: state)
+        Enforcer.reconcile(now: entry.at)
         upload(config)
     }
 
     override func intervalDidStart(for activity: DeviceActivityName) {
-        try? AppGroup.journal.append(JournalEntry(kind: .intervalStart, activity: activity.rawValue, at: Date()))
-        Roller.intervalStarted()
-        EnergyMeter.record(.monitor, isCallback: true)
+        defer { EnergyMeter.record(.monitor, isCallback: true) }
+        let name = activity.rawValue
+        if name.hasPrefix(Enforcer.downtimePrefix) || name.hasPrefix(Enforcer.limitPrefix) {
+            try? AppGroup.journal.append(.note("interval start: \(name)"))
+        } else {
+            try? AppGroup.journal.append(JournalEntry(kind: .intervalStart, activity: name, at: Date()))
+            Roller.intervalStarted()
+        }
+        // Downtime starting, or a new day for limits.
+        Enforcer.reconcile()
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
-        try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: activity.rawValue, at: Date()))
-        EnergyMeter.record(.monitor, isCallback: true)
+        defer { EnergyMeter.record(.monitor, isCallback: true) }
+        let name = activity.rawValue
+        if name.hasPrefix(Enforcer.downtimePrefix) {
+            try? AppGroup.journal.append(.note("interval end: \(name)"))
+            Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
+        } else if !name.hasPrefix(Enforcer.limitPrefix) {
+            try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
+        }
     }
 
     private func upload(_ config: SharedConfig) {
         guard config.family != nil else { return }
         let done = DispatchSemaphore(value: 0)
         Task.detached {
-            async let rules: Void = RuleSync.refreshIfDue(config: config)
+            async let rules: Void = KidSync.refreshIfDue(config: config)
             _ = try? await Uploader.flush(config: config, days: 2)
             await rules
             done.signal()

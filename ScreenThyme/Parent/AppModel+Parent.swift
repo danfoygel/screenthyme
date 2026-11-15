@@ -25,7 +25,23 @@ extension AppModel {
         }
     }
 
-    /// The kid's whole rule list as one record, which the kid's monitor extension fetches by name (`RuleSync`).
+    /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`).
+    func save(_ policy: Policy) async {
+        var policy = policy
+        policy.updatedAt = Date()
+        data.ingest(IngestBatch(policies: [policy]))
+        do { try await store?.save([policy]) } catch { show(error) }
+    }
+
+    /// Answers a kid's request for more time; the kid's phone fetches the grant by name.
+    func answer(_ request: TimeRequest, approved: Bool, minutes: Int?) async {
+        let by = config.family?.isOwner == true ? "Parent A" : "Parent B"
+        let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: by)
+        data.ingest(IngestBatch(grants: [grant]))
+        do { try await store?.save([grant]) } catch { show(error) }
+    }
+
+    /// The kid's whole rule list as one record, which the kid's monitor extension fetches by name (`KidSync`).
     private func publishRuleSet(for kidID: UUID) async throws {
         try await store?.save([RuleSet(kidID: kidID, rules: data.rules(for: kidID))])
     }
@@ -133,6 +149,7 @@ extension HealthIssue {
         switch self {
         case .neverReported: "never"
         case .notAuthorized: "auth"
+        case .dataAccessLost: "data-access"
         case .activitiesMissing: "activities"
         case .stale: "stale"
         case .backlog: "backlog"

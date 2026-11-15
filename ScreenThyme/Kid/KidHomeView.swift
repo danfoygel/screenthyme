@@ -12,6 +12,7 @@ struct KidHomeView: View {
                 Section {
                     Text("This phone shares app usage with your parents.")
                 }
+                KidScreenTimeSection()
                 Section("Status") {
                     LabeledContent("Kid", value: model.config.kid?.displayName ?? "—")
                     LabeledContent("Screen Time access", value: model.authorizationLabel)

@@ -21,31 +21,37 @@ public struct Kid: Codable, Sendable, Hashable, Identifiable {
 
 public enum ItemKind: String, Codable, Sendable, CaseIterable {
     case app, domain
+    /// One of Apple's activity categories ("Social"), a target for limits and Always Allowed.
+    case category
 }
 
-/// An app or website seen in Apple's activity data on a kid's phone. Discovered automatically; no scan.
+/// An app, website or category seen in Apple's activity data on a kid's phone. Discovered automatically; no scan.
 public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     /// Derived from kid and `identifier` (see `TrackedItem.id(kid:kind:identifier:)`), so every device agrees.
     public var id: UUID
     public var kidID: UUID
     public var kind: ItemKind
-    /// Bundle ID ("com.burbn.instagram") or domain ("www.youtube.com").
+    /// Bundle ID ("com.burbn.instagram"), domain ("www.youtube.com") or category name ("Social").
     public var identifier: String
     /// Apple's display name, when the data includes one.
     public var name: String?
-    /// JSON-encoded ApplicationToken / WebDomainToken, for `Label` (icon and name) on parent phones.
+    /// JSON-encoded ApplicationToken / WebDomainToken / ActivityCategoryToken, for `Label` (icon and name) on parent
+    /// phones and for shields on the kid's phone.
     public var tokenData: Data?
+    /// For apps and websites: the identifier of their category item, so category limits count them.
+    public var category: String?
     public var nickname: String?
     public var firstSeen: Date
 
     public init(kidID: UUID, kind: ItemKind, identifier: String, name: String? = nil, tokenData: Data? = nil,
-                nickname: String? = nil, firstSeen: Date) {
+                category: String? = nil, nickname: String? = nil, firstSeen: Date) {
         self.id = Self.id(kid: kidID, kind: kind, identifier: identifier)
         self.kidID = kidID
         self.kind = kind
         self.identifier = identifier
         self.name = name
         self.tokenData = tokenData
+        self.category = category
         self.nickname = nickname
         self.firstSeen = firstSeen
     }
@@ -61,6 +67,7 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
         switch kind {
         case .app: return identifier.split(separator: ".").last.map(String.init) ?? identifier
         case .domain: return identifier.hasPrefix("www.") ? String(identifier.dropFirst(4)) : identifier
+        case .category: return identifier
         }
     }
 }

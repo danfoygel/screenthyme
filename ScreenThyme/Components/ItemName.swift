@@ -25,6 +25,7 @@ struct ItemName: View {
         switch item.kind {
         case .app: TokenCoding.application(item.tokenData).map { styled(Label($0)) }
         case .domain: TokenCoding.webDomain(item.tokenData).map { styled(Label($0)) }
+        case .category: TokenCoding.category(item.tokenData).map { styled(Label($0)) }
         }
     }
 

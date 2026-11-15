@@ -29,7 +29,11 @@ enum Roller {
     /// (iOS replays already-passed thresholds as a catch-up).
     static func registerAll(epochID: UUID, kid: Kid, now: Date = Date()) throws -> LadderEpoch {
         let center = DeviceActivityCenter()
-        center.stopMonitoring()  // deliberately everything: this replaces all of this app's monitoring
+        // Every activity but the Enforcer's. Never an empty list: that stops everything.
+        let old = center.activities.filter {
+            !$0.rawValue.hasPrefix(Enforcer.downtimePrefix) && !$0.rawValue.hasPrefix(Enforcer.limitPrefix)
+        }
+        if !old.isEmpty { center.stopMonitoring(old) }
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let activity = Activity(name: RollingLadder.activityName(epochID: epochID), day: DayKey(now))
@@ -38,6 +42,8 @@ enum Roller {
         let active = center.activities.map(\.rawValue)
         let events = center.events(for: DeviceActivityName(activity.name)).count
         try? AppGroup.journal.append(.note("registered \(activity.name): \(events) events, iOS reports \(active.count) active"))
+        // A new authorization grant stopped the Enforcer's activities too.
+        Enforcer.reconcile(now: now)
         return LadderEpoch(id: epochID, kidID: kid.id, startedAt: now, activityNames: [activity.name])
     }
 

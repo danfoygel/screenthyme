@@ -166,6 +166,12 @@ struct AlertsView: View {
                     Text("All").tag(UUID?.none)
                     ForEach(model.data.sortedKids) { Text($0.displayName).tag(UUID?.some($0.id)) }
                 }
+                let requests = model.data.openRequests.filter { kidFilter == nil || $0.kidID == kidFilter }
+                if !requests.isEmpty {
+                    Section("Asking for more time") {
+                        ForEach(requests) { RequestRow(request: $0) }
+                    }
+                }
                 ForEach(alerts) { alert in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(alert.title).font(.headline)
@@ -181,5 +187,50 @@ struct AlertsView: View {
                 if alerts.isEmpty { ContentUnavailableView("No alerts", systemImage: "bell.slash") }
             }
         }
+    }
+}
+
+/// A kid's request for more time, with the answers a parent can give.
+struct RequestRow: View {
+    @Environment(AppModel.self) private var model
+    let request: TimeRequest
+
+    var body: some View {
+        let kid = model.data.kids[request.kidID]?.displayName ?? "Your kid"
+        let item = request.itemID.flatMap { model.data.items[$0] }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                if let item { ItemName(item: item) }
+                Spacer()
+                Text(Format.relative(request.at)).font(.caption).foregroundStyle(.secondary)
+            }
+            Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason).")
+            HStack {
+                Button("Approve") { answer(true, request.minutes) }
+                    .buttonStyle(.borderedProminent)
+                Menu("Other") {
+                    ForEach(ShieldContext.requestChoices.filter { $0 != request.minutes }, id: \.self) { minutes in
+                        Button(ShieldContext.describe(minutes: minutes).capitalizedFirst) { answer(true, minutes) }
+                    }
+                }
+                .buttonStyle(.bordered)
+                Spacer()
+                Button("Decline", role: .destructive) { answer(false, nil) }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private var reason: String {
+        let policy = model.data.policy(for: request.kidID)
+        switch request.reason {
+        case let .downtime(id): return "during \(policy.downtime.first { $0.id == id }?.name ?? "Downtime")"
+        case let .limit(id): return "over the \(policy.limits.first { $0.id == id }?.name ?? "time") limit"
+        case .blocked: return "for a blocked app"
+        }
+    }
+
+    private func answer(_ approved: Bool, _ minutes: Int?) {
+        Task { await model.answer(request, approved: approved, minutes: minutes) }
     }
 }

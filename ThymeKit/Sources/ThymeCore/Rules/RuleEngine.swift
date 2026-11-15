@@ -148,22 +148,7 @@ public struct RuleEngine: Sendable {
 
     /// The start of the quiet window containing `at`, or nil if `at` is outside every window.
     func quietWindowStart(at: Date, start: Int, end: Int, weekdays: Set<Int>) -> Date? {
-        let parts = calendar.dateComponents([.hour, .minute], from: at)
-        let minuteOfDay = parts.hour! * 60 + parts.minute!
-        let today = calendar.startOfDay(for: at)
-        let windowDay: Date
-        if start <= end {
-            guard minuteOfDay >= start, minuteOfDay < end else { return nil }
-            windowDay = today
-        } else if minuteOfDay >= start {
-            windowDay = today
-        } else if minuteOfDay < end {
-            windowDay = calendar.date(byAdding: .day, value: -1, to: today)!
-        } else {
-            return nil
-        }
-        guard weekdays.isEmpty || weekdays.contains(calendar.component(.weekday, from: windowDay)) else { return nil }
-        return calendar.date(byAdding: .minute, value: start, to: windowDay)
+        DailyWindow(startMinute: start, endMinute: end, weekdays: weekdays).occurrence(containing: at, calendar: calendar)?.start
     }
 
     func name(of itemID: UUID) -> String {

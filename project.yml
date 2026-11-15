@@ -33,6 +33,8 @@ targets:
         product: ThymeCore
       - target: ThymeMonitor
       - target: ThymeReport
+      - target: ThymeShield
+      - target: ThymeShieldAction
     entitlements:
       path: ScreenThyme/ScreenThyme.entitlements
       properties:
@@ -92,6 +94,68 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme.monitor
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Monitor
+
+  # The block page: why something is blocked, and "Ask for more time" (PLAN.md §15.2).
+  ThymeShield:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ThymeShield
+      - Shared/Storage
+      - Shared/Shield
+      - Shared/ScreenTime/TokenCoding.swift
+    dependencies:
+      - package: ThymeKit
+        product: ThymeCore
+    entitlements:
+      path: ThymeShield/ThymeShield.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
+    info:
+      path: ThymeShield/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettingsUI.shield-configuration-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldConfigurationExtension
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme.shield
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Shield
+
+  # The block page's buttons: queue a request for more time (PLAN.md §15.2).
+  ThymeShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ThymeShieldAction
+      - Shared/Storage
+      - Shared/Shield
+      - Shared/ScreenTime/TokenCoding.swift
+    dependencies:
+      - package: ThymeKit
+        product: ThymeCore
+    entitlements:
+      path: ThymeShieldAction/ThymeShieldAction.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
+    info:
+      path: ThymeShieldAction/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-action-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldActionExtension
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme.shieldaction
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Shield Action
 
   # Apple's own numbers, shown on the kid's phone only (sandboxed: no network, no export).
   ThymeReport:

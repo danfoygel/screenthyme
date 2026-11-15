@@ -78,6 +78,9 @@ struct KidSettingsView: View {
     var body: some View {
         let heartbeat = model.data.heartbeats[kid.id]
         Form {
+            Section {
+                NavigationLink("Screen Time: Downtime, limits, content") { PolicyView(kid: kid) }
+            }
             Section("Health") {
                 let issues = model.healthIssues(for: kid)
                 if issues.isEmpty {
@@ -266,7 +269,7 @@ struct TrackedItemsView: View {
             ForEach(ItemKind.allCases, id: \.self) { kind in
                 let group = items.filter { $0.kind == kind }.sorted { $0.displayName.lowercased() < $1.displayName.lowercased() }
                 if !group.isEmpty {
-                    Section("\(kind == .app ? "Apps" : "Websites") · \(group.count)") {
+                    Section("\(kind.pluralTitle) · \(group.count)") {
                         ForEach(group) { item in
                             VStack(alignment: .leading) {
                                 ItemName(item: item)

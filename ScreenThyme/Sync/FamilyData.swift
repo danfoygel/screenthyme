@@ -15,6 +15,9 @@ struct IngestBatch: Sendable {
     var rules: [Rule] = []
     var pings: [Ping] = []
     var energy: [EnergyReport] = []
+    var policies: [Policy] = []
+    var requests: [TimeRequest] = []
+    var grants: [TimeGrant] = []
     var deletedRecordNames: [String] = []
 
     mutating func add(_ record: CKRecord) {
@@ -29,6 +32,9 @@ struct IngestBatch: Sendable {
         case Rule.recordType: Rule.decode(record).map { rules.append($0) }
         case Ping.recordType: Ping.decode(record).map { pings.append($0) }
         case EnergyReport.recordType: EnergyReport.decode(record).map { energy.append($0) }
+        case Policy.recordType: Policy.decode(record).map { policies.append($0) }
+        case TimeRequest.recordType: TimeRequest.decode(record).map { requests.append($0) }
+        case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
         default: break
         }
     }
@@ -36,7 +42,8 @@ struct IngestBatch: Sendable {
     var isEmpty: Bool {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
-            && rules.isEmpty && pings.isEmpty && energy.isEmpty && deletedRecordNames.isEmpty
+            && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && requests.isEmpty && grants.isEmpty
+            && deletedRecordNames.isEmpty
     }
 }
 
@@ -46,7 +53,7 @@ struct IngestBatch: Sendable {
 final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: an older (or unreadable) snapshot triggers a full re-fetch.
-        static let currentVersion = 2
+        static let currentVersion = 3
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -57,6 +64,9 @@ final class FamilyData {
         var lastFireAt: [UUID: Date] = [:]
         var pings: [UUID: Ping] = [:]
         var energy: [UUID: EnergyReport] = [:]
+        var policies: [UUID: Policy] = [:]
+        var requests: [UUID: TimeRequest] = [:]
+        var grants: [UUID: TimeGrant] = [:]
     }
 
     private var snapshot = Snapshot()
@@ -74,6 +84,22 @@ final class FamilyData {
     var heartbeats: [UUID: Heartbeat] { snapshot.heartbeats }
     var lastFireAt: [UUID: Date] { snapshot.lastFireAt }
     var pings: [UUID: Ping] { snapshot.pings }
+    var requests: [UUID: TimeRequest] { snapshot.requests }
+    var grants: [UUID: TimeGrant] { snapshot.grants }
+
+    /// The kid's policy, or an empty one to start editing.
+    func policy(for kid: UUID) -> Policy {
+        snapshot.policies[kid] ?? Policy(kidID: kid)
+    }
+
+    func storedPolicy(for kid: UUID) -> Policy? {
+        snapshot.policies[kid]
+    }
+
+    /// Requests no parent has answered yet, newest first.
+    var openRequests: [TimeRequest] {
+        snapshot.requests.values.filter { snapshot.grants[$0.id] == nil }.sorted { $0.at > $1.at }
+    }
 
     /// Newest day first.
     func energyReports(for kid: UUID) -> [EnergyReport] {
@@ -114,6 +140,11 @@ final class FamilyData {
         for report in batch.energy where report.updatedAt >= (snapshot.energy[report.id]?.updatedAt ?? .distantPast) {
             snapshot.energy[report.id] = report
         }
+        for policy in batch.policies where policy.updatedAt >= (snapshot.policies[policy.kidID]?.updatedAt ?? .distantPast) {
+            snapshot.policies[policy.kidID] = policy
+        }
+        for request in batch.requests { snapshot.requests[request.id] = request }
+        for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
         for heartbeat in batch.heartbeats where heartbeat.at > (snapshot.heartbeats[heartbeat.kidID]?.at ?? .distantPast) {
             snapshot.heartbeats[heartbeat.kidID] = heartbeat
         }
@@ -171,6 +202,9 @@ final class FamilyData {
         snapshot.alerts = snapshot.alerts.filter { $0.value.kidID != kid }
         snapshot.heartbeats[kid] = nil
         snapshot.energy = snapshot.energy.filter { $0.value.kidID != kid }
+        snapshot.policies[kid] = nil
+        snapshot.requests = snapshot.requests.filter { $0.value.kidID != kid }
+        snapshot.grants = snapshot.grants.filter { $0.value.kidID != kid }
         snapshot.lastFireAt[kid] = nil
         fireStore.forget(kid: kid)
         sampleStore.forget(kid: kid)

@@ -28,7 +28,14 @@ enum Sampler {
         var identifier: String
         var name: String?
         var tokenData: Data?
+        var category: String?
         var seconds: Double
+    }
+
+    /// One fetch: per-hour use by item key, and the categories those items belong to (name → token).
+    private struct Fetched {
+        var hours: [String: [String: Seen]] = [:]
+        var categories: [String: Data?] = [:]
     }
 
     /// Fetches, writes samples and new items to the outbox, and returns what changed. Serialized across processes.
@@ -63,40 +70,61 @@ enum Sampler {
     // MARK: - Fetch
 
     /// Today's per-hour totals, keyed by hour start and item key ("app:<bundle id>" / "web:<domain>").
-    nonisolated private static func fetch(now: Date) async throws -> [String: [String: Seen]] {
+    nonisolated private static func fetch(now: Date) async throws -> Fetched {
         let today = Calendar.current.dateInterval(of: .day, for: now)!
-        var hours: [String: [String: Seen]] = [:]
+        var fetched = Fetched()
         for try await data in DeviceActivityData.activityData(filteredBy: DeviceActivityFilter(segment: .hourly(during: today))) {
             for await segment in data.activitySegments {
                 let hour = String(Int(segment.dateInterval.start.timeIntervalSince1970))
                 for await category in segment.categories {
+                    let categoryName = category.category.localizedDisplayName
+                    if let categoryName, fetched.categories[categoryName] == nil {
+                        fetched.categories[categoryName] = category.category.token.flatMap(TokenCoding.encode)
+                    }
                     for await app in category.applications {
                         guard let bundle = app.application.bundleIdentifier, app.totalActivityDuration > 0 else { continue }
                         let token = app.application.token.flatMap(TokenCoding.encode)
-                        hours[hour, default: [:]]["app:" + bundle, default: Seen(kind: .app, identifier: bundle,
-                            name: app.application.localizedDisplayName, tokenData: token, seconds: 0)].seconds += app.totalActivityDuration
+                        fetched.hours[hour, default: [:]]["app:" + bundle, default: Seen(kind: .app, identifier: bundle,
+                            name: app.application.localizedDisplayName, tokenData: token, category: categoryName,
+                            seconds: 0)].seconds += app.totalActivityDuration
                     }
                     for await site in category.webDomains {
                         guard let domain = site.webDomain.domain, site.totalActivityDuration > 0 else { continue }
                         let token = site.webDomain.token.flatMap(TokenCoding.encode)
-                        hours[hour, default: [:]]["web:" + domain, default: Seen(kind: .domain, identifier: domain,
-                            name: nil, tokenData: token, seconds: 0)].seconds += site.totalActivityDuration
+                        fetched.hours[hour, default: [:]]["web:" + domain, default: Seen(kind: .domain, identifier: domain,
+                            name: nil, tokenData: token, category: categoryName, seconds: 0)].seconds += site.totalActivityDuration
                     }
                 }
             }
         }
-        return hours
+        return fetched
     }
 
     // MARK: - Differences
 
-    private static func record(_ hours: [String: [String: Seen]], kid: Kid, now: Date) -> Result {
+    private static func record(_ fetched: Fetched, kid: Kid, now: Date) -> Result {
+        let hours = fetched.hours
         let day = DayKey(now)
         let previous = loadSnapshot().flatMap { $0.day == day ? $0 : nil }
         var known = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // On the very first fetch everything is "new"; only later discoveries count as new apps.
         let firstEver = known.isEmpty
         var result = Result()
+        // Existing items that gained a token or category, to upload again.
+        var changed = Set<UUID>()
+
+        // Categories are items too (limit and Always Allowed targets), without samples of their own.
+        for (name, token) in fetched.categories {
+            let id = TrackedItem.id(kid: kid.id, kind: .category, identifier: name)
+            if known[id] == nil {
+                known[id] = TrackedItem(kidID: kid.id, kind: .category, identifier: name, name: name, tokenData: token,
+                                        firstSeen: now)
+                changed.insert(id)
+            } else if known[id]?.tokenData == nil, let token {
+                known[id]?.tokenData = token
+                changed.insert(id)
+            }
+        }
 
         for (hour, items) in hours {
             guard let hourStart = Double(hour).map(Date.init(timeIntervalSince1970:)) else { continue }
@@ -105,11 +133,16 @@ enum Sampler {
                 let id = TrackedItem.id(kid: kid.id, kind: seen.kind, identifier: seen.identifier)
                 if known[id] == nil {
                     let item = TrackedItem(kidID: kid.id, kind: seen.kind, identifier: seen.identifier, name: seen.name,
-                                           tokenData: seen.tokenData, firstSeen: now)
+                                           tokenData: seen.tokenData, category: seen.category, firstSeen: now)
                     known[id] = item
                     if !firstEver { result.newItems.append(item) }
                 } else if known[id]?.tokenData == nil, let token = seen.tokenData {
                     known[id]?.tokenData = token
+                    changed.insert(id)
+                }
+                if let category = seen.category, known[id]?.category != category {
+                    known[id]?.category = category
+                    changed.insert(id)
                 }
                 result.itemSeconds[id, default: 0] += seen.seconds
                 let delta = seen.seconds - (previous?.hours[hour]?[key] ?? 0)
@@ -125,11 +158,28 @@ enum Sampler {
         }
 
         try? AppGroup.samples.append(contentsOf: result.samples)
-        let changedItems = known.values.filter { item in result.newItems.contains { $0.id == item.id } || firstEver }
+        let changedItems = known.values.filter { item in
+            firstEver || changed.contains(item.id) || result.newItems.contains { $0.id == item.id }
+        }
         try? AppGroup.newItems.append(contentsOf: changedItems)
         AppGroup.saveItems(Array(known.values))
         saveSnapshot(Snapshot(day: day, at: now, hours: hours.mapValues { $0.mapValues(\.seconds) }))
         return result
+    }
+
+    /// Apple's seconds today per app and website, as of the last fetch.
+    static func todayUsage(kid: Kid, now: Date = Date()) -> [UUID: Double] {
+        guard let snapshot = loadSnapshot(), snapshot.day == DayKey(now) else { return [:] }
+        var usage: [UUID: Double] = [:]
+        for items in snapshot.hours.values {
+            for (key, seconds) in items {
+                let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
+                guard parts.count == 2 else { continue }
+                let kind: ItemKind = parts[0] == "web" ? .domain : .app
+                usage[TrackedItem.id(kid: kid.id, kind: kind, identifier: parts[1]), default: 0] += seconds
+            }
+        }
+        return usage
     }
 
     private static func loadSnapshot() -> Snapshot? {
