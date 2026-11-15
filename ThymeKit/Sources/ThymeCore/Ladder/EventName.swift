@@ -6,6 +6,11 @@ public enum EventName {
         /// nil for the total ladder.
         public var itemID: UUID?
         public var minute: Int
+
+        public init(itemID: UUID?, minute: Int) {
+            self.itemID = itemID
+            self.minute = minute
+        }
     }
 
     public static func item(_ id: UUID, minute: Int) -> String {

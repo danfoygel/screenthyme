@@ -104,7 +104,7 @@ struct NamingView: View {
 
     var body: some View {
         let today = DayKey(Date())
-        let timeline = Reconstructor.build(DayInput(entries: AppGroup.journal.entries(on: today), dayStart: today.start()))
+        let timeline = Reconstructor.build(model.config.dayInput(today))
         let items = model.config.items
             .filter { $0.active && $0.kind != .category }
             .sorted { (timeline.totals[$0.id]?.lowerMinutes ?? 0, -$0.ordinal) > (timeline.totals[$1.id]?.lowerMinutes ?? 0, -$1.ordinal) }

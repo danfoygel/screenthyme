@@ -55,7 +55,12 @@ extension AppModel {
     }
 
     func timeline(kid: UUID, day: DayKey) -> (input: DayInput, timeline: DayTimeline) {
-        let input = DayInput(fires: data.fires(kid: kid, day: day), dayStart: day.start())
+        let spec = data.epochs.values.filter { $0.kidID == kid }.max { $0.startedAt < $1.startedAt }?.spec ?? .standard
+        let items = data.items(for: kid).values
+        let websites = Set(items.filter { $0.kind == .domain }.map(\.id))
+        let categories = Set(items.filter { $0.kind == .category }.map(\.id))
+        let input = DayInput(fires: data.fires(kid: kid, day: day), dayStart: day.start(), spec: spec,
+                             shortItems: websites, totalsOnlyItems: websites.union(categories))
         return (input, Reconstructor.build(input))
     }
 }

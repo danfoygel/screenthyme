@@ -36,7 +36,9 @@ enum LadderRegistrar {
         let prefix = LadderPlanner.prefix(for: epochID)
         let others = center.activities.filter { !$0.rawValue.hasPrefix(prefix) }
         let planner = LadderPlanner(spec: spec, maxEventsPerActivity: maxEventsPerActivity)
-        let plan = try planner.plan(epochID: epochID, itemIDs: items.map(\.id))
+        let websites = items.filter { $0.kind == .domain }.map(\.id)
+        let appsAndCategories = items.filter { $0.kind != .domain }.map(\.id)
+        let plan = try planner.plan(epochID: epochID, itemIDs: appsAndCategories, shortItemIDs: websites)
         let overlap = plan.activities.count + others.count <= LadderPlanner.maxActivities
         if !overlap {
             stop(others, center: center)
@@ -56,7 +58,7 @@ enum LadderRegistrar {
                 }
                 for id in activity.itemIDs {
                     guard let item = byID[id] else { continue }
-                    for minute in spec.itemMinutes {
+                    for minute in spec.ladder(short: activity.short) {
                         guard let event = event(for: item, minute: minute) else { continue }
                         events[.init(EventName.item(id, minute: minute))] = event
                     }

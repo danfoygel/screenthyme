@@ -17,15 +17,17 @@ enum Uploader {
         let epochPrefix = config.epoch.map { LadderPlanner.prefix(for: $0.id) }
 
         var fires: [UsageFire] = []
-        for entry in pending where entry.kind == .threshold {
-            guard let parsed = entry.parsedEvent else { continue }
+        for entry in pending {
+            // A tracking start travels as a total fire at minute 0, so parents can recognize catch-up bursts.
+            let parsed = entry.isTrackingStart ? EventName.Parsed(itemID: nil, minute: 0) : entry.parsedEvent
+            guard let parsed else { continue }
             let epochID = epochPrefix.flatMap { entry.activity.hasPrefix($0) ? config.epoch?.id : nil }
             fires.append(UsageFire(id: entry.id, kidID: kid.id, itemID: parsed.itemID, minute: parsed.minute,
                                    firedAt: entry.at, day: DayKey(entry.at, calendar: journal.calendar),
                                    epochID: epochID))
         }
         try await store.save(fires)
-        // Interval markers aren't synced; mark them done along with the fires.
+        // Other interval markers and notes aren't synced; mark them done along with the fires.
         let byDay = Dictionary(grouping: pending) { DayKey($0.at, calendar: journal.calendar) }
         for (day, entries) in byDay {
             try journal.markUploaded(entries.map(\.id), on: day)

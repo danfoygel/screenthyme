@@ -133,8 +133,8 @@ public struct RuleEngine: Sendable {
     /// Categories overlap apps, so they're excluded.
     public func explainedMinutes(_ state: MonitorDayState) -> Int {
         state.itemMinutes.reduce(0) { sum, entry in
-            guard items[entry.key]?.kind != .category else { return sum }
-            return sum + entry.value + spec.itemRemainder(after: entry.value)
+            guard let kind = items[entry.key]?.kind, kind != .category else { return sum }
+            return sum + entry.value + spec.itemRemainder(after: entry.value, short: kind == .domain)
         }
     }
 

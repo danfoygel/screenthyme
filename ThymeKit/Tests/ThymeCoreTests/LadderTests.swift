@@ -71,6 +71,21 @@ struct LadderPlannerTests {
         #expect(Set(plan.activities.flatMap(\.itemIDs)) == Set(items))
     }
 
+    /// The real scan: 222 apps + 13 categories on the full ladder, 297 websites on the short one.
+    @Test func websitesGetOwnShortActivities() throws {
+        let planner = LadderPlanner(maxEventsPerActivity: 1000)
+        let long = (0..<235).map { _ in UUID() }
+        let short = (0..<297).map { _ in UUID() }
+        let plan = try planner.plan(epochID: UUID(), itemIDs: long, shortItemIDs: short)
+        #expect(!plan.isShortened)
+        #expect(plan.activities.count <= 20)
+        #expect(plan.activities.filter(\.short).count == 4)  // 1000 / 12 = 83 per activity
+        #expect(Set(plan.activities.filter(\.short).flatMap(\.itemIDs)) == Set(short))
+        #expect(Set(plan.activities.filter { !$0.short }.flatMap(\.itemIDs)) == Set(long))
+        #expect(plan.activities.allSatisfy { $0.eventCount(spec: plan.spec) <= 1000 })
+        #expect(Set(plan.activities.map(\.name)).count == plan.activities.count)
+    }
+
     @Test func refusesWhenEvenShortestLadderDoesNotFit() {
         let planner = LadderPlanner(maxEventsPerActivity: 1000)
         let items = (0..<2000).map { _ in UUID() }

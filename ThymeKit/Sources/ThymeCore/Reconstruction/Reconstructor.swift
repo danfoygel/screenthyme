@@ -42,6 +42,8 @@ public struct ItemTotal: Sendable, Hashable {
     public var lowerMinutes: Int
     /// At most this many: the next threshold wasn't reached.
     public var upperMinutes: Int
+    /// The last crossing is the top of the item's ladder: at least `lowerMinutes`, with no upper bound.
+    public var openEnded: Bool
     public var lastCrossingAt: Date
     /// Minutes the timeline attributes to this item, at any confidence.
     public var attributedMinutes: Int
@@ -60,6 +62,9 @@ public struct DayTimeline: Sendable {
     /// Minutes that crossings claim but the total ladder has no room for (likely early fires).
     public var unfulfilledMinutes: Int
     public var lastTotalFireAt: Date?
+    /// Use from before monitoring started, replayed by iOS at registration: counted, but its times are unknown.
+    public var preTrackingMinutes: Int
+    public var preTrackingByItem: [UUID: Int]
 }
 
 /// Turns threshold fires into totals and a per-app timeline (PLAN.md §4.2). Pure and deterministic.
@@ -71,10 +76,14 @@ public enum Reconstructor {
     /// Fires may run this far ahead of wall-clock time before they count as impossible.
     static let tolerance: TimeInterval = 90
 
+    /// Catch-up fires keep arriving this long after a registration: on a real phone, per-app ones trickled in for 8 min.
+    static let catchUpWindow: TimeInterval = 900
+
     public static func build(_ input: DayInput) -> DayTimeline {
         let total = clean(input.total, dayStart: input.dayStart)
         var suspects = total.suspects
-        let inUse = inUseMinutes(total.points, dayStart: input.dayStart)
+        let (inUse, preTracking) = inUseMinutes(total.points, dayStart: input.dayStart,
+                                                trackingStarts: input.trackingStarts)
         let runs = mergeRuns(inUse)
 
         var demands: [Demand] = []
@@ -83,11 +92,23 @@ public enum Reconstructor {
         for (item, raw) in input.items {
             let series = clean(raw, dayStart: input.dayStart)
             suspects += series.suspects
+            if let last = series.points.last { lastCrossing[item] = last }
+            guard !input.totalsOnlyItems.contains(item) else { continue }
             demands += makeDemands(item: item, series: series, dayStart: input.dayStart)
             crossings += series.points.map { ($0.at, item) }
-            if let last = series.points.last { lastCrossing[item] = last }
         }
         crossings.sort { $0.at < $1.at }
+
+        // Catch-up crossings are paid from the pre-tracking minutes first, so they can't claim today's later use.
+        var pool = preTracking
+        var preTrackingByItem: [UUID: Int] = [:]
+        for index in demands.indices.sorted(by: { demands[$0].crossingAt < demands[$1].crossingAt })
+        where pool > 0 && inCatchUp(demands[index].crossingAt, starts: input.trackingStarts) {
+            let take = min(pool, demands[index].remaining)
+            pool -= take
+            demands[index].remaining -= take
+            preTrackingByItem[demands[index].item, default: 0] += take
+        }
 
         var owners = assign(minutes: inUse, demands: &demands)
         let unfulfilled = demands.reduce(0) { $0 + $1.remaining }
@@ -109,7 +130,8 @@ public enum Reconstructor {
                   let crossing = crossings.last(where: { $0.at <= minute.end + skew && $0.at >= run.start - skew }),
                   let final = lastCrossing[crossing.item], final.at == crossing.at
             else { continue }
-            let capacity = input.spec.itemRemainder(after: final.minute)
+            let capacity = input.spec.itemRemainder(after: final.minute,
+                                                    short: input.shortItems.contains(crossing.item))
             guard tailUsed[crossing.item, default: 0] < capacity else { continue }
             tailUsed[crossing.item, default: 0] += 1
             labels[index] = Label(owner: .item(crossing.item), confidence: .low)
@@ -127,8 +149,10 @@ public enum Reconstructor {
                 default: count
                 }
             }
+            let short = input.shortItems.contains(item)
             totals[item] = ItemTotal(lowerMinutes: last.minute,
-                                     upperMinutes: last.minute + input.spec.itemRemainder(after: last.minute),
+                                     upperMinutes: last.minute + input.spec.itemRemainder(after: last.minute, short: short),
+                                     openEnded: input.spec.nextItemStep(after: last.minute, short: short) == nil,
                                      lastCrossingAt: last.at,
                                      attributedMinutes: attributed)
         }
@@ -141,7 +165,13 @@ public enum Reconstructor {
                            unexplainedMinutes: labels.filter { $0 == nil }.count,
                            suspectFires: suspects,
                            unfulfilledMinutes: unfulfilled,
-                           lastTotalFireAt: total.points.last?.at)
+                           lastTotalFireAt: total.points.last?.at,
+                           preTrackingMinutes: preTracking,
+                           preTrackingByItem: preTrackingByItem)
+    }
+
+    static func inCatchUp(_ date: Date, starts: [Date]) -> Bool {
+        starts.contains { date >= $0 && date.timeIntervalSince($0) <= catchUpWindow }
     }
 
     // MARK: - Cleaning
@@ -204,8 +234,10 @@ public enum Reconstructor {
     /// Total fires closer together than this are one delivery (a catch-up), not separate minutes.
     static let coalesce: TimeInterval = 30
 
-    /// Each total fire ends one in-use minute. A jump of n minutes is spread back from the fire, squeezed if needed.
-    static func inUseMinutes(_ points: [FirePoint], dayStart: Date) -> [InUseMinute] {
+    /// Each total fire ends one in-use minute. A jump of n minutes is spread back from the fire, squeezed if needed,
+    /// unless it's a registration's catch-up: those minutes happened before tracking and are only counted.
+    static func inUseMinutes(_ points: [FirePoint], dayStart: Date,
+                             trackingStarts: [Date] = []) -> (minutes: [InUseMinute], preTracking: Int) {
         var deliveries: [FirePoint] = []
         for point in points {
             if let last = deliveries.last, point.at.timeIntervalSince(last.at) < coalesce {
@@ -215,9 +247,15 @@ public enum Reconstructor {
             }
         }
         var minutes: [InUseMinute] = []
+        var preTracking = 0
         var previous = FirePoint(minute: 0, at: dayStart)
         for point in deliveries {
             let count = point.minute - previous.minute
+            if count > 1, inCatchUp(point.at, starts: trackingStarts) {
+                preTracking += count
+                previous = point
+                continue
+            }
             let width = min(60, point.at.timeIntervalSince(previous.at) / Double(count))
             for offset in 0..<count {
                 let end = point.at.addingTimeInterval(-Double(offset) * width)
@@ -225,7 +263,7 @@ public enum Reconstructor {
             }
             previous = point
         }
-        return minutes.sorted { $0.start < $1.start }
+        return (minutes.sorted { $0.start < $1.start }, preTracking)
     }
 
     static func mergeRuns(_ minutes: [InUseMinute]) -> [DateInterval] {

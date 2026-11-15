@@ -121,6 +121,10 @@ struct KidDayView: View {
                 .buttonStyle(.borderless)
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
                 LabeledContent("Not explained by tracked apps", value: Format.minutes(timeline.unexplainedMinutes))
+                if timeline.preTrackingMinutes > 0 {
+                    LabeledContent("Before tracking started (times unknown)",
+                                   value: Format.minutes(timeline.preTrackingMinutes))
+                }
             }
             Section {
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start(), tint: kid.color)

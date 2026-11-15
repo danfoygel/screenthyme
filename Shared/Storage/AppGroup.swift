@@ -51,6 +51,14 @@ struct SharedConfig: Codable, Sendable {
     }
 
     /// For the extension: no tokens, so it stays well inside the extension's memory limit.
+    /// Today's (or any day's) journal as reconstruction input, with this scan's ladders.
+    func dayInput(_ day: DayKey) -> DayInput {
+        DayInput(entries: AppGroup.journal.entries(on: day), dayStart: day.start(),
+                 spec: epoch?.spec ?? .standard,
+                 shortItems: Set(items.filter { $0.kind == .domain }.map(\.id)),
+                 totalsOnlyItems: Set(items.filter { $0.kind != .app }.map(\.id)))
+    }
+
     static func loadForMonitor() -> SharedConfig {
         FileManager.default.fileExists(atPath: AppGroup.monitorConfigURL.path)
             ? load(from: AppGroup.monitorConfigURL) : load()

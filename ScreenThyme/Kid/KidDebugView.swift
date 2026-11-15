@@ -7,11 +7,10 @@ struct KidDebugView: View {
     @Environment(AppModel.self) private var model
     @State private var day = DayKey(Date())
     @State private var exportURL: URL?
-    @State private var showApple = false
 
     var body: some View {
         let entries = AppGroup.journal.entries(on: day)
-        let input = DayInput(entries: entries, dayStart: day.start())
+        let input = model.config.dayInput(day)
         let timeline = Reconstructor.build(input)
         let items = Dictionary(uniqueKeysWithValues: model.config.items.map { ($0.id, $0) })
         Form {
@@ -45,6 +44,7 @@ struct KidDebugView: View {
             Section("Reconstruction") {
                 LabeledContent("Total", value: Format.minutes(timeline.totalMinutes))
                 LabeledContent("Unexplained", value: Format.minutes(timeline.unexplainedMinutes))
+                LabeledContent("Before tracking started", value: Format.minutes(timeline.preTrackingMinutes))
                 LabeledContent("Suspect fires", value: "\(timeline.suspectFires)")
                 LabeledContent("Unfulfilled minutes", value: "\(timeline.unfulfilledMinutes)")
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start())
@@ -53,13 +53,7 @@ struct KidDebugView: View {
                 }
             }
             Section("Apple's numbers (on this phone only)") {
-                if showApple {
-                    DeviceActivityReport(.init("appTotals"),
-                                         filter: DeviceActivityFilter(segment: .daily(during: DateInterval(start: day.start(), end: day.end()))))
-                        .frame(minHeight: 400)
-                } else {
-                    Button("Show Apple's report") { showApple = true }
-                }
+                NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day) }
             }
             Section("Upload (S3)") {
                 LabeledContent("Waiting", value: "\(Uploader.backlogCount())")
@@ -114,5 +108,18 @@ struct KidDebugView: View {
         default:
             Text("\(entry.kind.rawValue) \(entry.activity)").foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Apple's own numbers, drawn by the ThymeReport extension. Full screen: the remote view doesn't size well in a row.
+struct AppleReportView: View {
+    let day: DayKey
+
+    var body: some View {
+        DeviceActivityReport(.init("appTotals"),
+                             filter: DeviceActivityFilter(segment: .daily(during: DateInterval(start: day.start(),
+                                                                                                end: min(day.end(), Date())))))
+            .navigationTitle("Apple's numbers")
+            .navigationBarTitleDisplayMode(.inline)
     }
 }

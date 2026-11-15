@@ -5,9 +5,11 @@ public struct ActivityPlan: Sendable, Hashable {
     public var name: String
     public var itemIDs: [UUID]
     public var includesTotal: Bool
+    /// Its items use the short (website) ladder.
+    public var short = false
 
     public func eventCount(spec: LadderSpec) -> Int {
-        itemIDs.count * spec.itemMinutes.count + (includesTotal ? spec.totalMinutes.count : 0)
+        itemIDs.count * spec.ladder(short: short).count + (includesTotal ? spec.totalMinutes.count : 0)
     }
 }
 
@@ -57,14 +59,26 @@ public struct LadderPlanner: Sendable {
         "st.\(epochID.uuidString.prefix(8).lowercased())."
     }
 
-    /// - Parameter inUse: activities that stay registered while this plan is added (the old epoch during a re-scan).
-    public func plan(epochID: UUID, itemIDs: [UUID], inUse: Int = 0) throws -> LadderPlan {
+    /// - Parameters:
+    ///   - shortItemIDs: items on the short ladder (websites), packed into their own activities.
+    ///   - inUse: activities that stay registered while this plan is added (the old epoch during a re-scan).
+    public func plan(epochID: UUID, itemIDs: [UUID], shortItemIDs: [UUID] = [], inUse: Int = 0) throws -> LadderPlan {
         guard spec.totalMinutes.count <= maxEventsPerActivity else {
             throw LadderPlanError.ladderLongerThanCap(events: spec.totalMinutes.count, cap: maxEventsPerActivity)
         }
+        let shortLadder = spec.ladder(short: true)
+        guard shortLadder.count <= maxEventsPerActivity else {
+            throw LadderPlanError.ladderLongerThanCap(events: shortLadder.count, cap: maxEventsPerActivity)
+        }
         let available = Self.maxActivities - inUse
         guard available >= 2 else { throw LadderPlanError.noActivitiesFree(available: available) }
-        let itemActivities = available - 1  // one holds the total ladder
+        let perShort = maxEventsPerActivity / shortLadder.count
+        let shortActivities = (shortItemIDs.count + perShort - 1) / perShort
+        let itemActivities = available - 1 - shortActivities  // one holds the total ladder
+        guard itemActivities >= (itemIDs.isEmpty ? 0 : 1) else {
+            throw LadderPlanError.tooManyItems(items: itemIDs.count + shortItemIDs.count,
+                                               capacity: perShort * (available - 1))
+        }
 
         // Longest item ladder (up to the full one) for which all items fit.
         var steps = spec.itemMinutes.count
@@ -75,7 +89,8 @@ public struct LadderPlanner: Sendable {
         }
         guard steps >= Self.minimumItemSteps else {
             let perActivity = maxEventsPerActivity / Self.minimumItemSteps
-            throw LadderPlanError.tooManyItems(items: itemIDs.count, capacity: perActivity * itemActivities)
+            throw LadderPlanError.tooManyItems(items: itemIDs.count + shortItemIDs.count,
+                                               capacity: perActivity * itemActivities + perShort * shortActivities)
         }
 
         var used = spec
@@ -83,9 +98,14 @@ public struct LadderPlanner: Sendable {
         let prefix = Self.prefix(for: epochID)
         var activities = [ActivityPlan(name: prefix + "total", itemIDs: [], includesTotal: true)]
         let perActivity = maxEventsPerActivity / steps
-        for (index, start) in stride(from: 0, to: itemIDs.count, by: perActivity).enumerated() {
+        for start in stride(from: 0, to: itemIDs.count, by: perActivity) {
             let chunk = Array(itemIDs[start..<min(start + perActivity, itemIDs.count)])
-            activities.append(ActivityPlan(name: prefix + "\(index)", itemIDs: chunk, includesTotal: false))
+            activities.append(ActivityPlan(name: prefix + "\(activities.count - 1)", itemIDs: chunk, includesTotal: false))
+        }
+        for start in stride(from: 0, to: shortItemIDs.count, by: perShort) {
+            let chunk = Array(shortItemIDs[start..<min(start + perShort, shortItemIDs.count)])
+            activities.append(ActivityPlan(name: prefix + "\(activities.count - 1)", itemIDs: chunk, includesTotal: false,
+                                           short: true))
         }
         return LadderPlan(activities: activities, spec: used)
     }

@@ -48,9 +48,10 @@ enum Format {
         minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
     }
 
-    /// "25–29 min", "1 h 15 min–1 h 29 min".
+    /// "25–29 min", "1 h 15 min–1 h 29 min", "60+ min".
     static func range(_ total: ItemTotal) -> String {
         let (lower, upper) = (total.lowerMinutes, total.upperMinutes)
+        if total.openEnded { return lower < 60 ? "\(lower)+ min" : "\(minutes(lower))+" }
         if upper == lower { return minutes(lower) }
         return upper < 60 ? "\(lower)–\(upper) min" : "\(minutes(lower))–\(minutes(upper))"
     }
