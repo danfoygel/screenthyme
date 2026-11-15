@@ -162,10 +162,19 @@ final class AppModel {
         await publishKidIdentity()
     }
 
+    /// The kid record plus the current scan (items and ladders), which parents need to name and size things.
+    /// Called on joining or creating a family and from "Upload now"; a scan made before joining isn't synced otherwise.
     func publishKidIdentity() async {
         guard isKid, let kid = config.kid, let store else { return }
-        do { try await store.save([kid]) } catch { show(error) }
-        data.ingest(IngestBatch(kids: [kid]))
+        let epochs = config.epoch.map { [$0] } ?? []
+        do {
+            try await store.save([kid])
+            try await store.save(config.items)
+            try await store.save(epochs)
+        } catch {
+            show(error)
+        }
+        data.ingest(IngestBatch(kids: [kid], items: config.items, epochs: epochs))
     }
 
     private var deviceName: String {

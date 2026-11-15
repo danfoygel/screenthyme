@@ -41,6 +41,7 @@ struct KidHomeView: View {
                         .disabled(model.config.items.isEmpty)
                     Button("Upload now") {
                         Task {
+                            await model.publishKidIdentity()
                             await model.flush()
                             await model.sendHeartbeat(.manual)
                         }

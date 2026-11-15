@@ -1,7 +1,8 @@
 import Foundation
 import ThymeCore
 
-// Usage: thyme-inspect <journal-YYYY-MM-DD.jsonl> [config.json]
+// Usage: thyme-inspect <journal-YYYY-MM-DD.jsonl | YYYY-MM-DD.json> [config.json]
+// The second form is a parent's synced copy (FamilyData/fires/<kid>/<day>.json, an array of UsageFire).
 // Prints the reconstruction for that day in the Mac's time zone, which should match the phone's.
 
 let arguments = CommandLine.arguments
@@ -10,7 +11,9 @@ guard arguments.count >= 2 else {
     exit(1)
 }
 let journalURL = URL(filePath: arguments[1])
-let entries = JSONLinesFile<JournalEntry>(url: journalURL).readAll()
+let isSynced = journalURL.pathExtension == "json"
+let syncedFires = isSynced ? (try? JSONDecoder.thyme.decode([UsageFire].self, from: Data(contentsOf: journalURL))) ?? [] : []
+let entries = isSynced ? [] : JSONLinesFile<JournalEntry>(url: journalURL).readAll()
 let dayString = journalURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "journal-", with: "")
 guard let day = DayKey(string: dayString) else {
     print("can't read the day from \(journalURL.lastPathComponent)")
@@ -43,13 +46,16 @@ let names: [UUID: String] = {
 @MainActor func name(_ id: UUID) -> String { names[id] ?? String(id.uuidString.prefix(8)) }
 func clock(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
 
-let input = DayInput(entries: entries, dayStart: day.start(),
-                     shortItems: Set(kinds.filter { $0.value == "domain" }.keys),
-                     totalsOnlyItems: Set(kinds.filter { $0.value != "app" }.keys))
+let shortItems = Set(kinds.filter { $0.value == "domain" }.keys)
+let totalsOnly = Set(kinds.filter { $0.value != "app" }.keys)
+let input = isSynced
+    ? DayInput(fires: syncedFires, dayStart: day.start(), shortItems: shortItems, totalsOnlyItems: totalsOnly)
+    : DayInput(entries: entries, dayStart: day.start(), shortItems: shortItems, totalsOnlyItems: totalsOnly)
 let timeline = Reconstructor.build(input)
 let thresholds = entries.filter { $0.kind == .threshold }
 
-print("Day \(day): \(entries.count) entries, \(thresholds.count) thresholds (\(input.total.count) total, \(input.items.values.reduce(0) { $0 + $1.count }) item)")
+print(isSynced ? "Synced copy: \(syncedFires.count) fires" : "Journal: \(entries.count) entries")
+print("Day \(day): \(thresholds.count) journal thresholds (\(input.total.count) total, \(input.items.values.reduce(0) { $0 + $1.count }) item)")
 print("Before tracking \(timeline.preTrackingMinutes) min (by item: \(timeline.preTrackingByItem.values.reduce(0, +)))")
 print("Total \(timeline.totalMinutes) min · unexplained \(timeline.unexplainedMinutes) · suspect \(timeline.suspectFires) · unfulfilled \(timeline.unfulfilledMinutes)")
 print("Runs: " + timeline.runs.map { "\(clock($0.start))–\(clock($0.end))" }.joined(separator: ", "))
