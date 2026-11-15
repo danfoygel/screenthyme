@@ -1,0 +1,121 @@
+name: ScreenThyme
+
+options:
+  bundleIdPrefix: com.danfoygel
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ZVU48K8YCD
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+
+packages:
+  ThymeKit:
+    path: ThymeKit
+
+targets:
+  # One app, two roles (kid / parent), chosen at first launch. PLAN.md §5.
+  ScreenThyme:
+    type: application
+    platform: iOS
+    sources:
+      - ScreenThyme
+      - Shared
+    dependencies:
+      - package: ThymeKit
+        product: ThymeCore
+      - target: ThymeMonitor
+      - target: ThymeReport
+    entitlements:
+      path: ScreenThyme/ScreenThyme.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.danfoygel.screenthyme]
+        com.apple.developer.icloud-services: [CloudKit]
+        aps-environment: development
+    info:
+      path: ScreenThyme/Info.plist
+      properties:
+        UIBackgroundModes: [remote-notification, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.danfoygel.screenthyme.refresh]
+        CKSharingSupported: true
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+
+  # Capture: journals every threshold fire, evaluates rules, uploads. Keep it small (~6 MB limit).
+  ThymeMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ThymeMonitor
+      - Shared
+    dependencies:
+      - package: ThymeKit
+        product: ThymeCore
+    entitlements:
+      path: ThymeMonitor/ThymeMonitor.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.danfoygel.screenthyme]
+        com.apple.developer.icloud-services: [CloudKit]
+    info:
+      path: ThymeMonitor/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ThymeMonitorExtension
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme.monitor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Monitor
+
+  # Apple's own numbers, shown on the kid's phone only (sandboxed: no network, no export).
+  ThymeReport:
+    type: extensionkit-extension
+    platform: iOS
+    sources:
+      - ThymeReport
+    entitlements:
+      path: ThymeReport/ThymeReport.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+    info:
+      path: ThymeReport/Info.plist
+      properties:
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: com.apple.deviceactivityui.report-extension
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme.report
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Report
+
+schemes:
+  ScreenThyme:
+    build:
+      targets:
+        ScreenThyme: all
+    run:
+      config: Debug
