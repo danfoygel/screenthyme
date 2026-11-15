@@ -90,15 +90,21 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Monitor
 
   # Apple's own numbers, shown on the kid's phone only (sandboxed: no network, no export).
+  # It also reads our journal from the App Group (read-only) to compare our totals with Apple's (S1c).
   ThymeReport:
     type: extensionkit-extension
     platform: iOS
     sources:
       - ThymeReport
+      - Shared/Storage
+    dependencies:
+      - package: ThymeKit
+        product: ThymeCore
     entitlements:
       path: ThymeReport/ThymeReport.entitlements
       properties:
         com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
     info:
       path: ThymeReport/Info.plist
       properties:

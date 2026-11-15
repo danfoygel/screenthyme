@@ -41,6 +41,20 @@ enum Uploader {
         return Result(fires: fires.count, alerts: alerts.count)
     }
 
+    /// Re-sends today's and yesterday's tracking-start markers (idempotent). Markers journaled before they were
+    /// synced never reached parents, who then draw catch-up bursts as real use.
+    static func resendTrackingStarts(config: SharedConfig, now: Date = Date()) async throws {
+        guard let family = config.family, let kid = config.kid else { return }
+        let journal = AppGroup.journal
+        let today = DayKey(now, calendar: journal.calendar)
+        let starts = [today.adding(days: -1, calendar: journal.calendar), today]
+            .flatMap { journal.entries(on: $0) }
+            .filter(\.isTrackingStart)
+            .map { UsageFire(id: $0.id, kidID: kid.id, itemID: nil, minute: 0, firedAt: $0.at,
+                             day: DayKey($0.at, calendar: journal.calendar), epochID: nil) }
+        try await CloudStore(family: family).save(starts)
+    }
+
     static func backlogCount() -> Int {
         AppGroup.journal.pending().filter { $0.kind == .threshold }.count
     }

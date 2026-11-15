@@ -53,7 +53,8 @@ struct KidDebugView: View {
                 }
             }
             Section("Apple's numbers (on this phone only)") {
-                NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day) }
+                NavigationLink("Compare with Apple (S1c)") { AppleReportView(day: day, context: "comparison") }
+                NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day, context: "appTotals") }
             }
             Section("Upload (S3)") {
                 LabeledContent("Waiting", value: "\(Uploader.backlogCount())")
@@ -114,9 +115,10 @@ struct KidDebugView: View {
 /// Apple's own numbers, drawn by the ThymeReport extension. Full screen: the remote view doesn't size well in a row.
 struct AppleReportView: View {
     let day: DayKey
+    let context: String
 
     var body: some View {
-        DeviceActivityReport(.init("appTotals"),
+        DeviceActivityReport(.init(context),
                              filter: DeviceActivityFilter(segment: .daily(during: DateInterval(start: day.start(),
                                                                                                 end: min(day.end(), Date())))))
             .navigationTitle("Apple's numbers")

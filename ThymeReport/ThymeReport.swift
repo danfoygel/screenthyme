@@ -12,6 +12,9 @@ struct ThymeReport: @preconcurrency DeviceActivityReportExtension {
         AppTotalsReport { report in
             AppTotalsView(report: report)
         }
+        ComparisonReport { report in
+            ComparisonView(report: report)
+        }
     }
 }
 

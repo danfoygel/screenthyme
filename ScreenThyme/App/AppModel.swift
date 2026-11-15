@@ -171,6 +171,7 @@ final class AppModel {
             try await store.save([kid])
             try await store.save(config.items)
             try await store.save(epochs)
+            try await Uploader.resendTrackingStarts(config: config)
         } catch {
             show(error)
         }
