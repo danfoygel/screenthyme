@@ -434,6 +434,9 @@ A kid's iPhone SE (3rd gen, iOS 26.6, Family Sharing child account, `.child` aut
   The same daemon enforces Apple's own limits and Downtime. The parent's iPhone 17 survived 19,600 events, but only thanks to
   its memory. **Fix: rolling ladders** (§4.1): ~20 events per activity, 380 in total on the kid's phone.
   Live delivery then worked: total minute by minute, per-app crossings 5→10→…→30 as the extension re-registers.
+  Logs after the switch: the daemon sits at ~8–21 MB and only exits on iOS's routine idle limit (`PERPROCESSLIMIT`
+  while inactive). One 286 MB spike during the post-registration catch-up recovered on its own, so keep
+  registrations (scan, re-register) rare.
 - Settings and Safari aren't offered by the picker on the kid's phone either. "FamilyControlsAgent" (the approval
   sheet) shows up in Apple's report as an app.
 - **Toolchain:** Xcode 27.2 (iOS 27.2 SDK) adds `AuthorizationStatus.approvedWithDataAccess` and
