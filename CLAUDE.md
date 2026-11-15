@@ -52,6 +52,11 @@ xcrun devicectl device copy from --device <udid> --domain-type appDataContainer 
 
 xcodebuild -project ScreenThyme.xcodeproj -scheme ScreenThyme \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build build
+
+# On a parent phone (unlocked): save one test rule of each kind for a kid, set to fire soon (stable ids)
+xcrun devicectl device process launch --device <udid> --terminate-existing com.danfoygel.screenthyme -- -addTestRules <kid name>
+# Parent phones write notification settings and installed subscriptions to
+# Library/Application Support/push-diagnostics.txt (copy with --domain-type appDataContainer)
 ```
 
 ## What runs where
