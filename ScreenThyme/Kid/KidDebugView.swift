@@ -57,6 +57,11 @@ struct KidDebugView: View {
                 LabeledContent("Waiting", value: "\(Uploader.backlogCount())")
                 Button("Upload now") { Task { await model.flush() } }
             }
+            if let kid = model.config.kid {
+                Section("Our battery use (\(EnergyMeter.deviceModel))") {
+                    EnergyRows(report: EnergyMeter.report(kid: kid, day: day))
+                }
+            }
             Section("Raw fires · \(entries.count)") {
                 Button("Export day as trace") {
                     do { exportURL = try model.exportTrace(day: day) } catch { model.show(error) }

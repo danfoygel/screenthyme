@@ -2,11 +2,13 @@ import Foundation
 import ThymeCore
 
 /// Sends journaled fires and queued alerts to CloudKit, then marks them uploaded. Safe to run from the app and the
-/// extension at once: record names are the entry ids, so a double upload overwrites.
+/// extension at once: record names are the entry ids, so a double upload overwrites. Energy reports ride along in
+/// the same request as the fires, so they cost no extra network round trip.
 enum Uploader {
     struct Result: Sendable {
         var fires = 0
         var alerts = 0
+        var energyReports = 0
     }
 
     static func flush(config: SharedConfig, days: Int = 7) async throws -> Result {
@@ -26,7 +28,10 @@ enum Uploader {
                                    firedAt: entry.at, day: DayKey(entry.at, calendar: journal.calendar),
                                    epochID: epochID))
         }
-        try await store.save(fires)
+        let energy = EnergyMeter.pendingReports(kid: kid)
+        try await store.save(records: fires.map { try $0.record(in: store.zoneID) }
+            + energy.map { try $0.record(in: store.zoneID) })
+        EnergyMeter.markUploaded(energy)
         // Other interval markers and notes aren't synced; mark them done along with the fires.
         let byDay = Dictionary(grouping: pending) { DayKey($0.at, calendar: journal.calendar) }
         for (day, entries) in byDay {
@@ -38,7 +43,7 @@ enum Uploader {
         try await store.save(alerts)
         try AppGroup.outboxLedger.append(contentsOf: alerts.map(\.id))
 
-        return Result(fires: fires.count, alerts: alerts.count)
+        return Result(fires: fires.count, alerts: alerts.count, energyReports: energy.count)
     }
 
     /// Re-sends today's and yesterday's tracking-start markers (idempotent). Markers journaled before they were

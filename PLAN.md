@@ -157,7 +157,8 @@ This is a deterministic, unit-tested module (`ThymeKit/Reconstruction`). Raw fir
 | `TrackedItem` | `id` (our UUID, the stable key), `kidId`, `kind` (app/domain/category/total), `tokenData` (encoded token), `nickname?`, `categoryId?`, `firstSeenEpoch`, `active` |
 | `LadderEpoch` | `kidId`, `activityNames`, `startedAt`, `itemIds`, `ladderSpec` |
 | `UsageFire` | `kidId`, `itemId`, `minute`, `firedAt`, `day`, `epochId`, `uploadedAt` |
-| `Heartbeat` | `kidId`, `at`, `source` (fire/bgRefresh/ping/launch), `authStatus`, `activeActivities`, `appVersion`, `backlogCount` |
+| `Heartbeat` | `kidId`, `at`, `source` (fire/bgRefresh/ping/launch), `authStatus`, `activeActivities`, `appVersion`, `backlogCount`, `batteryLevel` |
+| `EnergyReport` | `kidId`, `day`, `deviceModel`, `monitor` and `app` usage (energy, CPU time, wake-ups, callbacks, launches); one per kid per day, overwritten |
 | `Alert` | `kidId`, `ruleId`, `itemId?`, `at`, `title`, `body` |
 | `Rule` | `kidId`, `type` (quietHours/dailyThreshold/longSession/untrackedUsage/staleness), `params` |
 | `Ping` | `kidId`, `at`, `from` (parent-initiated liveness check) |
@@ -387,6 +388,15 @@ This is for developing the parent side and the reconstruction without waiting fo
 - **Region:** are any of our Apple Accounts EU accounts? That affects S4 beyond development builds.
 - **Waking hours** per kid, for staleness alerts.
 - Should kids see their own timeline in their app (transparency), or just the status?
+
+### 4.10 Our own battery cost
+
+Each extension callback and app wake ends by reading the process's kernel counters (`task_info` `TASK_POWER_INFO_V2`
+`task_energy`, in nanojoules, plus `getrusage` CPU time) into a per-day ledger in the App Group (`EnergyMeter`,
+`EnergyLedger`). The day's `EnergyReport` rides along with fire uploads (at most every 15 min) and every heartbeat.
+Parents see it under the kid's Health settings, as mWh and, for known batteries, % of a full charge.
+Not counted: work iOS does for us in its own processes (Screen Time's usage tracking, CloudKit's network transfers
+through the system's sync daemon), and anything a process uses after its last sample.
 
 ## 11. Findings from the first device run (Nov 14, 2026, iOS 26.6, adult phone, `.individual`)
 

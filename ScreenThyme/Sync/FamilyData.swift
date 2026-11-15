@@ -13,6 +13,7 @@ struct IngestBatch: Sendable {
     var alerts: [AlertRecord] = []
     var rules: [Rule] = []
     var pings: [Ping] = []
+    var energy: [EnergyReport] = []
     var deletedRecordNames: [String] = []
 
     mutating func add(_ record: CKRecord) {
@@ -25,13 +26,14 @@ struct IngestBatch: Sendable {
         case AlertRecord.recordType: AlertRecord.decode(record).map { alerts.append($0) }
         case Rule.recordType: Rule.decode(record).map { rules.append($0) }
         case Ping.recordType: Ping.decode(record).map { pings.append($0) }
+        case EnergyReport.recordType: EnergyReport.decode(record).map { energy.append($0) }
         default: break
         }
     }
 
     var isEmpty: Bool {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && heartbeats.isEmpty && alerts.isEmpty
-            && rules.isEmpty && pings.isEmpty && deletedRecordNames.isEmpty
+            && rules.isEmpty && pings.isEmpty && energy.isEmpty && deletedRecordNames.isEmpty
     }
 }
 
@@ -48,6 +50,7 @@ final class FamilyData {
         var heartbeats: [UUID: Heartbeat] = [:]
         var lastFireAt: [UUID: Date] = [:]
         var pings: [UUID: Ping] = [:]
+        var energy: [UUID: EnergyReport] = [:]
     }
 
     private var snapshot = Snapshot()
@@ -64,6 +67,11 @@ final class FamilyData {
     var heartbeats: [UUID: Heartbeat] { snapshot.heartbeats }
     var lastFireAt: [UUID: Date] { snapshot.lastFireAt }
     var pings: [UUID: Ping] { snapshot.pings }
+
+    /// Newest day first.
+    func energyReports(for kid: UUID) -> [EnergyReport] {
+        snapshot.energy.values.filter { $0.kidID == kid }.sorted { $0.day > $1.day }
+    }
 
     var sortedKids: [Kid] {
         snapshot.kids.values.sorted { ($0.isTest ? 1 : 0, $0.displayName) < ($1.isTest ? 1 : 0, $1.displayName) }
@@ -85,6 +93,9 @@ final class FamilyData {
         for epoch in batch.epochs { snapshot.epochs[epoch.id] = epoch }
         for rule in batch.rules { snapshot.rules[rule.id] = rule }
         for ping in batch.pings { snapshot.pings[ping.id] = ping }
+        for report in batch.energy where report.updatedAt >= (snapshot.energy[report.id]?.updatedAt ?? .distantPast) {
+            snapshot.energy[report.id] = report
+        }
         for heartbeat in batch.heartbeats where heartbeat.at > (snapshot.heartbeats[heartbeat.kidID]?.at ?? .distantPast) {
             snapshot.heartbeats[heartbeat.kidID] = heartbeat
         }
@@ -141,6 +152,7 @@ final class FamilyData {
         snapshot.rules = snapshot.rules.filter { $0.value.kidID != kid }
         snapshot.alerts = snapshot.alerts.filter { $0.value.kidID != kid }
         snapshot.heartbeats[kid] = nil
+        snapshot.energy = snapshot.energy.filter { $0.value.kidID != kid }
         snapshot.lastFireAt[kid] = nil
         fireCache[kid] = nil
         try? FileManager.default.removeItem(at: directory.appending(path: "fires/\(kid.uuidString)"))

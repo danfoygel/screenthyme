@@ -60,6 +60,8 @@ enum AppGroup {
     /// The same config without token data (~500 KB for a full scan), read by the extension on every fire.
     static var monitorConfigURL: URL { container.appending(path: "monitor-config.json") }
     static var monitorStateURL: URL { container.appending(path: "monitor-state.json") }
+    /// Our own processes' energy use per day (`EnergyMeter`).
+    static var energyLedgerURL: URL { container.appending(path: "energy.json") }
     static var outbox: JSONLinesFile<AlertRecord> { JSONLinesFile(url: container.appending(path: "Outbox/alerts.jsonl")) }
     static var outboxLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/uploaded.jsonl")) }
 

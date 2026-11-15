@@ -93,9 +93,28 @@ struct KidSettingsView: View {
                     LabeledContent("Schedules", value: "\(heartbeat.activeActivities.count) running / \(heartbeat.expectedActivities.count) expected")
                     LabeledContent("Waiting to upload", value: "\(heartbeat.backlogCount)")
                     LabeledContent("App version", value: heartbeat.appVersion)
+                    if let level = heartbeat.batteryLevel {
+                        LabeledContent("Phone battery", value: level.formatted(.percent.precision(.fractionLength(0))))
+                    }
                 }
                 Button("Ping now") { Task { await model.ping(kid) } }
                 NavigationLink("Tracked apps (\(model.data.items(for: kid.id).count))") { TrackedItemsView(kid: kid) }
+            }
+            let energy = model.data.energyReports(for: kid.id)
+            Section {
+                if let today = energy.first(where: { $0.day == DayKey(Date()) }) {
+                    EnergyRows(report: today)
+                    LabeledContent("Updated", value: Format.relative(today.updatedAt))
+                } else {
+                    Text("No numbers from today yet").foregroundStyle(.secondary)
+                }
+                if !energy.isEmpty {
+                    NavigationLink("Earlier days") { EnergyHistoryView(reports: energy) }
+                }
+            } header: {
+                Text("ScreenThyme's battery use today")
+            } footer: {
+                Text("Measured by iOS for ScreenThyme's own code on \(kid.displayName)'s phone. Work iOS does for us in its own processes (Screen Time tracking, iCloud transfers) isn't included.")
             }
             Section("Rules") {
                 ForEach(model.data.rules(for: kid.id)) { rule in

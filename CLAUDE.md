@@ -12,6 +12,7 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
   Journal/           append-only JSONL with flock + fsync, upload ledger
   Reconstruction/    fires → totals, attributed timeline with confidence, live status
   Rules/             RuleEngine (kid-side alerts), HealthEvaluator (parent-side)
+  Energy/            EnergyLedger: our processes' daily energy from kernel counters (sampled by Shared/Energy)
   Replay/            Trace, retarget/schedule, synthetic traces and scenarios
 Shared/              compiled into the app AND the monitor extension: App Group files, SharedConfig, CloudKit records, Uploader
 ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Kid/, Parent/, Components/, Debug/

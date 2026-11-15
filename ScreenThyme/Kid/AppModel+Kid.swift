@@ -3,6 +3,7 @@ import FamilyControls
 import Foundation
 import ManagedSettings
 import ThymeCore
+import UIKit
 
 /// Kid-side actions: authorization, scans, ladder registration, uploads, heartbeats (PLAN.md §4.1, §4.7).
 extension AppModel {
@@ -153,6 +154,7 @@ extension AppModel {
 
     func flush() async {
         guard isKid, config.family != nil else { return }
+        EnergyMeter.record(.app, isCallback: false)
         do {
             let result = try await Uploader.flush(config: config)
             lastUploadAt = Date()
@@ -167,6 +169,8 @@ extension AppModel {
     func sendHeartbeat(_ source: HeartbeatSource) async {
         guard isKid, let kid = config.kid, let store else { return }
         authorizationStatus = AuthorizationCenter.shared.authorizationStatus
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let batteryLevel = UIDevice.current.batteryLevel
         // One record per kid, overwritten: parents only need the latest.
         let heartbeat = Heartbeat(id: Replay.stableUUID("heartbeat", kid.id.uuidString), kidID: kid.id, at: Date(),
                                   source: source, authStatus: authorizationLabel,
@@ -174,9 +178,14 @@ extension AppModel {
                                   expectedActivities: config.epoch?.activityNames ?? [],
                                   appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?",
                                   backlogCount: Uploader.backlogCount(),
-                                  lastFireAt: AppGroup.journal.lastThresholdAt())
+                                  lastFireAt: AppGroup.journal.lastThresholdAt(),
+                                  batteryLevel: batteryLevel >= 0 ? Double(batteryLevel) : nil)
+        // Today's energy goes with every heartbeat, so a ping always brings fresh numbers.
+        EnergyMeter.record(.app, isCallback: false)
+        let energy = EnergyMeter.report(kid: kid, day: DayKey(Date()))
         do {
-            try await store.save([heartbeat])
+            try await store.save(records: [heartbeat.record(in: store.zoneID), energy.record(in: store.zoneID)])
+            EnergyMeter.markUploaded([energy])
             lastHeartbeatAt = heartbeat.at
         } catch {
             show(error)

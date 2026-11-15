@@ -116,10 +116,12 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var appVersion: String
     public var backlogCount: Int
     public var lastFireAt: Date?
+    /// The phone's charge, 0–1, when the heartbeat was sent; nil if iOS didn't say.
+    public var batteryLevel: Double?
 
     public init(id: UUID = UUID(), kidID: UUID, at: Date, source: HeartbeatSource, authStatus: String,
                 activeActivities: [String], expectedActivities: [String], appVersion: String,
-                backlogCount: Int, lastFireAt: Date?) {
+                backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -130,6 +132,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.appVersion = appVersion
         self.backlogCount = backlogCount
         self.lastFireAt = lastFireAt
+        self.batteryLevel = batteryLevel
     }
 }
 
@@ -166,4 +169,76 @@ public struct Ping: Codable, Sendable, Hashable, Identifiable {
         self.at = at
         self.from = from
     }
+}
+
+/// What one of our processes used in a day, from the kernel's per-process counters.
+public struct EnergyUsage: Codable, Sendable, Hashable {
+    public var energyNanojoules: UInt64 = 0
+    public var cpuNanoseconds: UInt64 = 0
+    /// CPU wake-ups from idle and interrupts, as the kernel counts them for our process.
+    public var wakeups: UInt64 = 0
+    /// Extension callbacks (threshold fires, interval starts and ends).
+    public var callbacks = 0
+    /// Processes iOS started for us.
+    public var launches = 0
+
+    public init() {}
+
+    public var joules: Double { Double(energyNanojoules) / 1e9 }
+    public var milliwattHours: Double { joules / 3.6 }
+    public var cpuSeconds: Double { Double(cpuNanoseconds) / 1e9 }
+
+    mutating func add(_ delta: EnergyCounters) {
+        energyNanojoules += delta.energyNanojoules
+        cpuNanoseconds += delta.cpuNanoseconds
+        wakeups += delta.wakeups
+    }
+
+    public static func + (lhs: EnergyUsage, rhs: EnergyUsage) -> EnergyUsage {
+        var sum = lhs
+        sum.energyNanojoules += rhs.energyNanojoules
+        sum.cpuNanoseconds += rhs.cpuNanoseconds
+        sum.wakeups += rhs.wakeups
+        sum.callbacks += rhs.callbacks
+        sum.launches += rhs.launches
+        return sum
+    }
+}
+
+/// Energy our own code used on a kid's phone in one day. It leaves out work iOS does for us in its own processes:
+/// Screen Time's usage tracking, and CloudKit's network transfers (made by the system's sync daemon).
+public struct EnergyReport: Codable, Sendable, Hashable, Identifiable {
+    /// One record per kid per day, overwritten as the day goes on.
+    public var id: UUID
+    public var kidID: UUID
+    public var day: DayKey
+    public var updatedAt: Date
+    /// `hw.machine`, e.g. "iPhone14,6".
+    public var deviceModel: String
+    public var monitor: EnergyUsage
+    public var app: EnergyUsage
+
+    public init(kidID: UUID, day: DayKey, updatedAt: Date, deviceModel: String, monitor: EnergyUsage, app: EnergyUsage) {
+        self.id = Replay.stableUUID("energy", kidID.uuidString, day.description)
+        self.kidID = kidID
+        self.day = day
+        self.updatedAt = updatedAt
+        self.deviceModel = deviceModel
+        self.monitor = monitor
+        self.app = app
+    }
+
+    public var total: EnergyUsage { monitor + app }
+
+    /// Share of a full charge, for phones whose battery capacity we know.
+    public var batteryFraction: Double? {
+        BatteryCapacity.wattHours[deviceModel].map { total.joules / ($0 * 3600) }
+    }
+}
+
+public enum BatteryCapacity {
+    /// Rated capacity in watt-hours by model identifier, for the family's kid phones. Others show energy alone.
+    public static let wattHours: [String: Double] = [
+        "iPhone14,6": 7.82,  // iPhone SE (3rd generation): 2,018 mAh at 3.88 V
+    ]
 }

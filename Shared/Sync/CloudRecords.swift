@@ -64,6 +64,16 @@ extension Heartbeat: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+extension EnergyReport: CloudRecordable {
+    static let recordType = "EnergyReport"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+
+    func addFields(to record: CKRecord) {
+        record["day"] = day.description
+    }
+}
+
 extension AlertRecord: CloudRecordable {
     static let recordType = "Alert"
     var recordUUID: UUID { id }
@@ -106,8 +116,12 @@ struct CloudStore: Sendable {
     }
 
     func save<T: CloudRecordable>(_ values: [T]) async throws {
-        guard !values.isEmpty else { return }
-        let records = try values.map { try $0.record(in: zoneID) }
+        try await save(records: values.map { try $0.record(in: zoneID) })
+    }
+
+    /// Records of any types, in as few requests as possible.
+    func save(records: [CKRecord]) async throws {
+        guard !records.isEmpty else { return }
         // CloudKit accepts up to 400 records per request.
         for start in stride(from: 0, to: records.count, by: 350) {
             let chunk = Array(records[start..<min(start + 350, records.count)])
