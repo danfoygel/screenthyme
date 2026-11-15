@@ -3,19 +3,34 @@ import Testing
 @testable import ThymeCore
 
 struct RuleEngineTests {
-    let kid = Kid(displayName: "Emma")
+    let kid = testKid
 
-    func run(_ trace: Trace, rules: [Rule]) -> [AlertRecord] {
+    /// Feeds a trace's wakes through the engine, as the extension would.
+    func run(_ trace: Trace, rules: [Rule], newItemsAt: [Date: [UUID]] = [:]) -> [AlertRecord] {
         let items = Dictionary(uniqueKeysWithValues: trace.items.map { ($0.id, $0) })
         let engine = RuleEngine(kidID: kid.id, kidName: kid.displayName, items: items, calendar: utc)
         var state = MonitorDayState(day: trace.day)
-        return trace.entries.flatMap { entry in
-            engine.process(entry.parsedEvent!, at: entry.at, state: &state, rules: rules)
+        var cumulative: [UUID: Double] = [:]
+        let samplesByEnd = Dictionary(grouping: trace.samples, by: \.end)
+        return trace.entries.flatMap { entry -> [AlertRecord] in
+            guard let parsed = entry.parsedEvent else { return [] }
+            var interval: [UUID: Double] = [:]
+            for sample in samplesByEnd[entry.at] ?? [] {
+                interval[sample.itemID, default: 0] += sample.seconds
+                cumulative[sample.itemID, default: 0] += sample.seconds
+            }
+            let wake = WakeObservation(at: entry.at, totalMinute: parsed.minute, itemSeconds: cumulative,
+                                       intervalSeconds: interval, newItems: newItemsAt[entry.at] ?? [])
+            return engine.process(wake, state: &state, rules: rules)
         }
     }
 
+    func near(_ date: Date, _ target: Date) -> Bool {
+        date >= target && date.timeIntervalSince(target) <= 120
+    }
+
     func id(_ name: String, in trace: Trace) -> UUID {
-        trace.items.first { $0.nickname == name }!.id
+        trace.items.first { $0.name == name }!.id
     }
 
     @Test func quietHoursAlertsOnceThenRepeats() {
@@ -24,11 +39,9 @@ struct RuleEngineTests {
                                                               weekdays: [], repeatEvery: 30))
         let alerts = run(trace, rules: [rule])
         let phone = alerts.filter { $0.itemID == nil }
-        // 22:36 first use, then "still" at 23:06 and 23:36 (use ends 23:50).
-        #expect(phone.map(\.at) == [at(22, 36), at(23, 6), at(23, 36)])
-        let apps = Set(alerts.compactMap(\.itemID))
-        #expect(apps == [id("TikTok", in: trace), id("Minecraft", in: trace)])
-        #expect(!alerts.contains { $0.itemID == id("YouTube", in: trace) })
+        // First wake in the window 22:37, then "still" at the first wake 30+ min later (wakes come every 2 min of use).
+        #expect(phone.map(\.at) == [at(22, 37), at(23, 7), at(23, 38)])
+        #expect(Set(alerts.compactMap(\.itemID)) == [id("TikTok", in: trace), id("Minecraft", in: trace)])
     }
 
     @Test func quietWindowRespectsWeekdays() {
@@ -40,7 +53,7 @@ struct RuleEngineTests {
         #expect(engine.quietWindowStart(at: at(9, 30), start: 8 * 60, end: 15 * 60, weekdays: []) == at(8, 0))
     }
 
-    @Test func dailyThresholdFiresOnce() {
+    @Test func dailyThresholdsUseExactMinutes() {
         let trace = SyntheticScenario.schoolDay.trace(kid: kid, day: testDay, calendar: utc)
         let roblox = id("Roblox", in: trace)
         let rules = [
@@ -49,41 +62,27 @@ struct RuleEngineTests {
         ]
         let alerts = run(trace, rules: rules)
         #expect(alerts.count == 2)
-        // Total: 8 + 25 + 47 + 3 before Roblox, so minute 120 is Roblox's 37th, at 17:37.
-        #expect(alerts[0].itemID == nil && alerts[0].at == at(17, 37))
-        #expect(alerts[1].itemID == roblox && alerts[1].at == at(18, 0, 0.5))
+        // Total: 8 + 25 + 47 + 3 before Roblox, so minute 120 is Roblox's 37th, at 17:37; Roblox's 60th is at 18:00.
+        // Alerts come at the first wake at or after that (one every 2 min of use).
+        #expect(alerts[0].itemID == nil && near(alerts[0].at, at(17, 37)))
+        #expect(alerts[1].itemID == roblox && near(alerts[1].at, at(18, 0)))
     }
 
     @Test func longSessionNamesDominantApp() {
         let trace = SyntheticScenario.schoolDay.trace(kid: kid, day: testDay, calendar: utc)
         let alerts = run(trace, rules: [Rule(kidID: kid.id, condition: .longSession(minutes: 45))])
-        // Runs: Classroom 25, YouTube 47, untracked 3, Roblox 65 (each gap > 2 min). Two are over 45.
         #expect(alerts.count == 2)
         #expect(alerts[0].itemID == id("YouTube", in: trace))
         #expect(alerts[1].itemID == id("Roblox", in: trace))
     }
 
-    @Test func unexplainedUsage() {
-        let tracked = UUID()
-        let entries = SyntheticTrace.entries(sessions: [
-            SyntheticSession(item: tracked, start: at(10, 0), minutes: 10),
-            SyntheticSession(item: nil, start: at(11, 0), minutes: 20),
-        ])
-        let item = TrackedItem(id: tracked, kidID: kid.id, kind: .app, tokenData: nil, ordinal: 1, firstSeenEpoch: UUID())
-        let trace = Trace(kid: kid, day: testDay, items: [item], epoch: nil, entries: entries)
-        let alerts = run(trace, rules: [Rule(kidID: kid.id, condition: .unexplainedUsage(minutes: 15))])
-        // Explained = 10 + 4 remainder = 14; total reaches 14 + 15 = 29 at 11:19.
-        #expect(alerts.map(\.at) == [at(11, 19)])
-    }
-
-    @Test func newDayResetsState() {
-        let engine = RuleEngine(kidID: kid.id, kidName: "Emma", items: [:], calendar: utc)
-        var state = MonitorDayState(day: testDay)
-        let rule = Rule(kidID: kid.id, condition: .dailyThreshold(itemID: nil, minutes: 1))
-        #expect(engine.process(.init(itemID: nil, minute: 1), at: at(10, 0), state: &state, rules: [rule]).count == 1)
-        #expect(engine.process(.init(itemID: nil, minute: 2), at: at(10, 1), state: &state, rules: [rule]).isEmpty)
-        #expect(engine.process(.init(itemID: nil, minute: 1), at: at(34, 0), state: &state, rules: [rule]).count == 1)
-        #expect(state.day == testDay.adding(days: 1, calendar: utc))
+    @Test func newAppAlerts() {
+        let trace = SyntheticScenario.schoolDay.trace(kid: kid, day: testDay, calendar: utc)
+        let tiktok = id("TikTok", in: trace)
+        let firstTikTokWake = trace.samples.filter { $0.itemID == tiktok }.map(\.end).min()!
+        let alerts = run(trace, rules: [Rule(kidID: kid.id, condition: .newApp)], newItemsAt: [firstTikTokWake: [tiktok]])
+        #expect(alerts.map(\.itemID) == [tiktok])
+        #expect(alerts.first?.body == "First time using TikTok.")
     }
 }
 

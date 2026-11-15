@@ -22,8 +22,8 @@ public enum RuleCondition: Codable, Sendable, Hashable {
     /// `itemID == nil` means total phone use.
     case dailyThreshold(itemID: UUID?, minutes: Int)
     case longSession(minutes: Int)
-    /// In-use time today not explained by tracked apps' crossings: short uses and apps added since the last scan.
-    case unexplainedUsage(minutes: Int)
+    /// An app or website never seen on this phone before is used.
+    case newApp
     /// Evaluated on parent devices: no word from the kid device for `hours` during waking hours.
     case staleness(hours: Int, wakingStartMinute: Int, wakingEndMinute: Int)
 }
@@ -37,8 +37,8 @@ extension RuleCondition {
             itemID == nil ? "Phone over \(minutes) min/day" : "App over \(minutes) min/day"
         case let .longSession(minutes):
             "Session over \(minutes) min"
-        case let .unexplainedUsage(minutes):
-            "Untracked use over \(minutes) min/day"
+        case .newApp:
+            "New app used"
         case let .staleness(hours, _, _):
             "No report for \(hours) h"
         }

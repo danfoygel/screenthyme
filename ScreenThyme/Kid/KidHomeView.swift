@@ -1,13 +1,10 @@
 import DeviceActivity
-import FamilyControls
 import SwiftUI
 import ThymeCore
 
-/// The kid's phone (PLAN.md §4.9): an honest status screen. Scanning and naming are for a parent.
+/// The kid's phone (PLAN.md §4.9): an honest status screen. Setup steps are for a parent.
 struct KidHomeView: View {
     @Environment(AppModel.self) private var model
-    @State private var showPicker = false
-    @State private var selection = FamilyActivitySelection(includeEntireCategory: true)
 
     var body: some View {
         NavigationStack {
@@ -16,31 +13,30 @@ struct KidHomeView: View {
                     Text("This phone shares app usage with your parents.")
                 }
                 Section("Status") {
-                    row("Kid", model.config.kid?.displayName ?? "—")
-                    row("Screen Time access", model.authorizationLabel)
-                    row("Family", familyStatus)
-                    row("Tracking", trackingStatus)
-                    row("Last usage event", AppGroup.journal.lastThresholdAt().map(Format.relative) ?? "none yet")
-                    row("Waiting to upload", "\(Uploader.backlogCount())")
+                    LabeledContent("Kid", value: model.config.kid?.displayName ?? "—")
+                    LabeledContent("Screen Time access", value: model.authorizationLabel)
+                    LabeledContent("Family", value: familyStatus)
+                    LabeledContent("Monitoring", value: monitoringStatus)
+                    LabeledContent("Apps seen", value: "\(AppGroup.loadItems().count)")
+                    LabeledContent("Last wake", value: AppGroup.journal.lastThresholdAt().map(Format.relative) ?? "none yet")
+                    LabeledContent("Waiting to upload", value: "\(Uploader.backlogCount())")
                     if let upload = model.lastUploadAt {
-                        row("Last upload", Format.relative(upload))
+                        LabeledContent("Last upload", value: Format.relative(upload))
                     }
                 }
                 Section {
-                    if !model.isAuthorized {
-                        Button("Allow Screen Time access") {
+                    if !model.hasDataAccess {
+                        Button(model.isAuthorized ? "Allow usage data access" : "Allow Screen Time access") {
                             Task { await model.requestAuthorization() }
                         }
                     }
-                    Button(model.config.epoch == nil ? "Scan all apps" : "Re-scan apps") {
-                        selection = FamilyActivitySelection(includeEntireCategory: true)
-                        showPicker = true
+                    if model.config.epoch == nil {
+                        Button("Start monitoring") { model.startMonitoring() }
+                            .disabled(!model.hasDataAccess)
                     }
-                    .disabled(!model.isAuthorized)
-                    NavigationLink("Name apps") { NamingView() }
-                        .disabled(model.config.items.isEmpty)
                     Button("Upload now") {
                         Task {
+                            await model.sampleNow()
                             await model.publishKidIdentity()
                             await model.flush()
                             await model.sendHeartbeat(.manual)
@@ -49,7 +45,7 @@ struct KidHomeView: View {
                 } header: {
                     Text("For a parent")
                 } footer: {
-                    Text("In the scan, tap \"All Apps & Categories\", then Done. Re-scan after installing new apps.")
+                    Text("Access needs a parent's approval on this phone, and asking again if it says \"approved\" without data access. After approving, restart the phone once.")
                 }
                 if model.config.family == nil {
                     Section("Join the family") {
@@ -67,13 +63,8 @@ struct KidHomeView: View {
                 TestModeSection()
             }
             .navigationTitle("ScreenThyme")
-            .familyActivityPicker(headerText: "Tap \"All Apps & Categories\" to track every app.",
-                                  isPresented: $showPicker, selection: $selection)
-            .onChange(of: showPicker) { _, showing in
-                guard !showing, !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty else { return }
-                Task { await model.applyScan(selection) }
-            }
             .refreshable {
+                await model.sampleNow()
                 await model.flush()
                 await model.refresh()
             }
@@ -85,50 +76,9 @@ struct KidHomeView: View {
         return family.isOwner ? "owner (this account)" : "joined"
     }
 
-    private var trackingStatus: String {
-        guard let epoch = model.config.epoch else { return "not scanned" }
-        let apps = model.config.items.filter { $0.active && $0.kind == .app }.count
+    private var monitoringStatus: String {
+        guard let epoch = model.config.epoch else { return "not started" }
         let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
-        let running = epoch.activityNames.filter(active.contains).count
-        return "\(apps) apps · \(running)/\(epoch.activityNames.count) schedules"
-    }
-
-    private func row(_ title: String, _ value: String) -> some View {
-        LabeledContent(title, value: value)
-    }
-}
-
-/// Nicknames, for when Apple's labels don't render on the parents' phones (S2). Top apps first.
-struct NamingView: View {
-    @Environment(AppModel.self) private var model
-    @State private var names: [UUID: String] = [:]
-
-    var body: some View {
-        let today = DayKey(Date())
-        let timeline = Reconstructor.build(model.config.dayInput(today))
-        let items = model.config.items
-            .filter { $0.active && $0.kind != .category }
-            .sorted { (timeline.totals[$0.id]?.lowerMinutes ?? 0, -$0.ordinal) > (timeline.totals[$1.id]?.lowerMinutes ?? 0, -$1.ordinal) }
-        List(items) { item in
-            HStack {
-                ItemName(item: TrackedItem(id: item.id, kidID: item.kidID, kind: item.kind, tokenData: item.tokenData,
-                                           ordinal: item.ordinal, firstSeenEpoch: item.firstSeenEpoch))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                TextField("Nickname", text: binding(item))
-                    .multilineTextAlignment(.trailing)
-                    .textInputAutocapitalization(.words)
-            }
-        }
-        .navigationTitle("Name apps")
-        .toolbar {
-            Button("Save") { Task { await model.saveNicknames(names) } }
-        }
-        .onAppear {
-            names = Dictionary(uniqueKeysWithValues: model.config.items.map { ($0.id, $0.nickname ?? "") })
-        }
-    }
-
-    private func binding(_ item: TrackedItem) -> Binding<String> {
-        Binding(get: { names[item.id] ?? "" }, set: { names[item.id] = $0 })
+        return epoch.activityNames.allSatisfy(active.contains) ? "on" : "stopped (open the app to restart)"
     }
 }

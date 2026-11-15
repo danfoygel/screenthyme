@@ -9,6 +9,7 @@ struct IngestBatch: Sendable {
     var items: [TrackedItem] = []
     var epochs: [LadderEpoch] = []
     var fires: [UsageFire] = []
+    var samples: [UsageSample] = []
     var heartbeats: [Heartbeat] = []
     var alerts: [AlertRecord] = []
     var rules: [Rule] = []
@@ -22,6 +23,7 @@ struct IngestBatch: Sendable {
         case TrackedItem.recordType: TrackedItem.decode(record).map { items.append($0) }
         case LadderEpoch.recordType: LadderEpoch.decode(record).map { epochs.append($0) }
         case UsageFire.recordType: UsageFire.decode(record).map { fires.append($0) }
+        case UsageSample.recordType: UsageSample.decode(record).map { samples.append($0) }
         case Heartbeat.recordType: Heartbeat.decode(record).map { heartbeats.append($0) }
         case AlertRecord.recordType: AlertRecord.decode(record).map { alerts.append($0) }
         case Rule.recordType: Rule.decode(record).map { rules.append($0) }
@@ -32,7 +34,8 @@ struct IngestBatch: Sendable {
     }
 
     var isEmpty: Bool {
-        kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && heartbeats.isEmpty && alerts.isEmpty
+        kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
+            && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && deletedRecordNames.isEmpty
     }
 }
@@ -56,8 +59,9 @@ final class FamilyData {
     private var snapshot = Snapshot()
     /// Bumped on every ingest so views that read fires through `fires(kid:day:)` re-render.
     private(set) var revision = 0
-    @ObservationIgnored private var fireCache: [UUID: [DayKey: [UUID: UsageFire]]] = [:]
     @ObservationIgnored private let directory = URL.applicationSupportDirectory.appending(path: "FamilyData")
+    @ObservationIgnored private lazy var fireStore = KidDayStore<UsageFire>(directory: directory.appending(path: "fires"))
+    @ObservationIgnored private lazy var sampleStore = KidDayStore<UsageSample>(directory: directory.appending(path: "samples"))
 
     var kids: [UUID: Kid] { snapshot.kids }
     var items: [UUID: TrackedItem] { snapshot.items }
@@ -113,15 +117,14 @@ final class FamilyData {
             }
         }
 
-        let byKidDay = Dictionary(grouping: batch.fires) { KidDay(kid: $0.kidID, day: $0.day) }
-        for (key, fires) in byKidDay {
-            var stored = loadFires(key)
-            for fire in fires { stored[fire.id] = fire }
-            fireCache[key.kid, default: [:]][key.day] = stored
-            saveFires(key, stored)
+        for (key, fires) in Dictionary(grouping: batch.fires, by: { KidDay(kid: $0.kidID, day: $0.day) }) {
+            fireStore.merge(fires, into: key)
             if let latest = fires.map(\.firedAt).max(), latest > (snapshot.lastFireAt[key.kid] ?? .distantPast) {
                 snapshot.lastFireAt[key.kid] = latest
             }
+        }
+        for (key, samples) in Dictionary(grouping: batch.samples, by: { KidDay(kid: $0.kidID, day: $0.day) }) {
+            sampleStore.merge(samples, into: key)
         }
         saveSnapshot()
         revision += 1
@@ -130,11 +133,12 @@ final class FamilyData {
 
     func fires(kid: UUID, day: DayKey) -> [UsageFire] {
         _ = revision
-        let key = KidDay(kid: kid, day: day)
-        if let cached = fireCache[kid]?[day] { return Array(cached.values) }
-        let loaded = loadFires(key)
-        fireCache[kid, default: [:]][day] = loaded
-        return Array(loaded.values)
+        return fireStore.values(KidDay(kid: kid, day: day))
+    }
+
+    func samples(kid: UUID, day: DayKey) -> [UsageSample] {
+        _ = revision
+        return sampleStore.values(KidDay(kid: kid, day: day))
     }
 
     func items(for kid: UUID) -> [UUID: TrackedItem] {
@@ -154,38 +158,61 @@ final class FamilyData {
         snapshot.heartbeats[kid] = nil
         snapshot.energy = snapshot.energy.filter { $0.value.kidID != kid }
         snapshot.lastFireAt[kid] = nil
-        fireCache[kid] = nil
-        try? FileManager.default.removeItem(at: directory.appending(path: "fires/\(kid.uuidString)"))
+        fireStore.forget(kid: kid)
+        sampleStore.forget(kid: kid)
         saveSnapshot()
         revision += 1
     }
 
     // MARK: - Files
 
-    private struct KidDay: Hashable {
-        var kid: UUID
-        var day: DayKey
-    }
-
-    private func firesURL(_ key: KidDay) -> URL {
-        directory.appending(path: "fires/\(key.kid.uuidString)/\(key.day).json")
-    }
-
-    private func loadFires(_ key: KidDay) -> [UUID: UsageFire] {
-        if let cached = fireCache[key.kid]?[key.day] { return cached }
-        guard let data = try? Data(contentsOf: firesURL(key)),
-              let fires = try? JSONDecoder.thyme.decode([UsageFire].self, from: data) else { return [:] }
-        return Dictionary(fires.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    }
-
-    private func saveFires(_ key: KidDay, _ fires: [UUID: UsageFire]) {
-        let url = firesURL(key)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder.thyme.encode(Array(fires.values)).write(to: url, options: .atomic)
-    }
-
     private func saveSnapshot() {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? JSONEncoder.thyme.encode(snapshot).write(to: directory.appending(path: "snapshot.json"), options: .atomic)
+    }
+}
+
+private struct KidDay: Hashable {
+    var kid: UUID
+    var day: DayKey
+}
+
+/// Records kept one JSON file per kid per day, loaded lazily and cached.
+private final class KidDayStore<Value: Codable & Identifiable> where Value.ID == UUID {
+    private let directory: URL
+    private var cache: [KidDay: [UUID: Value]] = [:]
+
+    init(directory: URL) {
+        self.directory = directory
+    }
+
+    func values(_ key: KidDay) -> [Value] {
+        Array(load(key).values)
+    }
+
+    func merge(_ values: [Value], into key: KidDay) {
+        var stored = load(key)
+        for value in values { stored[value.id] = value }
+        cache[key] = stored
+        let url = self.url(key)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder.thyme.encode(Array(stored.values)).write(to: url, options: .atomic)
+    }
+
+    func forget(kid: UUID) {
+        cache = cache.filter { $0.key.kid != kid }
+        try? FileManager.default.removeItem(at: directory.appending(path: kid.uuidString))
+    }
+
+    private func load(_ key: KidDay) -> [UUID: Value] {
+        if let cached = cache[key] { return cached }
+        let values = (try? Data(contentsOf: url(key))).flatMap { try? JSONDecoder.thyme.decode([Value].self, from: $0) } ?? []
+        let loaded = Dictionary(values.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        cache[key] = loaded
+        return loaded
+    }
+
+    private func url(_ key: KidDay) -> URL {
+        directory.appending(path: "\(key.kid.uuidString)/\(key.day).json")
     }
 }

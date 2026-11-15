@@ -10,22 +10,14 @@ let utc: Calendar = {
 
 let testDay = DayKey(year: 2026, month: 11, day: 14)
 let dayStart = testDay.start(in: utc)
+let testKid = Kid(displayName: "Emma")
 
 func at(_ hour: Int, _ minute: Int, _ second: Double = 0) -> Date {
     dayStart.addingTimeInterval(Double(hour * 3600 + minute * 60) + second)
 }
 
-func timeline(_ sessions: [SyntheticSession], options: SyntheticOptions = SyntheticOptions()) -> DayTimeline {
-    let entries = SyntheticTrace.entries(sessions: sessions, options: options)
-    return Reconstructor.build(DayInput(entries: entries, dayStart: dayStart))
-}
-
-extension DayTimeline {
-    func segments(for item: UUID) -> [Segment] {
-        segments.filter { $0.owner == .item(item) }
-    }
-
-    func minutes(for item: UUID, atLeast confidence: Confidence = .low) -> Int {
-        segments(for: item).filter { $0.confidence >= confidence }.reduce(0) { $0 + $1.minutes }
-    }
+func timeline(_ sessions: [SyntheticSession], options: SyntheticOptions = SyntheticOptions()) -> (DayInput, DayTimeline) {
+    let (entries, samples) = SyntheticTrace.generate(kid: testKid.id, sessions: sessions, options: options, calendar: utc)
+    let input = DayInput(entries: entries, samples: samples, dayStart: dayStart)
+    return (input, Reconstructor.build(input))
 }

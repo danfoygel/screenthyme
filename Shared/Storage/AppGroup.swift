@@ -57,13 +57,30 @@ enum AppGroup {
     static var journal: Journal { Journal(directory: container.appending(path: "Journal")) }
 
     static var configURL: URL { container.appending(path: "config.json") }
-    /// The same config without token data (~500 KB for a full scan), read by the extension on every fire.
-    static var monitorConfigURL: URL { container.appending(path: "monitor-config.json") }
     static var monitorStateURL: URL { container.appending(path: "monitor-state.json") }
     /// Our own processes' energy use per day (`EnergyMeter`).
     static var energyLedgerURL: URL { container.appending(path: "energy.json") }
+    /// Every app and website seen on this phone (written by `Sampler`).
+    static var itemsURL: URL { container.appending(path: "items.json") }
+    /// `Sampler`'s last fetch of Apple's per-hour, per-app totals, to take differences from.
+    static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
+
+    /// Records waiting to be uploaded, and the ids already uploaded (uploads are idempotent).
     static var outbox: JSONLinesFile<AlertRecord> { JSONLinesFile(url: container.appending(path: "Outbox/alerts.jsonl")) }
     static var outboxLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/uploaded.jsonl")) }
+    static var samples: JSONLinesFile<UsageSample> { JSONLinesFile(url: container.appending(path: "Outbox/samples.jsonl")) }
+    static var samplesLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/samples-uploaded.jsonl")) }
+    static var newItems: JSONLinesFile<TrackedItem> { JSONLinesFile(url: container.appending(path: "Outbox/items.jsonl")) }
+    static var newItemsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/items-uploaded.jsonl")) }
+
+    static func loadItems() -> [TrackedItem] {
+        guard let data = try? Data(contentsOf: itemsURL) else { return [] }
+        return (try? JSONDecoder.thyme.decode([TrackedItem].self, from: data)) ?? []
+    }
+
+    static func saveItems(_ items: [TrackedItem]) {
+        try? JSONEncoder.thyme.encode(items).write(to: itemsURL, options: .atomic)
+    }
 
     /// Serializes work across the app and extension processes (an exclusive `flock` on a file in the group).
     static func withLock<T>(_ name: String, _ body: () throws -> T) rethrows -> T {
@@ -89,7 +106,7 @@ struct FamilyLocation: Codable, Sendable, Hashable {
     var isOwner: Bool
 }
 
-/// Written by the app, read by the extension on every fire. Small: items carry tokens, ~100 of them.
+/// Written by the app, read by the extension on every wake.
 struct SharedConfig: Codable, Sendable {
     enum Role: String, Codable, Sendable { case unset, kid, parent }
     enum AuthMode: String, Codable, Sendable { case child, individual }
@@ -101,29 +118,10 @@ struct SharedConfig: Codable, Sendable {
     var testMode = false
     var family: FamilyLocation?
     var epoch: LadderEpoch?
-    var items: [TrackedItem] = []
     var rules: [Rule] = []
 
     static func load() -> SharedConfig {
-        load(from: AppGroup.configURL)
-    }
-
-    /// For the extension: no tokens, so it stays well inside the extension's memory limit.
-    /// Today's (or any day's) journal as reconstruction input, with this scan's ladders.
-    func dayInput(_ day: DayKey) -> DayInput {
-        DayInput(entries: AppGroup.journal.entries(on: day), dayStart: day.start(),
-                 spec: epoch?.spec ?? .standard,
-                 shortItems: Set(items.filter { $0.kind == .domain }.map(\.id)),
-                 totalsOnlyItems: Set(items.filter { $0.kind != .app }.map(\.id)))
-    }
-
-    static func loadForMonitor() -> SharedConfig {
-        FileManager.default.fileExists(atPath: AppGroup.monitorConfigURL.path)
-            ? load(from: AppGroup.monitorConfigURL) : load()
-    }
-
-    private static func load(from url: URL) -> SharedConfig {
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? Data(contentsOf: AppGroup.configURL),
               let config = try? JSONDecoder.thyme.decode(SharedConfig.self, from: data) else { return SharedConfig() }
         return config
     }
@@ -131,9 +129,12 @@ struct SharedConfig: Codable, Sendable {
     func save() throws {
         try FileManager.default.createDirectory(at: AppGroup.container, withIntermediateDirectories: true)
         try JSONEncoder.thyme.encode(self).write(to: AppGroup.configURL, options: .atomic)
-        var slim = self
-        for index in slim.items.indices { slim.items[index].tokenData = nil }
-        try JSONEncoder.thyme.encode(slim).write(to: AppGroup.monitorConfigURL, options: .atomic)
+    }
+
+    /// A day from this phone's own journal and samples.
+    func dayInput(_ day: DayKey) -> DayInput {
+        DayInput(entries: AppGroup.journal.entries(on: day),
+                 samples: AppGroup.samples.readAll().filter { $0.day == day }, dayStart: day.start())
     }
 }
 

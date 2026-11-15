@@ -98,7 +98,7 @@ struct KidSettingsView: View {
                     }
                 }
                 Button("Ping now") { Task { await model.ping(kid) } }
-                NavigationLink("Tracked apps (\(model.data.items(for: kid.id).count))") { TrackedItemsView(kid: kid) }
+                NavigationLink("Apps seen (\(model.data.items(for: kid.id).count))") { TrackedItemsView(kid: kid) }
             }
             let energy = model.data.energyReports(for: kid.id)
             Section {
@@ -147,7 +147,7 @@ struct KidSettingsView: View {
                             .first { $0.kind == .app }?.id, minutes: 60))
                     }
                     Button("Long session") { editing = Rule(kidID: kid.id, condition: .longSession(minutes: 60)) }
-                    Button("Untracked app use") { editing = Rule(kidID: kid.id, condition: .unexplainedUsage(minutes: 30)) }
+                    Button("New app used") { editing = Rule(kidID: kid.id, condition: .newApp) }
                     Button("Phone offline") {
                         editing = Rule(kidID: kid.id, condition: .staleness(hours: 3, wakingStartMinute: 7 * 60,
                                                                             wakingEndMinute: 22 * 60))
@@ -205,23 +205,20 @@ struct RuleEditor: View {
                         rule.condition = .dailyThreshold(itemID: $0, minutes: minutes)
                     })) {
                         Text("Whole phone").tag(UUID?.none)
-                        ForEach(items.values.filter { $0.kind == .app }.sorted { $0.ordinal < $1.ordinal }) { item in
+                        ForEach(items.values.filter { $0.kind == .app }.sorted { $0.displayName < $1.displayName }) { item in
                             ItemName(item: item).tag(UUID?.some(item.id))
                         }
                     }
                     .pickerStyle(.navigationLink)
                     Stepper("After \(Format.minutes(minutes))", value: Binding(get: { minutes }, set: {
-                        let snapped = itemID == nil ? $0 : LadderSpec.standard.snapItemThreshold($0)
-                        rule.condition = .dailyThreshold(itemID: itemID, minutes: snapped)
-                    }), in: 5...720, step: minutes < 60 ? 5 : 15)
+                        rule.condition = .dailyThreshold(itemID: itemID, minutes: $0)
+                    }), in: 5...720, step: 5)
                 case let .longSession(minutes):
                     Stepper("Longer than \(Format.minutes(minutes))", value: Binding(get: { minutes }, set: {
                         rule.condition = .longSession(minutes: $0)
                     }), in: 15...300, step: 15)
-                case let .unexplainedUsage(minutes):
-                    Stepper("More than \(Format.minutes(minutes))", value: Binding(get: { minutes }, set: {
-                        rule.condition = .unexplainedUsage(minutes: $0)
-                    }), in: 10...240, step: 10)
+                case .newApp:
+                    Text("Alerts the first time an app or website is used on this phone.")
                 case let .staleness(hours, start, end):
                     Stepper("No report for \(hours) h", value: Binding(get: { hours }, set: {
                         rule.condition = .staleness(hours: $0, wakingStartMinute: start, wakingEndMinute: end)
@@ -258,23 +255,22 @@ struct RuleEditor: View {
     }
 }
 
-/// Everything the kid's last scan tracks, as this device renders it: Apple's labels if it can (S2), else "App #n".
+/// Every app and website seen on the kid's phone, as this device renders it (Apple's label if it can, S2).
 struct TrackedItemsView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
 
     var body: some View {
-        let items = model.data.items(for: kid.id).values.filter(\.active)
+        let items = model.data.items(for: kid.id).values
         List {
             ForEach(ItemKind.allCases, id: \.self) { kind in
-                let group = items.filter { $0.kind == kind }.sorted { $0.ordinal < $1.ordinal }
+                let group = items.filter { $0.kind == kind }.sorted { $0.displayName.lowercased() < $1.displayName.lowercased() }
                 if !group.isEmpty {
-                    Section("\(kind.rawValue.capitalized)s · \(group.count)") {
+                    Section("\(kind == .app ? "Apps" : "Websites") · \(group.count)") {
                         ForEach(group) { item in
-                            HStack {
+                            VStack(alignment: .leading) {
                                 ItemName(item: item)
-                                Spacer()
-                                Text("#\(item.ordinal)").font(.caption).foregroundStyle(.secondary)
+                                Text(item.identifier).font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }

@@ -1,12 +1,13 @@
 import Foundation
 import ThymeCore
 
-/// Sends journaled fires and queued alerts to CloudKit, then marks them uploaded. Safe to run from the app and the
-/// extension at once: record names are the entry ids, so a double upload overwrites. Energy reports ride along in
-/// the same request as the fires, so they cost no extra network round trip.
+/// Sends journaled fires, samples, new items and queued alerts to CloudKit, then marks them uploaded. Energy reports
+/// ride along in the same request as the fires, so they cost no extra network round trip. Safe to run from the app
+/// and the extension at once: record names are the entry ids, so a double upload overwrites.
 enum Uploader {
     struct Result: Sendable {
         var fires = 0
+        var samples = 0
         var alerts = 0
         var energyReports = 0
     }
@@ -16,34 +17,40 @@ enum Uploader {
         let store = CloudStore(family: family)
         let journal = AppGroup.journal
         let pending = journal.pending(days: days)
-        let epochPrefix = config.epoch.map { RollingLadder.prefix(for: $0.id) }
 
+        // Total fires, and tracking starts as minute-0 fires. Item fires from the old per-app ladders are dropped.
         var fires: [UsageFire] = []
         for entry in pending {
-            // A tracking start travels as a total fire at minute 0, so parents can recognize catch-up bursts.
             let parsed = entry.isTrackingStart ? EventName.Parsed(itemID: nil, minute: 0) : entry.parsedEvent
-            guard let parsed else { continue }
-            let epochID = epochPrefix.flatMap { entry.activity.hasPrefix($0) ? config.epoch?.id : nil }
-            fires.append(UsageFire(id: entry.id, kidID: kid.id, itemID: parsed.itemID, minute: parsed.minute,
-                                   firedAt: entry.at, day: DayKey(entry.at, calendar: journal.calendar),
-                                   epochID: epochID))
+            guard let parsed, parsed.itemID == nil else { continue }
+            fires.append(UsageFire(id: entry.id, kidID: kid.id, itemID: nil, minute: parsed.minute, firedAt: entry.at,
+                                   day: DayKey(entry.at, calendar: journal.calendar), epochID: config.epoch?.id))
         }
         let energy = EnergyMeter.pendingReports(kid: kid)
         try await store.save(records: fires.map { try $0.record(in: store.zoneID) }
             + energy.map { try $0.record(in: store.zoneID) })
         EnergyMeter.markUploaded(energy)
-        // Other interval markers and notes aren't synced; mark them done along with the fires.
-        let byDay = Dictionary(grouping: pending) { DayKey($0.at, calendar: journal.calendar) }
-        for (day, entries) in byDay {
+        for (day, entries) in Dictionary(grouping: pending, by: { DayKey($0.at, calendar: journal.calendar) }) {
             try journal.markUploaded(entries.map(\.id), on: day)
         }
 
-        let uploaded = Set(AppGroup.outboxLedger.readAll())
-        let alerts = AppGroup.outbox.readAll().filter { !uploaded.contains($0.id) }
-        try await store.save(alerts)
-        try AppGroup.outboxLedger.append(contentsOf: alerts.map(\.id))
+        _ = try await send(AppGroup.newItems, ledger: AppGroup.newItemsLedger, to: store)
+        let samples = try await send(AppGroup.samples, ledger: AppGroup.samplesLedger, to: store)
+        let alerts = try await send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
+        return Result(fires: fires.count, samples: samples, alerts: alerts, energyReports: energy.count)
+    }
 
-        return Result(fires: fires.count, alerts: alerts.count, energyReports: energy.count)
+    /// Uploads what the ledger doesn't list yet, then records it there.
+    private static func send<T: CloudRecordable & Identifiable>(_ file: JSONLinesFile<T>, ledger: JSONLinesFile<UUID>,
+                                                                to store: CloudStore) async throws -> Int where T.ID == UUID {
+        let uploaded = Set(ledger.readAll())
+        // Later lines win: an item can be written again with a token or nickname.
+        var latest: [UUID: T] = [:]
+        for value in file.readAll() where !uploaded.contains(value.id) { latest[value.id] = value }
+        let values = Array(latest.values)
+        try await store.save(values)
+        try ledger.append(contentsOf: values.map(\.id))
+        return values.count
     }
 
     /// Re-sends today's and yesterday's tracking-start markers (idempotent). Markers journaled before they were
@@ -61,6 +68,8 @@ enum Uploader {
     }
 
     static func backlogCount() -> Int {
-        AppGroup.journal.pending().filter { $0.kind == .threshold }.count
+        let uploaded = Set(AppGroup.samplesLedger.readAll())
+        return AppGroup.journal.pending().filter { $0.kind == .threshold }.count
+            + AppGroup.samples.readAll().filter { !uploaded.contains($0.id) }.count
     }
 }

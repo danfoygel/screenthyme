@@ -3,20 +3,18 @@ import ManagedSettings
 import SwiftUI
 import ThymeCore
 
-/// An app's name: the nickname if set, else Apple's label for the token (if this device can render it — S2),
-/// else "App #37".
+/// An app's or website's name: a nickname if set, else Apple's label for its token (icon and name), else a readable
+/// form of the bundle ID or domain.
 struct ItemName: View {
     let item: TrackedItem?
     var showIcon = true
 
     var body: some View {
         if let item {
-            if let nickname = item.nickname {
-                Text(nickname)
-            } else if let label = tokenLabel(item) {
+            if item.nickname == nil, let label = tokenLabel(item) {
                 label
             } else {
-                Text(item.fallbackName).foregroundStyle(.secondary)
+                Text(item.displayName)
             }
         } else {
             Text("Unknown app").foregroundStyle(.secondary)
@@ -25,35 +23,19 @@ struct ItemName: View {
 
     private func tokenLabel(_ item: TrackedItem) -> AnyView? {
         switch item.kind {
-        case .app:
-            TokenCoding.application(item.tokenData).map { styled(Label($0)) }
-        case .domain:
-            TokenCoding.webDomain(item.tokenData).map { styled(Label($0)) }
-        case .category:
-            TokenCoding.category(item.tokenData).map { styled(Label($0)) }
+        case .app: TokenCoding.application(item.tokenData).map { styled(Label($0)) }
+        case .domain: TokenCoding.webDomain(item.tokenData).map { styled(Label($0)) }
         }
     }
 
     private func styled<V: View>(_ label: V) -> AnyView {
-        if showIcon {
-            AnyView(label)
-        } else {
-            AnyView(label.labelStyle(.titleOnly))
-        }
+        showIcon ? AnyView(label) : AnyView(label.labelStyle(.titleOnly))
     }
 }
 
 enum Format {
     static func minutes(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
-    }
-
-    /// "25–29 min", "1 h 15 min–1 h 29 min", "60+ min".
-    static func range(_ total: ItemTotal) -> String {
-        let (lower, upper) = (total.lowerMinutes, total.upperMinutes)
-        if total.openEnded { return lower < 60 ? "\(lower)+ min" : "\(minutes(lower))+" }
-        if upper == lower { return minutes(lower) }
-        return upper < 60 ? "\(lower)–\(upper) min" : "\(minutes(lower))–\(minutes(upper))"
     }
 
     static func time(_ date: Date) -> String {

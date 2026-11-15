@@ -6,8 +6,8 @@ public struct LiveStatus: Sendable, Equatable {
     public var probableItem: UUID?
     public var lastActiveAt: Date?
 
-    /// A total fire younger than this means the phone is in use now.
-    public static let freshness: TimeInterval = 90
+    /// A wake (total fire) younger than this means the phone is in use now: one step of 2 minutes plus slack.
+    public static let freshness: TimeInterval = 180
 
     public init(inUse: Bool, probableItem: UUID?, lastActiveAt: Date?) {
         self.inUse = inUse
@@ -21,18 +21,13 @@ public struct LiveStatus: Sendable, Equatable {
         }
         // Fires stamped well after `now` (clock skew, replayed test data) don't mean "in use now".
         let age = now.timeIntervalSince(last)
-        let inUse = age >= -freshness && age <= freshness
-        guard inUse, let run = timeline.runs.last else {
+        guard age >= -freshness, age <= freshness else {
             return LiveStatus(inUse: false, probableItem: nil, lastActiveAt: last)
         }
-        let runStart = run.start.addingTimeInterval(-Reconstructor.skew)
-        var probable: (item: UUID, at: Date)?
-        for (item, points) in input.items {
-            guard let latest = points.map(\.at).max(), latest >= runStart else { continue }
-            if probable == nil || latest > probable!.at {
-                probable = (item, latest)
-            }
-        }
-        return LiveStatus(inUse: true, probableItem: probable?.item, lastActiveAt: last)
+        // The app with the most use in the latest fetch interval.
+        let latestEnd = input.samples.map(\.end).max()
+        let latest = input.samples.filter { $0.end == latestEnd && now.timeIntervalSince($0.end) <= freshness }
+        let probable = latest.max { $0.seconds < $1.seconds }?.itemID
+        return LiveStatus(inUse: true, probableItem: probable, lastActiveAt: last)
     }
 }

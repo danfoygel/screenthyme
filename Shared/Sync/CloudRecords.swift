@@ -58,6 +58,17 @@ extension UsageFire: CloudRecordable {
     }
 }
 
+extension UsageSample: CloudRecordable {
+    static let recordType = "UsageSample"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+
+    func addFields(to record: CKRecord) {
+        record["day"] = day.description
+        record["end"] = end
+    }
+}
+
 extension Heartbeat: CloudRecordable {
     static let recordType = "Heartbeat"
     var recordUUID: UUID { id }

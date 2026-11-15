@@ -20,63 +20,90 @@ public struct Kid: Codable, Sendable, Hashable, Identifiable {
 }
 
 public enum ItemKind: String, Codable, Sendable, CaseIterable {
-    case app, domain, category
+    case app, domain
 }
 
-/// One app, web domain or category from a scan. `id` is our stable key; tokens can expire and be replaced.
+/// An app or website seen in Apple's activity data on a kid's phone. Discovered automatically; no scan.
 public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
+    /// Derived from kid and `identifier` (see `TrackedItem.id(kid:kind:identifier:)`), so every device agrees.
     public var id: UUID
     public var kidID: UUID
     public var kind: ItemKind
-    /// JSON-encoded ApplicationToken / WebDomainToken / ActivityCategoryToken.
+    /// Bundle ID ("com.burbn.instagram") or domain ("www.youtube.com").
+    public var identifier: String
+    /// Apple's display name, when the data includes one.
+    public var name: String?
+    /// JSON-encoded ApplicationToken / WebDomainToken, for `Label` (icon and name) on parent phones.
     public var tokenData: Data?
     public var nickname: String?
-    /// Stable per-kid number for the "App #37" fallback name.
-    public var ordinal: Int
-    public var firstSeenEpoch: UUID
-    public var active: Bool
+    public var firstSeen: Date
 
-    public init(id: UUID = UUID(), kidID: UUID, kind: ItemKind, tokenData: Data?, nickname: String? = nil,
-                ordinal: Int, firstSeenEpoch: UUID, active: Bool = true) {
-        self.id = id
+    public init(kidID: UUID, kind: ItemKind, identifier: String, name: String? = nil, tokenData: Data? = nil,
+                nickname: String? = nil, firstSeen: Date) {
+        self.id = Self.id(kid: kidID, kind: kind, identifier: identifier)
         self.kidID = kidID
         self.kind = kind
+        self.identifier = identifier
+        self.name = name
         self.tokenData = tokenData
         self.nickname = nickname
-        self.ordinal = ordinal
-        self.firstSeenEpoch = firstSeenEpoch
-        self.active = active
+        self.firstSeen = firstSeen
     }
 
-    public var fallbackName: String {
+    public static func id(kid: UUID, kind: ItemKind, identifier: String) -> UUID {
+        Replay.stableUUID("item", kid.uuidString, kind.rawValue, identifier)
+    }
+
+    /// Nickname, Apple's name, or a readable form of the identifier ("com.burbn.instagram" → "instagram").
+    public var displayName: String {
+        if let nickname { return nickname }
+        if let name { return name }
         switch kind {
-        case .app: "App #\(ordinal)"
-        case .domain: "Website #\(ordinal)"
-        case .category: "Category #\(ordinal)"
+        case .app: return identifier.split(separator: ".").last.map(String.init) ?? identifier
+        case .domain: return identifier.hasPrefix("www.") ? String(identifier.dropFirst(4)) : identifier
         }
     }
 }
 
-/// One registration of ladders (a scan or re-scan). Fires record which epoch they came from.
+/// One monitoring registration (start, re-register, midnight). Heartbeats compare its activities with iOS's.
 public struct LadderEpoch: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var kidID: UUID
     public var startedAt: Date
     public var activityNames: [String]
-    public var itemIDs: [UUID]
-    public var spec: LadderSpec
 
-    public init(id: UUID = UUID(), kidID: UUID, startedAt: Date, activityNames: [String], itemIDs: [UUID], spec: LadderSpec) {
+    public init(id: UUID = UUID(), kidID: UUID, startedAt: Date, activityNames: [String]) {
         self.id = id
         self.kidID = kidID
         self.startedAt = startedAt
         self.activityNames = activityNames
-        self.itemIDs = itemIDs
-        self.spec = spec
     }
 }
 
-/// A threshold crossing: "item (or the whole phone, when `itemID` is nil) reached `minute` minutes today at `firedAt`".
+/// "Item was used `seconds` seconds between `start` and `end`": the difference between two of Apple's activity
+/// fetches, within one hour segment. A day's samples for an item add up to Apple's exact total.
+public struct UsageSample: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var kidID: UUID
+    public var itemID: UUID
+    public var day: DayKey
+    public var start: Date
+    public var end: Date
+    public var seconds: Double
+
+    public init(id: UUID, kidID: UUID, itemID: UUID, day: DayKey, start: Date, end: Date, seconds: Double) {
+        self.id = id
+        self.kidID = kidID
+        self.itemID = itemID
+        self.day = day
+        self.start = start
+        self.end = end
+        self.seconds = seconds
+    }
+}
+
+/// A total-use threshold crossing: "the phone reached `minute` minutes of use today at `firedAt`". Minute 0 marks a
+/// tracking start. `itemID` is only set on records from the old per-app ladders, which are ignored.
 public struct UsageFire: Codable, Sendable, Hashable, Identifiable {
     /// Equal to the journal entry's id, so uploads are idempotent.
     public var id: UUID

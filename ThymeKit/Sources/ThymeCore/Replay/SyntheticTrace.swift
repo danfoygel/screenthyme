@@ -1,6 +1,6 @@
 import Foundation
 
-/// A stretch of continuous use. `item == nil` is an untracked app (counts toward the total only).
+/// A stretch of continuous use. `item == nil` is use that no app accounts for (counts toward the total only).
 public struct SyntheticSession: Sendable, Hashable {
     public var item: UUID?
     public var start: Date
@@ -13,73 +13,60 @@ public struct SyntheticSession: Sendable, Hashable {
     }
 }
 
-/// A fire injected at an arbitrary time, to mimic iOS 26 misfires.
-public struct SyntheticFire: Sendable, Hashable {
-    public var item: UUID?
-    public var minute: Int
-    public var at: Date
-
-    public init(item: UUID?, minute: Int, at: Date) {
-        self.item = item
-        self.minute = minute
-        self.at = at
-    }
-}
-
 public struct SyntheticOptions: Sendable {
-    /// Fires inside each interval are held and delivered together at its end, like a system catch-up.
+    /// Total fires inside each interval are held and delivered together at its end, like a system catch-up.
     public var catchUp: [DateInterval] = []
-    public var injected: [SyntheticFire] = []
-    /// Item fires arrive this long after the total fire for the same minute.
-    public var itemFireDelay: TimeInterval = 0.5
+    /// Extra total fires, to mimic misfires.
+    public var injected: [FirePoint] = []
+    /// Minutes of use between wakes, as in `RollingLadder.step`.
+    public var step = 2
 
-    public init(catchUp: [DateInterval] = [], injected: [SyntheticFire] = [], itemFireDelay: TimeInterval = 0.5) {
+    public init(catchUp: [DateInterval] = [], injected: [FirePoint] = [], step: Int = 2) {
         self.catchUp = catchUp
         self.injected = injected
-        self.itemFireDelay = itemFireDelay
+        self.step = step
     }
 }
 
-/// Simulates the ladders for a list of (sequential) sessions: what the monitor extension would have journaled.
+/// Simulates capture for a list of (sequential) sessions: the total fires the extension would journal and the
+/// samples it would compute from Apple's data at each wake.
 public enum SyntheticTrace {
-    public static let activity = "st.synthetic.0"
+    public static let activity = "st.synthetic.tot"
 
-    public static func entries(sessions: [SyntheticSession], spec: LadderSpec = .standard,
-                               options: SyntheticOptions = SyntheticOptions()) -> [JournalEntry] {
-        let totalSteps = Set(spec.totalMinutes)
-        let itemSteps = Set(spec.itemMinutes)
+    public static func generate(kid: UUID, sessions: [SyntheticSession], options: SyntheticOptions = SyntheticOptions(),
+                                calendar: Calendar = .current) -> (entries: [JournalEntry], samples: [UsageSample]) {
         var total = 0
-        var perItem: [UUID: Int] = [:]
-        var fires: [SyntheticFire] = []
+        var fires: [FirePoint] = []
+        var samples: [UsageSample] = []
+        // Per item: seconds since the last wake, and when that use began.
+        var pending: [UUID: (seconds: Double, since: Date)] = [:]
         for session in sessions.sorted(by: { $0.start < $1.start }) {
             for index in 0..<session.minutes {
-                let at = session.start.addingTimeInterval(Double(index + 1) * 60)
+                let minuteStart = session.start.addingTimeInterval(Double(index) * 60)
+                let at = minuteStart.addingTimeInterval(60)
                 total += 1
-                if totalSteps.contains(total) {
-                    fires.append(SyntheticFire(item: nil, minute: total, at: at))
-                }
                 if let item = session.item {
-                    perItem[item, default: 0] += 1
-                    if itemSteps.contains(perItem[item]!) {
-                        fires.append(SyntheticFire(item: item, minute: perItem[item]!,
-                                                   at: at.addingTimeInterval(options.itemFireDelay)))
-                    }
+                    pending[item, default: (0, minuteStart)].seconds += 60
                 }
+                guard total % options.step == 0 else { continue }
+                fires.append(FirePoint(minute: total, at: at))
+                for (item, use) in pending {
+                    samples.append(UsageSample(id: Replay.stableUUID("sample", kid.uuidString, item.uuidString, "\(at.timeIntervalSince1970)"),
+                                               kidID: kid, itemID: item, day: DayKey(at, calendar: calendar),
+                                               start: use.since, end: at, seconds: use.seconds))
+                }
+                pending = [:]
             }
         }
         fires = fires.map { fire in
             guard let hold = options.catchUp.first(where: { $0.contains(fire.at) }) else { return fire }
-            var held = fire
-            held.at = hold.end
-            return held
+            return FirePoint(minute: fire.minute, at: hold.end)
         }
         fires += options.injected
-        return fires
+        let entries = fires
             .sorted { ($0.at, $0.minute) < ($1.at, $1.minute) }
-            .map { fire in
-                let name = fire.item.map { EventName.item($0, minute: fire.minute) } ?? EventName.total(minute: fire.minute)
-                return JournalEntry(kind: .threshold, activity: activity, event: name, at: fire.at)
-            }
+            .map { JournalEntry(kind: .threshold, activity: activity, event: EventName.total(minute: $0.minute), at: $0.at) }
+        return (entries, samples.sorted { $0.end < $1.end })
     }
 }
 
@@ -98,16 +85,18 @@ public enum SyntheticScenario: String, CaseIterable, Codable, Sendable, Identifi
         }
     }
 
-    public static let appNames = ["YouTube", "Roblox", "Messages", "TikTok", "Minecraft", "Safari", "Classroom"]
+    public static let apps = [
+        ("YouTube", "com.google.ios.youtube"), ("Roblox", "com.roblox.robloxmobile"), ("Messages", "com.apple.MobileSMS"),
+        ("TikTok", "com.zhiliaoapp.musically"), ("Minecraft", "com.mojang.minecraftpe"), ("Safari", "com.apple.mobilesafari"),
+        ("Classroom", "com.google.classroom"),
+    ]
 
     public func trace(kid: Kid, day: DayKey, calendar: Calendar = .current) -> Trace {
-        let epochID = Replay.stableUUID("synthetic-epoch", kid.id.uuidString)
-        let items = Self.appNames.enumerated().map { index, name in
-            TrackedItem(id: Replay.stableUUID("synthetic", kid.id.uuidString, name), kidID: kid.id, kind: .app,
-                        tokenData: nil, nickname: name, ordinal: index + 1, firstSeenEpoch: epochID)
-        }
-        let ids = Dictionary(uniqueKeysWithValues: zip(Self.appNames, items.map(\.id)))
         let start = day.start(in: calendar)
+        let items = Self.apps.map { name, bundle in
+            TrackedItem(kidID: kid.id, kind: .app, identifier: bundle, name: name, firstSeen: start)
+        }
+        let ids = Dictionary(uniqueKeysWithValues: items.map { ($0.name!, $0.id) })
         func at(_ hour: Int, _ minute: Int) -> Date {
             start.addingTimeInterval(Double(hour * 3600 + minute * 60))
         }
@@ -145,11 +134,12 @@ public enum SyntheticScenario: String, CaseIterable, Codable, Sendable, Identifi
                 SyntheticSession(item: ids["Safari"], start: at(16, 0), minutes: 20),
             ]
             options.catchUp = [DateInterval(start: at(14, 20), end: at(15, 0))]
-            options.injected = [SyntheticFire(item: ids["YouTube"], minute: 60, at: at(0, 1))]
+            options.injected = [FirePoint(minute: 60, at: at(0, 1))]
         }
-        let entries = SyntheticTrace.entries(sessions: sessions, options: options)
-        let epoch = LadderEpoch(id: epochID, kidID: kid.id, startedAt: start, activityNames: [SyntheticTrace.activity],
-                                itemIDs: items.map(\.id), spec: .standard)
-        return Trace(kid: kid, day: day, items: items, epoch: epoch, entries: entries)
+        let (entries, samples) = SyntheticTrace.generate(kid: kid.id, sessions: sessions, options: options,
+                                                         calendar: calendar)
+        let epoch = LadderEpoch(id: Replay.stableUUID("synthetic-epoch", kid.id.uuidString), kidID: kid.id,
+                                startedAt: start, activityNames: [SyntheticTrace.activity])
+        return Trace(kid: kid, day: day, items: items, epoch: epoch, entries: entries, samples: samples)
     }
 }

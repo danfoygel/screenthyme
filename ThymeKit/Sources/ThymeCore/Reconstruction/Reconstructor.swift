@@ -1,24 +1,5 @@
 import Foundation
 
-public enum Confidence: Int, Codable, Sendable, Comparable {
-    /// Placed by inference: a burst of catch-up fires, a minute far from its crossing, or a ladder tail.
-    case low
-    /// Another app also crossed a threshold in the same stretch; the minute belongs to one of them.
-    case mixed
-    /// The app crossed a threshold in this run of use and nothing else did in between.
-    case high
-
-    public static func < (lhs: Confidence, rhs: Confidence) -> Bool { lhs.rawValue < rhs.rawValue }
-}
-
-public enum SegmentOwner: Sendable, Hashable {
-    case item(UUID)
-    /// Sorted ids of the candidates.
-    case mixed([UUID])
-    /// In use, but no tracked app's crossings explain it: short uses below 5 min, or apps added since the last scan.
-    case unexplained
-}
-
 /// One in-use minute from the total ladder.
 public struct InUseMinute: Sendable, Hashable {
     public var start: Date
@@ -27,148 +8,102 @@ public struct InUseMinute: Sendable, Hashable {
     public var inferred: Bool
 }
 
-public struct Segment: Sendable, Hashable, Identifiable {
-    public var owner: SegmentOwner
-    public var start: Date
-    public var end: Date
-    public var minutes: Int
-    public var confidence: Confidence
+/// An app's usage today, from Apple's numbers.
+public struct ItemUsage: Sendable, Hashable {
+    public var seconds: Double
+    public var firstAt: Date
+    public var lastAt: Date
 
-    public var id: Date { start }
+    public var minutes: Int { Int((seconds / 60).rounded()) }
 }
 
-public struct ItemTotal: Sendable, Hashable {
-    /// The last threshold crossed: the app used at least this many minutes.
-    public var lowerMinutes: Int
-    /// At most this many: the next threshold wasn't reached.
-    public var upperMinutes: Int
-    /// The last crossing is the top of the item's ladder: at least `lowerMinutes`, with no upper bound.
-    public var openEnded: Bool
-    public var lastCrossingAt: Date
-    /// Minutes the timeline attributes to this item, at any confidence.
-    public var attributedMinutes: Int
+/// A stretch on an item's timeline lane: `seconds` of use somewhere between `start` and `end`.
+public struct UsageBlock: Sendable, Hashable, Identifiable {
+    public var itemID: UUID
+    public var start: Date
+    public var end: Date
+    public var seconds: Double
+
+    public var id: String { "\(itemID)-\(start.timeIntervalSince1970)" }
+    /// The share of the stretch the item was in use: 1 when it filled it.
+    public var intensity: Double {
+        min(1, seconds / max(end.timeIntervalSince(start), 1))
+    }
 }
 
 public struct DayTimeline: Sendable {
     public var inUse: [InUseMinute]
     /// Stretches of continuous use (gaps of at most `Reconstructor.runGap`).
     public var runs: [DateInterval]
-    public var segments: [Segment]
-    public var totals: [UUID: ItemTotal]
+    public var blocks: [UsageBlock]
+    public var items: [UUID: ItemUsage]
+    /// From the total ladder.
     public var totalMinutes: Int
-    public var unexplainedMinutes: Int
-    /// Fires dropped as impossible or out of order.
-    public var suspectFires: Int
-    /// Minutes that crossings claim but the total ladder has no room for (likely early fires).
-    public var unfulfilledMinutes: Int
-    public var lastTotalFireAt: Date?
-    /// Use from before monitoring started, replayed by iOS at registration: counted, but its times are unknown.
+    /// Total-ladder minutes replayed at a registration: counted, but their times are unknown.
     public var preTrackingMinutes: Int
-    public var preTrackingByItem: [UUID: Int]
+    /// Fires dropped as impossible.
+    public var suspectFires: Int
+    public var lastTotalFireAt: Date?
+
+    /// Apple's total over apps and websites (websites also count toward Safari, so this can double count).
+    public var appMinutes: Int {
+        Int((items.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
+    }
 }
 
-/// Turns threshold fires into totals and a per-app timeline (PLAN.md §4.2). Pure and deterministic.
+/// Builds a day from total fires (when the phone was in use) and Apple's per-app samples (what was used, exactly).
+/// Pure and deterministic.
 public enum Reconstructor {
-    /// A pause longer than this ends a run of use (and a session).
+    /// A pause longer than this ends a run of use.
     public static let runGap: TimeInterval = 120
-    /// Slack for the order in which simultaneous fires from different ladders arrive.
-    static let skew: TimeInterval = 5
     /// Fires may run this far ahead of wall-clock time before they count as impossible.
     static let tolerance: TimeInterval = 90
-
-    /// Catch-up fires keep arriving this long after a registration: on a real phone, per-app ones trickled in for 8 min.
+    /// Catch-up fires keep arriving this long after a registration.
     static let catchUpWindow: TimeInterval = 900
+    /// Samples this close together are one stretch on a lane.
+    static let blockGap: TimeInterval = 5
 
     public static func build(_ input: DayInput) -> DayTimeline {
         let total = clean(input.total, dayStart: input.dayStart)
-        var suspects = total.suspects
         let (inUse, preTracking) = inUseMinutes(total.points, dayStart: input.dayStart,
                                                 trackingStarts: input.trackingStarts)
-        let runs = mergeRuns(inUse)
-
-        var demands: [Demand] = []
-        var crossings: [(at: Date, item: UUID)] = []
-        var lastCrossing: [UUID: FirePoint] = [:]
-        for (item, raw) in input.items {
-            let series = clean(raw, dayStart: input.dayStart)
-            suspects += series.suspects
-            if let last = series.points.last { lastCrossing[item] = last }
-            guard !input.totalsOnlyItems.contains(item) else { continue }
-            demands += makeDemands(item: item, series: series, dayStart: input.dayStart)
-            crossings += series.points.map { ($0.at, item) }
+        var items: [UUID: ItemUsage] = [:]
+        for sample in input.samples where sample.seconds > 0 {
+            var usage = items[sample.itemID] ?? ItemUsage(seconds: 0, firstAt: sample.start, lastAt: sample.end)
+            usage.seconds += sample.seconds
+            usage.firstAt = min(usage.firstAt, sample.start)
+            usage.lastAt = max(usage.lastAt, sample.end)
+            items[sample.itemID] = usage
         }
-        crossings.sort { $0.at < $1.at }
+        return DayTimeline(inUse: inUse,
+                           runs: mergeRuns(inUse),
+                           blocks: blocks(input.samples),
+                           items: items,
+                           totalMinutes: total.points.last?.minute ?? 0,
+                           preTrackingMinutes: preTracking,
+                           suspectFires: total.suspects,
+                           lastTotalFireAt: total.points.last?.at)
+    }
 
-        var owners = assign(minutes: inUse, demands: &demands)
-
-        // What a catch-up crossing claims beyond the in-use minutes was used before tracking started. Paying only the
-        // shortfall keeps real crossings during the catch-up window on the timeline.
-        var pool = preTracking
-        var preTrackingByItem: [UUID: Int] = [:]
-        for index in demands.indices.sorted(by: { demands[$0].crossingAt < demands[$1].crossingAt })
-        where pool > 0 && demands[index].remaining > 0 && inCatchUp(demands[index].crossingAt, starts: input.trackingStarts) {
-            let take = min(pool, demands[index].remaining)
-            pool -= take
-            demands[index].remaining -= take
-            preTrackingByItem[demands[index].item, default: 0] += take
-        }
-        let unfulfilled = demands.reduce(0) { $0 + $1.remaining }
-
-        // Confidence for assigned minutes.
-        var labels: [Label?] = Array(repeating: nil, count: inUse.count)
-        for (index, owner) in owners.enumerated() {
-            guard let demandIndex = owner else { continue }
-            let minute = inUse[index]
-            let demand = demands[demandIndex]
-            labels[index] = label(minute: minute, demand: demand, runs: runs, crossings: crossings)
-        }
-
-        // Ladder tails: minutes right after an item's final crossing, in the same run, up to its remainder.
-        var tailUsed: [UUID: Int] = [:]
-        for index in inUse.indices where owners[index] == nil {
-            let minute = inUse[index]
-            guard let run = runs.first(where: { $0.start <= minute.start + skew && minute.end <= $0.end + skew }),
-                  let crossing = crossings.last(where: { $0.at <= minute.end + skew && $0.at >= run.start - skew }),
-                  let final = lastCrossing[crossing.item], final.at == crossing.at
-            else { continue }
-            let capacity = input.spec.itemRemainder(after: final.minute,
-                                                    short: input.shortItems.contains(crossing.item))
-            guard tailUsed[crossing.item, default: 0] < capacity else { continue }
-            tailUsed[crossing.item, default: 0] += 1
-            labels[index] = Label(owner: .item(crossing.item), confidence: .low)
-            owners[index] = -1
-        }
-
-        let segments = makeSegments(minutes: inUse, labels: labels)
-
-        var totals: [UUID: ItemTotal] = [:]
-        for (item, last) in lastCrossing {
-            let attributed = labels.reduce(0) { count, label in
-                switch label?.owner {
-                case .item(item): count + 1
-                case let .mixed(ids) where ids.contains(item): count + 1
-                default: count
+    /// Each item's samples, with back-to-back ones merged into one stretch.
+    static func blocks(_ samples: [UsageSample]) -> [UsageBlock] {
+        var blocks: [UsageBlock] = []
+        let byItem = Dictionary(grouping: samples.filter { $0.seconds > 0 }, by: \.itemID)
+        for (item, itemSamples) in byItem {
+            var current: UsageBlock?
+            for sample in itemSamples.sorted(by: { $0.start < $1.start }) {
+                if var block = current, sample.start.timeIntervalSince(block.end) <= blockGap {
+                    block.end = max(block.end, sample.end)
+                    block.seconds += sample.seconds
+                    current = block
+                } else {
+                    if let current { blocks.append(current) }
+                    current = UsageBlock(itemID: item, start: sample.start, end: sample.end, seconds: sample.seconds)
                 }
             }
-            let short = input.shortItems.contains(item)
-            totals[item] = ItemTotal(lowerMinutes: last.minute,
-                                     upperMinutes: last.minute + input.spec.itemRemainder(after: last.minute, short: short),
-                                     openEnded: input.spec.nextItemStep(after: last.minute, short: short) == nil,
-                                     lastCrossingAt: last.at,
-                                     attributedMinutes: attributed)
+            if let current { blocks.append(current) }
         }
-
-        return DayTimeline(inUse: inUse,
-                           runs: runs,
-                           segments: segments,
-                           totals: totals,
-                           totalMinutes: total.points.last?.minute ?? 0,
-                           unexplainedMinutes: labels.filter { $0 == nil }.count,
-                           suspectFires: suspects,
-                           unfulfilledMinutes: unfulfilled,
-                           lastTotalFireAt: total.points.last?.at,
-                           preTrackingMinutes: preTracking,
-                           preTrackingByItem: preTrackingByItem)
+        return blocks.sorted { $0.start < $1.start }
     }
 
     static func inCatchUp(_ date: Date, starts: [Date]) -> Bool {
@@ -251,16 +186,28 @@ public enum Reconstructor {
         var preTracking = 0
         var previous = FirePoint(minute: 0, at: dayStart)
         for point in deliveries {
-            let count = point.minute - previous.minute
-            if count > 1, inCatchUp(point.at, starts: trackingStarts) {
-                preTracking += count
+            var count = point.minute - previous.minute
+            // A registration's catch-up: more minutes than have passed since tracking started. Only the excess is
+            // before tracking; minutes that fit in the elapsed time are real use.
+            if count > 1, let start = trackingStarts.last(where: { $0 <= point.at }), inCatchUp(point.at, starts: [start]) {
+                let elapsed = point.at.timeIntervalSince(max(previous.at, start))
+                let excess = count - Int((elapsed / 60).rounded())
+                if excess > 0 {
+                    preTracking += excess
+                    count -= excess
+                }
+            }
+            guard count > 0 else {
                 previous = point
                 continue
             }
-            let width = min(60, point.at.timeIntervalSince(previous.at) / Double(count))
+            let span = point.at.timeIntervalSince(previous.at)
+            let width = min(60, span / Double(count))
+            // Several minutes per wake is normal (one wake per `RollingLadder.step`); faster than real time isn't.
+            let inferred = Double(count) * 60 > span + tolerance
             for offset in 0..<count {
                 let end = point.at.addingTimeInterval(-Double(offset) * width)
-                minutes.append(InUseMinute(start: end.addingTimeInterval(-width), end: end, inferred: count > 1))
+                minutes.append(InUseMinute(start: end.addingTimeInterval(-width), end: end, inferred: inferred))
             }
             previous = point
         }
@@ -279,99 +226,4 @@ public enum Reconstructor {
         return runs
     }
 
-    // MARK: - Attribution
-
-    /// "Item used `remaining` in-use minutes between `windowStart` and `crossingAt`."
-    struct Demand {
-        var item: UUID
-        var windowStart: Date
-        var crossingAt: Date
-        var remaining: Int
-        var burst: Bool
-    }
-
-    static func makeDemands(item: UUID, series: Series, dayStart: Date) -> [Demand] {
-        var demands: [Demand] = []
-        var previous = FirePoint(minute: 0, at: dayStart)
-        for (index, point) in series.points.enumerated() {
-            let minutes = point.minute - previous.minute
-            if series.bursts.contains(index), var last = demands.popLast() {
-                // Catch-up: fold into the previous window rather than demanding minutes in zero time.
-                last.crossingAt = point.at
-                last.remaining += minutes
-                last.burst = true
-                demands.append(last)
-            } else {
-                demands.append(Demand(item: item, windowStart: previous.at, crossingAt: point.at,
-                                      remaining: minutes, burst: series.bursts.contains(index)))
-            }
-            previous = point
-        }
-        return demands
-    }
-
-    /// Latest minutes first; each goes to the eligible demand whose window starts latest. This places usage as close
-    /// before each crossing as possible: the app was in the foreground at the moment it crossed.
-    /// Returns, per minute, the index of the demand it went to.
-    static func assign(minutes: [InUseMinute], demands: inout [Demand]) -> [Int?] {
-        var owners: [Int?] = Array(repeating: nil, count: minutes.count)
-        let byCrossing = demands.indices.sorted { demands[$0].crossingAt > demands[$1].crossingAt }
-        var next = 0
-        var active: [Int] = []
-        for index in minutes.indices.reversed() {
-            let minute = minutes[index]
-            while next < byCrossing.count, demands[byCrossing[next]].crossingAt - skew > minute.start {
-                active.append(byCrossing[next])
-                next += 1
-            }
-            active.removeAll { demands[$0].remaining == 0 || demands[$0].windowStart >= minute.end - skew }
-            guard let pick = active.max(by: { a, b in
-                let lhs = demands[a], rhs = demands[b]
-                if lhs.windowStart != rhs.windowStart { return lhs.windowStart < rhs.windowStart }
-                return lhs.crossingAt > rhs.crossingAt
-            }) else { continue }
-            demands[pick].remaining -= 1
-            owners[index] = pick
-        }
-        return owners
-    }
-
-    struct Label: Equatable {
-        var owner: SegmentOwner
-        var confidence: Confidence
-    }
-
-    static func label(minute: InUseMinute, demand: Demand, runs: [DateInterval],
-                      crossings: [(at: Date, item: UUID)]) -> Label {
-        let own = Label(owner: .item(demand.item), confidence: .low)
-        if minute.inferred || demand.burst { return own }
-        let run = runs.first { $0.start <= minute.start + skew && minute.end <= $0.end + skew }
-        guard let run, demand.crossingAt >= run.start - skew, demand.crossingAt <= run.end + skew else { return own }
-        let others = Set(crossings
-            .filter { $0.item != demand.item && $0.at > minute.start + skew && $0.at < demand.crossingAt - skew }
-            .map(\.item))
-        if others.isEmpty {
-            return Label(owner: .item(demand.item), confidence: .high)
-        }
-        let ids = (others.union([demand.item])).sorted { $0.uuidString < $1.uuidString }
-        return Label(owner: .mixed(ids), confidence: .mixed)
-    }
-
-    static func makeSegments(minutes: [InUseMinute], labels: [Label?]) -> [Segment] {
-        var segments: [Segment] = []
-        for (minute, label) in zip(minutes, labels) {
-            let owner = label?.owner ?? .unexplained
-            let confidence = label?.confidence ?? .low
-            if var last = segments.last, last.owner == owner, last.confidence == confidence,
-               minute.start.timeIntervalSince(last.end) <= runGap {
-                last.end = max(last.end, minute.end)
-                last.minutes += 1
-                segments[segments.count - 1] = last
-            } else {
-                segments.append(Segment(owner: owner, start: minute.start, end: minute.end, minutes: 1,
-                                        confidence: confidence))
-            }
-        }
-        return segments
-    }
 }

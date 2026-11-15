@@ -48,10 +48,11 @@ final class AppModel {
         isLaunching = true
         defer { isLaunching = false }
         BackgroundRefresh.schedule()
-        migrateToRollingLadders()
+        migrateToWakeAlarm()
         switch config.role {
         case .kid:
             ensureMonitoring()
+            await sampleNow()
             await flush()
             await sendHeartbeat(.launch)
             await refresh()
@@ -69,6 +70,7 @@ final class AppModel {
 
     func backgroundRefresh() async {
         if isKid {
+            await sampleNow()
             await flush()
             await sendHeartbeat(.backgroundRefresh)
         }
@@ -150,33 +152,36 @@ final class AppModel {
         await launched()
     }
 
-    /// Switching identity drops the scan: items and ladders belong to one kid.
+    /// Switching identity stops monitoring and forgets this phone's apps, samples and day state: they belong to one kid.
     func switchKidIdentity(to kid: Kid) async {
         DeviceActivityCenter().stopMonitoring()
         update { config in
             config.kid = kid
-            config.items = []
             config.epoch = nil
             config.rules = []
+        }
+        for url in [AppGroup.itemsURL, AppGroup.snapshotURL, AppGroup.samples.url, AppGroup.newItems.url] {
+            try? FileManager.default.removeItem(at: url)
         }
         MonitorStateStore.save(MonitorDayState(day: DayKey(Date())))
         await publishKidIdentity()
     }
 
-    /// The kid record plus the current scan (items and ladders), which parents need to name and size things.
-    /// Called on joining or creating a family and from "Upload now"; a scan made before joining isn't synced otherwise.
+    /// The kid record, every app seen so far and the monitoring epoch, which parents need to name things and check
+    /// health. Called on joining or creating a family and from "Upload now".
     func publishKidIdentity() async {
         guard isKid, let kid = config.kid, let store else { return }
         let epochs = config.epoch.map { [$0] } ?? []
+        let items = AppGroup.loadItems()
         do {
             try await store.save([kid])
-            try await store.save(config.items)
+            try await store.save(items)
             try await store.save(epochs)
             try await Uploader.resendTrackingStarts(config: config)
         } catch {
             show(error)
         }
-        data.ingest(IngestBatch(kids: [kid], items: config.items, epochs: epochs))
+        data.ingest(IngestBatch(kids: [kid], items: items, epochs: epochs))
     }
 
     private var deviceName: String {

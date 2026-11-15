@@ -130,9 +130,13 @@ final class ReplayRunner {
     func run(trace: Trace, kid: Kid, day: DayKey, speed: ReplaySpeed, destination: Destination, model: AppModel) {
         let moved = Replay.retarget(trace, to: kid, day: day)
         let fires = moved.fires()
-        let alertsByFire = Self.alerts(for: moved, rules: model.data.rules(for: kid.id))
-        let schedule = Replay.schedule(fires, speed: speed, now: Date())
-        total = fires.count
+        let alertsByTime = Self.alerts(for: moved, rules: model.data.rules(for: kid.id))
+        // Fires and samples interleaved by time, as the kid's phone would send them.
+        let events = (fires.map { (at: $0.firedAt, fire: Optional($0), sample: UsageSample?.none) }
+            + moved.samples.map { (at: $0.end, fire: UsageFire?.none, sample: Optional($0)) })
+            .sorted { $0.at < $1.at }
+        let delays = Replay.delays(for: events.map(\.at), speed: speed, now: Date())
+        total = events.count
         sent = 0
         isRunning = true
         status = nil
@@ -143,19 +147,20 @@ final class ReplayRunner {
                 try await send(IngestBatch(kids: [kid], items: moved.items, epochs: moved.epoch.map { [$0] } ?? []),
                                to: destination, model: model)
                 let start = Date()
-                // Batch fires that are due within the same second.
-                let groups = Dictionary(grouping: schedule) { Int($0.delay) }.sorted { $0.key < $1.key }
+                // Batch records that are due within the same second.
+                let groups = Dictionary(grouping: zip(delays, events), by: { Int($0.0) }).sorted { $0.key < $1.key }
                 for (second, group) in groups {
                     let wait = start.addingTimeInterval(Double(second)).timeIntervalSinceNow
                     if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
-                    let batchFires = group.map(\.fire)
-                    let batchAlerts = batchFires.flatMap { alertsByFire[$0.id] ?? [] }
-                    try await send(IngestBatch(fires: batchFires, alerts: batchAlerts), to: destination, model: model)
-                    sent += batchFires.count
+                    let batchFires = group.compactMap(\.1.fire)
+                    let batchAlerts = batchFires.flatMap { alertsByTime[$0.firedAt] ?? [] }
+                    try await send(IngestBatch(fires: batchFires, samples: group.compactMap(\.1.sample), alerts: batchAlerts),
+                                   to: destination, model: model)
+                    sent += group.count
                 }
-                status = "Replayed \(fires.count) fires and \(alertsByFire.values.joined().count) alerts as \(kid.displayName) on \(day)."
+                status = "Replayed \(fires.count) fires, \(moved.samples.count) samples and \(alertsByTime.values.joined().count) alerts as \(kid.displayName) on \(day)."
             } catch is CancellationError {
-                status = "Stopped after \(sent) fires."
+                status = "Stopped after \(sent) records."
             } catch {
                 status = error.localizedDescription
             }
@@ -176,20 +181,32 @@ final class ReplayRunner {
             try await store.save(batch.items)
             try await store.save(batch.epochs)
             try await store.save(batch.fires)
+            try await store.save(batch.samples)
             try await store.save(batch.alerts)
         }
     }
 
-    /// What the kid's extension would have alerted, keyed by the fire that triggered it.
-    private static func alerts(for trace: Trace, rules: [Rule]) -> [UUID: [AlertRecord]] {
+    /// What the kid's extension would have alerted at each wake (a total fire and the samples ending with it).
+    private static func alerts(for trace: Trace, rules: [Rule]) -> [Date: [AlertRecord]] {
         let items = Dictionary(uniqueKeysWithValues: trace.items.map { ($0.id, $0) })
         let engine = RuleEngine(kidID: trace.kid.id, kidName: trace.kid.displayName, items: items)
         var state = MonitorDayState(day: trace.day)
-        var result: [UUID: [AlertRecord]] = [:]
-        for entry in trace.entries where entry.kind == .threshold {
-            guard let parsed = entry.parsedEvent else { continue }
-            let alerts = engine.process(parsed, at: entry.at, state: &state, rules: rules)
-            if !alerts.isEmpty { result[entry.id] = alerts }
+        var cumulative: [UUID: Double] = [:]
+        var seen = Set<UUID>()
+        let samplesByEnd = Dictionary(grouping: trace.samples, by: \.end)
+        var result: [Date: [AlertRecord]] = [:]
+        for entry in trace.entries {
+            guard let parsed = entry.parsedEvent, parsed.itemID == nil else { continue }
+            var interval: [UUID: Double] = [:]
+            for sample in samplesByEnd[entry.at] ?? [] {
+                interval[sample.itemID, default: 0] += sample.seconds
+                cumulative[sample.itemID, default: 0] += sample.seconds
+            }
+            let newItems = interval.keys.filter { seen.insert($0).inserted }
+            let wake = WakeObservation(at: entry.at, totalMinute: parsed.minute, itemSeconds: cumulative,
+                                       intervalSeconds: interval, newItems: Array(newItems))
+            let alerts = engine.process(wake, state: &state, rules: rules)
+            if !alerts.isEmpty { result[entry.at] = alerts }
         }
         return result
     }

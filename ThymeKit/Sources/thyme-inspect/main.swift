@@ -1,74 +1,44 @@
 import Foundation
 import ThymeCore
 
-// Usage: thyme-inspect <journal-YYYY-MM-DD.jsonl | YYYY-MM-DD.json> [config.json]
-// The second form is a parent's synced copy (FamilyData/fires/<kid>/<day>.json, an array of UsageFire).
-// Prints the reconstruction for that day in the Mac's time zone, which should match the phone's.
+// Usage: thyme-inspect <journal-YYYY-MM-DD.jsonl> [samples.jsonl] [items.json]
+// Files as copied off a kid phone (App Group Library/ScreenThyme: Journal/, Outbox/samples.jsonl, items.json).
+// Prints the day in the Mac's time zone, which should match the phone's.
 
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
-    print("usage: thyme-inspect <journal-YYYY-MM-DD.jsonl> [config.json]")
+    print("usage: thyme-inspect <journal-YYYY-MM-DD.jsonl> [samples.jsonl] [items.json]")
     exit(1)
 }
 let journalURL = URL(filePath: arguments[1])
-let isSynced = journalURL.pathExtension == "json"
-let syncedFires = isSynced ? (try? JSONDecoder.thyme.decode([UsageFire].self, from: Data(contentsOf: journalURL))) ?? [] : []
-let entries = isSynced ? [] : JSONLinesFile<JournalEntry>(url: journalURL).readAll()
 let dayString = journalURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "journal-", with: "")
 guard let day = DayKey(string: dayString) else {
     print("can't read the day from \(journalURL.lastPathComponent)")
     exit(1)
 }
-
-struct ConfigItems: Decodable {
-    struct Item: Decodable {
-        var id: UUID
-        var kind: String
-        var ordinal: Int
-        var nickname: String?
-    }
-
-    var items: [Item]
-}
-
-let kinds: [UUID: String] = {
-    guard arguments.count >= 3, let data = try? Data(contentsOf: URL(filePath: arguments[2])),
-          let config = try? JSONDecoder.thyme.decode(ConfigItems.self, from: data) else { return [:] }
-    return Dictionary(config.items.map { ($0.id, $0.kind) }, uniquingKeysWith: { a, _ in a })
+let entries = JSONLinesFile<JournalEntry>(url: journalURL).readAll()
+let samples = arguments.count >= 3
+    ? JSONLinesFile<UsageSample>(url: URL(filePath: arguments[2])).readAll().filter { $0.day == day } : []
+let items: [UUID: TrackedItem] = {
+    guard arguments.count >= 4, let data = try? Data(contentsOf: URL(filePath: arguments[3])),
+          let list = try? JSONDecoder.thyme.decode([TrackedItem].self, from: data) else { return [:] }
+    return Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 }()
 
-let names: [UUID: String] = {
-    guard arguments.count >= 3, let data = try? Data(contentsOf: URL(filePath: arguments[2])),
-          let config = try? JSONDecoder.thyme.decode(ConfigItems.self, from: data) else { return [:] }
-    return Dictionary(config.items.map { ($0.id, $0.nickname ?? "\($0.kind) #\($0.ordinal)") }, uniquingKeysWith: { a, _ in a })
-}()
-
-@MainActor func name(_ id: UUID) -> String { names[id] ?? String(id.uuidString.prefix(8)) }
+@MainActor func name(_ id: UUID) -> String { items[id]?.displayName ?? String(id.uuidString.prefix(8)) }
 func clock(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
 
-let shortItems = Set(kinds.filter { $0.value == "domain" }.keys)
-let totalsOnly = Set(kinds.filter { $0.value != "app" }.keys)
-let input = isSynced
-    ? DayInput(fires: syncedFires, dayStart: day.start(), shortItems: shortItems, totalsOnlyItems: totalsOnly)
-    : DayInput(entries: entries, dayStart: day.start(), shortItems: shortItems, totalsOnlyItems: totalsOnly)
+let input = DayInput(entries: entries, samples: samples, dayStart: day.start())
 let timeline = Reconstructor.build(input)
-let thresholds = entries.filter { $0.kind == .threshold }
 
-print(isSynced ? "Synced copy: \(syncedFires.count) fires" : "Journal: \(entries.count) entries")
-print("Day \(day): \(thresholds.count) journal thresholds (\(input.total.count) total, \(input.items.values.reduce(0) { $0 + $1.count }) item)")
-print("Before tracking \(timeline.preTrackingMinutes) min (by item: \(timeline.preTrackingByItem.values.reduce(0, +)))")
-print("Total \(timeline.totalMinutes) min · unexplained \(timeline.unexplainedMinutes) · suspect \(timeline.suspectFires) · unfulfilled \(timeline.unfulfilledMinutes)")
+print("Day \(day): \(input.total.count) total fires, \(samples.count) samples, \(items.count) known items")
+print("Total-ladder \(timeline.totalMinutes) min (\(timeline.preTrackingMinutes) before tracking) · Apple apps \(timeline.appMinutes) min · suspect \(timeline.suspectFires)")
 print("Runs: " + timeline.runs.map { "\(clock($0.start))–\(clock($0.end))" }.joined(separator: ", "))
-print("\nTotals:")
-for (id, total) in timeline.totals.sorted(by: { $0.value.lowerMinutes > $1.value.lowerMinutes }) {
-    print("  \(name(id).padding(toLength: 14, withPad: " ", startingAt: 0)) \(total.lowerMinutes)–\(total.upperMinutes) min, attributed \(total.attributedMinutes), last crossing \(clock(total.lastCrossingAt))")
+print("\nApps:")
+for (id, usage) in timeline.items.sorted(by: { $0.value.seconds > $1.value.seconds }) {
+    print("  \(name(id).padding(toLength: 22, withPad: " ", startingAt: 0)) \(usage.minutes) min  \(clock(usage.firstAt))–\(clock(usage.lastAt))")
 }
-print("\nSegments:")
-for segment in timeline.segments {
-    let owner = switch segment.owner {
-    case let .item(id): name(id)
-    case let .mixed(ids): "mixed(" + ids.map(name).joined(separator: ", ") + ")"
-    case .unexplained: "unexplained"
-    }
-    print("  \(clock(segment.start))–\(clock(segment.end))  \(String(segment.minutes).padding(toLength: 4, withPad: " ", startingAt: 0)) \(segment.confidence)  \(owner)")
+print("\nBlocks:")
+for block in timeline.blocks {
+    print("  \(clock(block.start))–\(clock(block.end))  \(Int(block.seconds)) s  \(String(format: "%.0f%%", block.intensity * 100))  \(name(block.itemID))")
 }

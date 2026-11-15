@@ -58,10 +58,7 @@ struct KidCard: View {
         let items = model.data.items(for: kid.id)
         let live = LiveStatus.compute(timeline, input: input, now: Date())
         let issues = model.healthIssues(for: kid)
-        let top = timeline.totals
-            .filter { items[$0.key]?.kind != .category }
-            .sorted { $0.value.lowerMinutes > $1.value.lowerMinutes }
-            .prefix(3)
+        let top = timeline.items.filter { items[$0.key]?.kind != .domain }.sorted { $0.value.seconds > $1.value.seconds }.prefix(3)
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Circle().fill(kid.color).frame(width: 10, height: 10)
@@ -76,7 +73,7 @@ struct KidCard: View {
                     Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(.green)
                     Text("In use")
                     if let item = live.probableItem {
-                        Text("· probably")
+                        Text("·")
                         ItemName(item: items[item], showIcon: false)
                     }
                 } else if let last = live.lastActiveAt ?? model.data.lastFireAt[kid.id] {
@@ -86,18 +83,23 @@ struct KidCard: View {
                 }
             }
             .font(.subheadline)
-            Text("Today: \(Format.minutes(timeline.totalMinutes))").font(.subheadline.monospacedDigit())
-            ForEach(Array(top), id: \.key) { id, total in
+            Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items))))").font(.subheadline.monospacedDigit())
+            ForEach(Array(top), id: \.key) { id, usage in
                 HStack {
                     ItemName(item: items[id])
                     Spacer()
-                    Text(Format.range(total)).monospacedDigit().foregroundStyle(.secondary)
+                    Text(Format.minutes(usage.minutes)).monospacedDigit().foregroundStyle(.secondary)
                 }
                 .font(.caption)
             }
         }
         .padding(.vertical, 4)
     }
+}
+
+/// Apple's total over apps only: websites also count as Safari's time.
+func appTotal(_ timeline: DayTimeline, _ items: [UUID: TrackedItem]) -> Int {
+    Int((timeline.items.filter { items[$0.key]?.kind != .domain }.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
 }
 
 struct KidDayView: View {
@@ -108,6 +110,7 @@ struct KidDayView: View {
     var body: some View {
         let (_, timeline) = model.timeline(kid: kid.id, day: day)
         let items = model.data.items(for: kid.id)
+        let used = timeline.items.sorted { $0.value.seconds > $1.value.seconds }
         List {
             Section {
                 HStack {
@@ -119,29 +122,24 @@ struct KidDayView: View {
                         .disabled(day >= DayKey(Date()))
                 }
                 .buttonStyle(.borderless)
+                LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items)))
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
-                LabeledContent("Not explained by tracked apps", value: Format.minutes(timeline.unexplainedMinutes))
-                if timeline.preTrackingMinutes > 0 {
-                    LabeledContent("Before tracking started (times unknown)",
-                                   value: Format.minutes(timeline.preTrackingMinutes))
-                }
             }
             Section {
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start(), tint: kid.color)
             } footer: {
-                Text("Solid: confident. Faded: inferred (catch-up bursts, or the minutes after an app's last 5-minute mark). Purple: several apps in quick succession. Tap a bar for times.")
+                Text("Each block is Apple's count for that app between two of the phone's check-ins (every 2 minutes of use). Fainter means the app was in use for only part of that time. Tap a block for times.")
             }
             Section("Apps") {
-                ForEach(timeline.totals.filter { items[$0.key]?.kind != .category }
-                    .sorted { $0.value.lowerMinutes > $1.value.lowerMinutes }, id: \.key) { id, total in
-                    LabeledContent { Text(Format.range(total)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                ForEach(used.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, usage in
+                    LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
                 }
             }
-            let categories = timeline.totals.filter { items[$0.key]?.kind == .category }
-            if !categories.isEmpty {
-                Section("Categories") {
-                    ForEach(categories.sorted { $0.value.lowerMinutes > $1.value.lowerMinutes }, id: \.key) { id, total in
-                        LabeledContent { Text(Format.range(total)).monospacedDigit() } label: { ItemName(item: items[id]) }
+            let sites = used.filter { items[$0.key]?.kind == .domain }
+            if !sites.isEmpty {
+                Section("Websites") {
+                    ForEach(sites, id: \.key) { id, usage in
+                        LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
                     }
                 }
             }

@@ -62,7 +62,7 @@ struct TestModeView: View {
             } header: {
                 Text("Kid identity")
             } footer: {
-                Text("Switching identity stops monitoring and clears the scan; re-scan afterwards.")
+                Text("Switching identity stops monitoring and forgets this phone's apps and samples; start monitoring again afterwards.")
             }
 
             Section {
