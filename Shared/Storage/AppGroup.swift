@@ -158,6 +158,8 @@ struct SharedConfig: Codable, Sendable {
     var authMode: AuthMode = .child
     var testMode = false
     var family: FamilyLocation?
+    /// What this parent's kids call them ("Dad"), shown on the kid's phone with their answers and pings.
+    var parentName: String?
     var epoch: LadderEpoch?
     /// Superseded by `AppGroup.loadRules()`; read only until a phone has written rules.json.
     var rules: [Rule] = []
