@@ -93,6 +93,10 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   count of today's use lower: `LadderCalibration` finds the offset, and journaled fires are in our minutes.
 - Apple's Screen Time settings for the kid (even re-sent unchanged from a parent's device) can reset ScreenThyme to
   "not determined": extension fetches fail `unauthorized`, and the extension alerts parents (PLAN.md §16).
+- **Apple's family Always Allowed list outlives App & Website Activity.** It stays installed on the kid's phone after
+  our data-access grant turns Apple's activity off, nothing in Settings shows it, and its apps pass every shield,
+  ours included. Empty it (and delete Apple's App Limits and Downtime) before granting data access (PLAN.md §16).
+  In device logs, `dmd` gives each app's verdict: "has policy OK", "Shielded" or "is unblockable".
 - Silent pushes are rationed: don't depend on one reaching the kid app. Rules reach the extension through the
   `RuleSet.<kid id>` and `Policy.<kid id>` records, fetched at every wake (`KidSync`, App Group `rules.json` and `policy.json`); parents must publish it after every rule change.
 - **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.

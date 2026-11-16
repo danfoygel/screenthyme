@@ -644,6 +644,24 @@ for hours, so nothing fetched the policy. The device logs (`log collect`) showed
 - `UsageTrackingAgent` logs "`t.<n>/<activity>/<team>.<bundle id>` has N seconds remaining" for each threshold:
   the quickest way to see where iOS's count is.
 
+### Apple's Always Allowed outlives App & Website Activity (Nov 15, 2026, evening)
+
+During Downtime about 30 apps (location sharing, banking, maps, calendar, utilities…) opened normally, though our
+`downtime` store was `.all(except:)` only the 5 Always Allowed apps and ScreenThyme. The device logs:
+- `dmd` logs each app's combined verdict when a shield store changes: *Requested application `<bundle id>` has policy
+  OK* or *Shielded* (with its category, `DH10xx`), or *is unblockable* (Phone, Settings, Compass and a few system
+  services). The OK apps were the kid's Apple Always Allowed list, restored by a parent in §15, plus Apple's defaults
+  (Messages, FaceTime, Find My, Safari, Clock, Wallet).
+- **The family's Screen Time blueprints stay installed after a data-access grant turns App & Website Activity off**:
+  `always_allow_activation_family_…` (enabled), the bedtime downtime and the usage limits. `ScreenTimeAgent` applies
+  the allowed apps through its own store (container `com.apple.ScreenTime`, `AllowedAppsStore`), and an app it allows
+  passes every shield, ours included. With App & Website Activity off, Settings has no Always Allowed list to show
+  or edit, and nothing in our App Group shows it either.
+- **Fix:** on a parent's phone, turn the kid's App & Website Activity back on, empty Always Allowed (Phone stays),
+  delete the App Limits and turn Downtime off. That resets ScreenThyme to "not determined" (as above); on the kid's
+  phone, "Allow Screen Time access", then usage data access (which turns App & Website Activity off again), then
+  restart. Afterwards every app but ours to allow and the unblockable ones showed the Downtime hourglass.
+
 ## 17. Nearby link: family phones talk directly, without the internet (Nov 15, 2026)
 
 CloudKit needs the internet on both phones. In a car, on a plane or camping, the kid's phone keeps capturing and
