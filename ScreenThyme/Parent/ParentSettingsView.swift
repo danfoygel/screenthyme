@@ -36,6 +36,7 @@ struct ParentSettingsView: View {
                     TextField("Your name", text: Binding(get: { model.config.parentName ?? "" },
                                                          set: { name in model.update { $0.parentName = name } }))
                         .textContentType(.givenName)
+                        .submitLabel(.done)
                 } header: {
                     Text("You")
                 } footer: {
@@ -52,6 +53,7 @@ struct ParentSettingsView: View {
                 }
                 TestModeSection()
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
             .sheet(item: Binding(get: { share.map(IdentifiedShare.init) }, set: { share = $0?.share })) { item in
                 CloudSharingView(share: item.share)
