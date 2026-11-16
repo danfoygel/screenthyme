@@ -1,4 +1,4 @@
-/// Names of Apple's built-in apps, which the App Store lookup doesn't know.
+/// Names of Apple's built-in apps as the phone shows them (the App Store says "Apple Music", and lacks Settings and App Store).
 public enum BuiltInApps {
     public static let names: [String: String] = [
         "com.apple.AppStore": "App Store",

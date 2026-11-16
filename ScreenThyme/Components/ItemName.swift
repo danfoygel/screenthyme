@@ -3,8 +3,8 @@ import ManagedSettings
 import SwiftUI
 import ThymeCore
 
-/// An app's or website's name: a nickname if set, else Apple's label for its token (icon and name), else the App
-/// Store's name and icon, else a readable form of the bundle ID or domain.
+/// An app's or website's name: Apple's label for its token (icon and name), else a nickname, the App Store's name or a
+/// readable form of the bundle ID or domain, with the icon `AppCatalog` found (on parents' phones).
 struct ItemName: View {
     let item: TrackedItem?
     var showIcon = true
@@ -13,24 +13,43 @@ struct ItemName: View {
         if let item {
             if item.nickname == nil, let label = tokenLabel(item) {
                 label
-            } else if item.nickname == nil, let name = AppCatalog.shared.entries[item.identifier]?.name {
-                // From the App Store lookup, on parents' phones.
+            } else {
+                let name = item.nickname ?? AppCatalog.shared.entries[item.identifier]?.name ?? item.displayName
                 if showIcon, let icon = AppCatalog.shared.icon(for: item) {
                     Label {
                         Text(name)
                     } icon: {
-                        AsyncImage(url: icon) { $0.resizable() } placeholder: { Color.secondary.opacity(0.2) }
-                            .frame(width: 22, height: 22)
-                            .clipShape(.rect(cornerRadius: 5))
+                        iconView(icon)
                     }
                 } else {
                     Text(name)
                 }
-            } else {
-                Text(item.displayName)
             }
         } else {
             Text("Unknown app").foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func iconView(_ icon: AppCatalog.Icon) -> some View {
+        switch icon {
+        case let .remote(url):
+            AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { Color.secondary.opacity(0.2) }
+                .frame(width: 22, height: 22)
+                .clipShape(.rect(cornerRadius: 5))
+        case let .image(image):
+            Image(uiImage: image).resizable().scaledToFit()
+                .frame(width: 22, height: 22)
+                .clipShape(.rect(cornerRadius: 5))
+        case let .token(token):
+            Label(token).labelStyle(.iconOnly)
+        case let .symbol(name):
+            Image(systemName: name)
+                .font(.system(size: 15))
+                .foregroundStyle(Color(white: 0.35))
+                .frame(width: 22, height: 22)
+                .background(LinearGradient(colors: [Color(white: 0.9), Color(white: 0.7)], startPoint: .top, endPoint: .bottom),
+                            in: .rect(cornerRadius: 5))
         }
     }
 
