@@ -71,8 +71,8 @@ struct KidHomeView: View {
                                           selection: $scan.all)
                     .familyActivityPicker(headerText: "Select ScreenThyme only", isPresented: $pickingSelf,
                                           selection: $scan.screenThyme)
-                    .onChange(of: pickingAll) { if !pickingAll { AppScan.save(scan, kid: kid) } }
-                    .onChange(of: pickingSelf) { if !pickingSelf { AppScan.save(scan, kid: kid) } }
+                    .onChange(of: pickingAll) { if !pickingAll { save(kid) } }
+                    .onChange(of: pickingSelf) { if !pickingSelf { save(kid) } }
                 }
                 if model.config.family == nil {
                     Section("Join the family") {
@@ -99,6 +99,15 @@ struct KidHomeView: View {
                 await model.flush()
                 await model.refresh()
             }
+        }
+    }
+
+    /// A fresh sample first: token matching counts use from the numbers at registration.
+    private func save(_ kid: Kid) {
+        let scan = scan
+        Task {
+            await model.sampleNow()
+            AppScan.save(scan, kid: kid)
         }
     }
 

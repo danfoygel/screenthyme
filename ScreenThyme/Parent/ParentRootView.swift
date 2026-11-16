@@ -14,6 +14,7 @@ struct ParentRootView: View {
         .task {
             while !Task.isCancelled {
                 await model.refresh()
+                await AppCatalog.shared.lookUp(model.data.kids.keys.flatMap { model.data.items(for: $0).values })
                 try? await Task.sleep(for: .seconds(30))
             }
         }

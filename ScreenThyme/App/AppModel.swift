@@ -66,7 +66,10 @@ final class AppModel {
         case .kid:
             ensureMonitoring()
             await sampleNow()
-            await Enforcer.offMain { Enforcer.reconcile() }
+            await Enforcer.offMain {
+                Enforcer.reconcile()
+                TokenMatcher.ensureRegistered()
+            }
             await flush()
             await sendHeartbeat(.launch)
             await refresh()
