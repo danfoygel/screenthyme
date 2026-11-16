@@ -71,6 +71,12 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
+        if name == Enforcer.extraMinuteActivity {
+            // Called back at once when the shield action extension registers it, while that extension waits.
+            // Re-applying here wrote ManagedSettings until iOS killed the extension (31 s; PLAN.md §15.5).
+            try? AppGroup.journal.append(.note("interval start: \(name)"))
+            return
+        }
         if Enforcer.owns(name) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {

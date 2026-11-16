@@ -87,7 +87,10 @@ enum Enforcer {
             state.extraMinutes.append(ExtraMinute(itemID: itemID, reason: reason, at: now))
             taken = true
         }
-        try? AppGroup.journal.append(.note(taken ? "one more minute: \(reason)" : "one more minute already used: \(reason)"))
+        // The block page waits for this: it should take well under a second.
+        let took = Int(Date().timeIntervalSince(now) * 1000)
+        try? AppGroup.journal.append(.note(taken ? "one more minute: \(reason), applied in \(took) ms"
+                                                 : "one more minute already used: \(reason)"))
         return taken
     }
 

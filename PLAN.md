@@ -598,9 +598,14 @@ day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iO
   interval whose end warning falls at the first whole minute after the minute ends (60–120 s after the press). The
   monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
   reshields it.
-- No alert to parents; the journal notes each one.
-- **Not yet tried on a phone:** whether the submenu sends only the submenu actions, and whether `.defer` opens the app
-  once the stores stop shielding it.
+- No alert to parents; the journal notes each one, with how long the shield action took.
+- **First try on the kid's phone (Nov 15, 2026):** the submenu works (a submenu action arrives, not
+  `secondaryButtonPressed`). The minute was recorded and `om.end`'s warning reshielded on time (2 s after the whole
+  minute). But the press hung for 31 s: registering `om.end` calls the monitor's `intervalDidStart` at once, while the
+  shield action extension waits inside `startMonitoring`. The monitor re-applied the plan and its ManagedSettings
+  write blocked until iOS killed the monitor (`0xdeadfa11`). Only then did the shield action answer. The monitor now
+  only journals `om.end`'s start.
+- **Not yet confirmed:** that `.defer` opens the app once the stores stop shielding it.
 
 ## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
 
