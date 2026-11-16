@@ -21,8 +21,9 @@ struct ShieldContext {
     func target(app: Application, category: ActivityCategory? = nil) -> Target {
         let item = items.first { candidate in
             guard candidate.kind == .app else { return false }
-            if let bundle = app.bundleIdentifier { return candidate.identifier == bundle }
-            return app.token != nil && TokenCoding.application(candidate.tokenData) == app.token
+            // Scanned items have only a token; Apple's data items only a bundle ID.
+            if let token = app.token, TokenCoding.application(candidate.tokenData) == token { return true }
+            return app.bundleIdentifier.map { candidate.identifier == $0 } ?? false
         }
         return Target(item: item, category: categoryItem(category, name: item?.category),
                       name: app.localizedDisplayName ?? item?.displayName ?? "This app")
@@ -31,8 +32,8 @@ struct ShieldContext {
     func target(domain: WebDomain, category: ActivityCategory? = nil) -> Target {
         let item = items.first { candidate in
             guard candidate.kind == .domain else { return false }
-            if let name = domain.domain { return candidate.identifier == name }
-            return domain.token != nil && TokenCoding.webDomain(candidate.tokenData) == domain.token
+            if let token = domain.token, TokenCoding.webDomain(candidate.tokenData) == token { return true }
+            return domain.domain.map { candidate.identifier == $0 } ?? false
         }
         return Target(item: item, category: categoryItem(category, name: item?.category),
                       name: domain.domain ?? item?.displayName ?? "This website")
@@ -40,6 +41,12 @@ struct ShieldContext {
 
     func target(appToken: ApplicationToken) -> Target {
         target(app: Application(token: appToken))
+    }
+
+    /// A press on a category shield (Downtime, category limits) names only the category.
+    func target(categoryToken: ActivityCategoryToken) -> Target {
+        let category = items.first { $0.kind == .category && TokenCoding.category($0.tokenData) == categoryToken }
+        return Target(item: nil, category: category, name: category?.displayName ?? "These apps")
     }
 
     func target(domainToken: WebDomainToken) -> Target {
@@ -79,7 +86,7 @@ struct ShieldContext {
 
     func subtitle(for target: Target, reason: BlockReason?) -> String {
         if let request = pendingRequest(for: target) {
-            return "You asked for \(Self.describe(minutes: request.minutes)). Open ScreenThyme to see your parent's answer."
+            return "You asked for \(Self.describe(minutes: request.minutes)). Tap Ask for more time to see the answer."
         }
         if let answer = lastAnswer(for: target), !answer.approved {
             return "Your parent said no to more time for \(target.name) today."
@@ -101,35 +108,86 @@ struct ShieldContext {
 
     // MARK: - Requests
 
+    /// What a request for `target` asks for: Downtime off for that app (or the whole phone, with no app), more time on
+    /// a limit, or an exception for a blocked app or category. Nil: nothing to ask for.
+    func requestScope(for target: Target) -> (itemID: UUID?, reason: BlockReason)? {
+        switch reason(for: target) {
+        case let .downtime(id)?: (target.item?.id, .downtime(id))
+        case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
+        case .blocked?: (target.item?.id ?? target.category?.id).map { ($0, .blocked) }
+        case nil: nil
+        }
+    }
+
+    /// Today's unanswered request this page's request would repeat.
     func pendingRequest(for target: Target) -> TimeRequest? {
+        guard let scope = requestScope(for: target) else { return nil }
         let answered = Set(state?.grants.map(\.grant.requestID) ?? [])
         let today = DayKey(Date())
         return AppGroup.requests.readAll().last { request in
-            DayKey(request.at) == today && !answered.contains(request.id) && request.itemID == target.item?.id
+            DayKey(request.at) == today && !answered.contains(request.id) && request.reason == scope.reason
+                && (scope.itemID == nil || request.itemID == scope.itemID)
         }
     }
 
     func lastAnswer(for target: Target) -> TimeGrant? {
-        guard let item = target.item?.id else { return nil }
-        return state?.grants.last { $0.grant.itemID == item }?.grant
+        guard let scope = requestScope(for: target) else { return nil }
+        return state?.grants.last { $0.grant.reason == scope.reason && $0.grant.itemID == scope.itemID }?.grant
     }
 
-    /// Queues a request for more time and an alert for the parents (uploaded by the app or the next wake).
-    func request(_ target: Target, minutes: Int?) -> TimeRequest? {
-        guard let kid = config.kid else { return nil }
-        let reason = reason(for: target) ?? .blocked
-        let request = TimeRequest(kidID: kid.id, itemID: target.item?.id, reason: reason, minutes: minutes, at: Date())
-        let why = switch reason {
-        case .downtime: "during Downtime"
-        case let .limit(id): "over the \(applied?.limitNames[id] ?? "time") limit"
-        case .blocked: "though it's not allowed"
+    /// Queues a request for more time and an alert for the parents, for the app to upload.
+    func request(_ target: Target, minutes: Int?, note: String? = nil) -> TimeRequest? {
+        guard let kid = config.kid, let scope = requestScope(for: target) else { return nil }
+        let request = TimeRequest(kidID: kid.id, itemID: scope.itemID, reason: scope.reason, minutes: minutes, at: Date(),
+                                  note: note)
+        let amount = Self.describe(minutes: minutes).capitalizedFirst
+        var body = switch scope.reason {
+        case .downtime: scope.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) during Downtime."
+        case let .limit(id): "\(amount) on the \(applied?.limitNames[id] ?? "time") limit."
+        case .blocked: "\(amount), though it isn't allowed."
         }
-        let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: target.item?.id, at: request.at,
-                                title: "\(kid.displayName) asks for more time",
-                                body: "\(Self.describe(minutes: minutes).capitalizedFirst) of \(target.name), \(why).")
-        try? AppGroup.requests.append(contentsOf: [request])
-        try? AppGroup.outbox.append(contentsOf: [alert])
+        if let note { body += " \u{201C}\(note)\u{201D}" }
+        let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: scope.itemID, at: request.at,
+                                title: "\(kid.displayName) asks for more time", body: body)
+        do {
+            try AppGroup.requests.append(contentsOf: [request])
+            try AppGroup.outbox.append(contentsOf: [alert])
+            try? AppGroup.journal.append(.note("asked for more time: \(body)"))
+        } catch {
+            try? AppGroup.journal.append(.note("request failed: \(error)"))
+        }
         return request
+    }
+
+    /// The block page's "Ask for more time": what was blocked, written by the button's extension for ScreenThyme,
+    /// which it opens next (the configuration extension can't write the App Group).
+    struct Ask: Codable {
+        var itemID: UUID?
+        var categoryID: UUID?
+        var at: Date
+
+        static var url: URL { AppGroup.container.appending(path: "ask.json") }
+
+        func save() {
+            AppGroup.save(self, to: Self.url)
+        }
+
+        /// The ask from the last minute, once.
+        static func take(now: Date = Date()) -> Ask? {
+            defer { try? FileManager.default.removeItem(at: url) }
+            guard let ask = AppGroup.load(Ask.self, from: url), now.timeIntervalSince(ask.at) < 60 else { return nil }
+            return ask
+        }
+    }
+
+    func target(_ ask: Ask) -> Target {
+        let item = items.first { $0.id == ask.itemID }
+        let category = items.first { $0.id == ask.categoryID }
+        return Target(item: item, category: category, name: (item ?? category)?.displayName ?? "This app")
+    }
+
+    func target(item: TrackedItem) -> Target {
+        Target(item: item, category: categoryItem(nil, name: item.category), name: item.displayName)
     }
 
     static let requestChoices: [Int?] = [15, 60, nil]

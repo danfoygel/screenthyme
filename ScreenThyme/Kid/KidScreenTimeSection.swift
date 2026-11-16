@@ -8,6 +8,7 @@ struct KidScreenTimeSection: View {
     @State private var applied = Enforcer.loadApplied()
     @State private var requests = KidSync.openRequests()
     @State private var answers: [AppliedGrant] = Enforcer.loadState().grants
+    @State private var asking = false
 
     var body: some View {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -27,6 +28,9 @@ struct KidScreenTimeSection: View {
             } else {
                 Text("No limits on this phone.").foregroundStyle(.secondary)
             }
+            if let plan = applied?.plan, plan.downtime != nil || !plan.exhaustedLimits.isEmpty || !plan.blockedItems.isEmpty {
+                Button("Ask for more time") { asking = true }
+            }
             ForEach(requests) { request in
                 Label("Asked for \(ShieldContext.describe(minutes: request.minutes)) of \(request.itemID.flatMap { items[$0]?.displayName } ?? "an app") · waiting",
                       systemImage: "hourglass")
@@ -42,6 +46,7 @@ struct KidScreenTimeSection: View {
                 }
             }
         }
+        .sheet(isPresented: $asking, onDismiss: reload) { AskForTimeView() }
         .task(id: requests.map(\.id)) {
             reload()
             while !requests.isEmpty, !Task.isCancelled {

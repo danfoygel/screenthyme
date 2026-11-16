@@ -207,14 +207,19 @@ struct ItemSelectionView: View {
     let title: String
     let items: [UUID: TrackedItem]
     @Binding var selection: Set<UUID>
-    @State private var search = ""
 
     var body: some View {
         List {
+            // Only items with a token can be shielded: those from the app scan on the kid's phone (PLAN.md §15.3).
+            // Their names exist only in `Label`s, so there's no search and no sorting by name.
+            if !items.values.contains(where: { $0.tokenData != nil }) {
+                Text("On the kid's phone, open ScreenThyme and choose categories and apps under Apps for Screen Time.")
+                    .foregroundStyle(.secondary)
+            }
             ForEach([ItemKind.category, .app, .domain], id: \.self) { kind in
                 let group = items.values
-                    .filter { $0.kind == kind && (search.isEmpty || $0.displayName.localizedCaseInsensitiveContains(search)) }
-                    .sorted { $0.displayName.lowercased() < $1.displayName.lowercased() }
+                    .filter { $0.kind == kind && $0.tokenData != nil }
+                    .sorted { $0.identifier < $1.identifier }
                 if !group.isEmpty {
                     Section(kind.pluralTitle) {
                         ForEach(group) { item in
@@ -233,7 +238,6 @@ struct ItemSelectionView: View {
                 }
             }
         }
-        .searchable(text: $search)
         .navigationTitle(title)
     }
 }

@@ -18,18 +18,20 @@ Shared/              compiled into the app AND the monitor extension: App Group 
 ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Kid/, Parent/, Components/, Debug/
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
 ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only
+ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
+ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme
 ```
 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
 - Logic belongs in ThymeKit with Swift Testing tests; the app targets are thin.
 - The monitor extension reads `SharedConfig` (App Group `config.json`) on every fire and never writes it; the app owns it.
-  Rules live in `rules.json`, which both write (`RuleSync.save`, under a lock).
+  Rules live in `rules.json`, which both write (`KidSync.saveRules`, under a lock).
 
 ## Identifiers
 
 | | |
 |---|---|
-| App / extensions | `com.danfoygel.screenthyme`, `.monitor`, `.report` |
+| App / extensions | `com.danfoygel.screenthyme`, `.monitor`, `.report`, `.shield`, `.shieldaction` |
 | App Group | `group.com.danfoygel.screenthyme` |
 | iCloud container | `iCloud.com.danfoygel.screenthyme` (CloudKit; zone `Family`) |
 | Signing team | `ZVU48K8YCD`, automatic signing, development builds only (no Family Controls distribution entitlement) |
@@ -81,13 +83,17 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - `AuthorizationCenter.shared.authorizationStatus` is unreliable in the extension: don't gate on it there.
 - Any new authorization grant stops all monitoring; `requestAuthorization` re-registers.
 - Silent pushes are rationed: don't depend on one reaching the kid app. Rules reach the extension through the
-  `RuleSet.<kid id>` record (`RuleSync`, App Group `rules.json`); parents must publish it after every rule change.
+  `RuleSet.<kid id>` and `Policy.<kid id>` records, fetched at every wake (`KidSync`, App Group `rules.json` and `policy.json`); parents must publish it after every rule change.
 - **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.
 - Every registration replays today's already-passed thresholds (counted from midnight), in random order, sometimes ~2/s.
   A first registration late in the day becomes a chain of rolls for a few minutes, each journalled as an
   `intervalEnd`/`intervalStart` pair. The reconstruction treats the replays as one burst; avoid needless
   re-registration (`ensureMonitoring` is throttled).
 - After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
+- **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses the app scan's items
+  (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing.
+- A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
+  `AskForTimeView` (PLAN.md §15.4).
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).

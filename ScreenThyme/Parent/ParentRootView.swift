@@ -205,6 +205,9 @@ struct RequestRow: View {
                 Text(Format.relative(request.at)).font(.caption).foregroundStyle(.secondary)
             }
             Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason).")
+            if let note = request.note {
+                Text("\u{201C}\(note)\u{201D}").italic()
+            }
             HStack {
                 Button("Approve") { answer(true, request.minutes) }
                     .buttonStyle(.borderedProminent)
@@ -224,7 +227,9 @@ struct RequestRow: View {
     private var reason: String {
         let policy = model.data.policy(for: request.kidID)
         switch request.reason {
-        case let .downtime(id): return "during \(policy.downtime.first { $0.id == id }?.name ?? "Downtime")"
+        case let .downtime(id):
+            let name = policy.downtime.first { $0.id == id }?.name ?? "Downtime"
+            return request.itemID == nil ? "during \(name), for the whole phone" : "during \(name)"
         case let .limit(id): return "over the \(policy.limits.first { $0.id == id }?.name ?? "time") limit"
         case .blocked: return "for a blocked app"
         }

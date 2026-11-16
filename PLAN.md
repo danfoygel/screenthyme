@@ -482,7 +482,7 @@ Test rules were seeded from the parent phone with `-addTestRules <kid name>` (se
 | Step | Result |
 |---|---|
 | Live capture | ✅ one wake every 2 min of use, each with per-app samples (e.g. 120 s of one app per wake), once the extension stopped gating on `authorizationStatus` (it never reads `approvedWithDataAccess` there) |
-| Rules → kid phone | ⚠️ the silent push to the kid app delivered new rules within ~2 min once, then not at all for a deletion (iOS rations silent pushes, and the kid gets one for every change in the zone). Fix: parents also save the kid's whole list as `RuleSet.<kid id>`; the monitor extension fetches it by name at most every 10 min of use (`RuleSync`), into App Group `rules.json`. |
+| Rules → kid phone | ⚠️ the silent push to the kid app delivered new rules within ~2 min once, then not at all for a deletion (iOS rations silent pushes, and the kid gets one for every change in the zone). Fix: parents also save the kid's whole list as `RuleSet.<kid id>`; the monitor extension fetches it by name at every wake (`KidSync`), into App Group `rules.json`. |
 | Quiet hours | ✅ "phone in use" at the first wake in the window; "still on the phone" 30+ min later at the next wake |
 | Daily total | ✅ fired one minute past the limit |
 | Alert → parent | ✅ uploaded at the same wake; in the parent's Alerts tab within about a minute |
@@ -498,8 +498,8 @@ also cleared all of our DeviceActivity schedules. Watch whether they reset again
 
 Apple's Screen Time and an app with data access can't share a phone. Only one "app or service" holds usage data
 (`approvedWithDataAccess` docs; the consent sheet says Screen Time "will lose access"). Granting ScreenThyme data access
-reset the kid's Downtime, App Limits and Always Allowed at 11:19. Restoring them at ~12:31 took the data back
-(ScreenThyme's fetches failed with `unauthorized` from 12:33). We keep exact data and rebuild the limits.
+reset the kid's Downtime, App Limits and Always Allowed. Restoring them about an hour later took the data back
+(ScreenThyme's fetches failed with `unauthorized` two minutes after). We keep exact data and rebuild the limits.
 Communication Limits are out of scope (no API).
 
 **What stays Apple's:** nothing usage-based. The parent must not configure Screen Time for the kid in Settings
@@ -515,12 +515,13 @@ again, or it takes the data back. The kid's phone reports that as a health issue
 | Blocked | items never allowed |
 | Restrictions | App Store (install, delete, in-app purchases, password, max rating), media (explicit, movie/TV ratings, books, Apple Music), web filter (unrestricted / limit adult with allow+block lists / allowed sites only), Siri, Game Center (multiplayer, friends), account and passcode locks, cellular locks, automatic date and time |
 
-Targets are TrackedItems, the kid's apps, websites and now categories as found in Apple's data, with their tokens. The
-parent picks from names; no Apple picker. An app never used yet is covered through its category.
+Targets are TrackedItems with tokens: the app scan's apps, websites and categories (§15.3). Items from Apple's data
+have bundle IDs but no tokens, so they can't be shielded.
 
 Ask for more time: the kid's **TimeRequest** (item, reason, 15 min / 1 h / rest of day) becomes an Alert (banner on
 parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, the grant adds
-minutes to that limit today. For Downtime, it exempts the item for that many minutes of use, or until the window ends.
+minutes to that limit today. For Downtime, it pauses Downtime on the whole phone for that many minutes of the clock, or
+until the window ends (a press on a category shield can't say which app, §15.3).
 
 ### 15.2 Kid phone
 
@@ -542,3 +543,41 @@ minutes to that limit today. For Downtime, it exempts the item for that many min
   request and, while open, checks for the grant every few seconds.
 - The kid's policy and grants arrive through a fetch by name (`Policy.<kid>`, `RuleSet.<kid>`,
   `TimeGrant.<open request ids>`) at wakes and app launches, plus the kid app's zone fetch on silent pushes.
+
+### 15.3 First device run: tokens are the catch (Nov 15, 2026)
+
+- **Downtime works:** the block page names the app and when Downtime ends. iOS 26 draws the primary
+  button much lighter than the color given, so its label must be dark.
+- **Apple's data has bundle IDs, never tokens** (`application.token` is nil for all apps, sites and categories), and
+  the block page gets a token, never a bundle ID. So items from the data can't be shielded or matched to a block
+  page, and Blocked and per-app limits did nothing.
+- **The shield configuration extension can read the App Group but not write it.** The action extension can write.
+- **A press on a category shield** (Downtime's `.all(except:)`, category limits) calls
+  `handle(action:for: ActivityCategoryToken)`: the category, not the app.
+- **50-token caps:** a store's `shield.applications` or `webDomains` with more than 50 shields nothing; an
+  `.all(except:)` or `.specific(_:except:)` list takes at most 50 exceptions (Apple docs, developer forums).
+
+**The app scan:** on the kid's phone a parent selects All Apps & Categories once
+(`FamilyActivitySelection(includeEntireCategory: true)`): a token for every installed app, website and category,
+each an item with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). Parents pick them by `Label`, so
+no search or sorting. A second pick of ScreenThyme alone gives its own token, which Downtime and limits always let
+through (`exempt-tokens.json`). Apps installed later are covered by their category until the next scan.
+- Downtime shields every category except Always Allowed: no app list, so no cap.
+- Blocked apps and exhausted limits' apps are shielded one by one over `restrictions`/`limits` plus overflow stores
+  `.2`…`.6` (50 each).
+- Grants on scanned items and the whole phone run by the clock: Apple's data has no usage for them.
+
+### 15.4 Ask for more time in ScreenThyme
+
+The block page's one extra button, "Ask for more time", opens ScreenThyme (`openParentalControlsApp`, iOS 26.5;
+confirmed on the kid's phone). Just before, the action extension writes what was blocked (`ask.json`: item and
+category ids) for the app, which shows `AskForTimeView`:
+- From a limit or Blocked page the app is known. From a Downtime page only the category is, so the kid picks the app
+  in Apple's picker (names, icons, search); its token matches a scanned item, or becomes one.
+- How much (15 min, 1 hour, until Downtime ends or the rest of today) and an optional note for the parents.
+- The request names the app: a Downtime grant lets that app through (`.all(except:)`), not the whole phone. With no
+  app chosen, Downtime pauses for the whole phone.
+- The screen uploads the request and checks for the answer every 5 s while open. ScreenThyme is exempt from
+  Downtime through the scan's ScreenThyme pick.
+- **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
+  approval, the app opens while Downtime stays on for the rest.

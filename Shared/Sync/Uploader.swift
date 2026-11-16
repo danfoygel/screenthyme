@@ -34,24 +34,11 @@ enum Uploader {
             try journal.markUploaded(entries.map(\.id), on: day)
         }
 
-        _ = try await send(AppGroup.newItems, ledger: AppGroup.newItemsLedger, to: store)
-        let samples = try await send(AppGroup.samples, ledger: AppGroup.samplesLedger, to: store)
-        _ = try await send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
-        let alerts = try await send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
+        _ = try await Outbox.send(AppGroup.newItems, ledger: AppGroup.newItemsLedger, to: store)
+        let samples = try await Outbox.send(AppGroup.samples, ledger: AppGroup.samplesLedger, to: store)
+        _ = try await Outbox.send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
+        let alerts = try await Outbox.send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
         return Result(fires: fires.count, samples: samples, alerts: alerts, energyReports: energy.count)
-    }
-
-    /// Uploads what the ledger doesn't list yet, then records it there.
-    private static func send<T: CloudRecordable & Identifiable>(_ file: JSONLinesFile<T>, ledger: JSONLinesFile<UUID>,
-                                                                to store: CloudStore) async throws -> Int where T.ID == UUID {
-        let uploaded = Set(ledger.readAll())
-        // Later lines win: an item can be written again with a token or nickname.
-        var latest: [UUID: T] = [:]
-        for value in file.readAll() where !uploaded.contains(value.id) { latest[value.id] = value }
-        let values = Array(latest.values)
-        try await store.save(values)
-        try ledger.append(contentsOf: values.map(\.id))
-        return values.count
     }
 
     /// Re-sends today's and yesterday's tracking-start markers (idempotent). Markers journaled before they were
