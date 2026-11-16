@@ -19,7 +19,9 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             Enforcer.limitFired(event.rawValue)
             return
         }
-        if activity == TokenMatcher.activity {
+        // By the event's name too: the first `tm` fires on a phone went the wake alarm's way (cause unknown).
+        if event.rawValue.hasPrefix(TokenMatcher.eventPrefix) || activity.rawValue == TokenMatcher.activity.rawValue {
+            try? AppGroup.journal.append(.note("token match fired: \(event.rawValue)"))
             let config = SharedConfig.load()
             if let kid = config.kid { TokenMatcher.fired(event.rawValue, kid: kid) }
             upload(config)
@@ -59,7 +61,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
-        if activity == TokenMatcher.activity {
+        if name == TokenMatcher.activity.rawValue {
             TokenMatcher.intervalStarted()
             return
         }
@@ -79,7 +81,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         if name.hasPrefix(Enforcer.downtimePrefix) {
             try? AppGroup.journal.append(.note("interval end: \(name)"))
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
-        } else if !name.hasPrefix(Enforcer.limitPrefix), activity != TokenMatcher.activity {
+        } else if !name.hasPrefix(Enforcer.limitPrefix), name != TokenMatcher.activity.rawValue {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
     }

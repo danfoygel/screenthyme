@@ -62,7 +62,10 @@ enum TokenMatcher {
         let usage = Sampler.todayUsage(kid: kid, now: now)
         AppGroup.withLock("sampler") {
             var items = AppGroup.loadItems()
-            guard let index = items.firstIndex(where: { $0.id == itemID }), items[index].match == nil else { return }
+            guard let index = items.firstIndex(where: { $0.id == itemID }), items[index].match == nil else {
+                try? AppGroup.journal.append(.note("token match: unknown or already matched"))
+                return
+            }
             let taken = Set(items.compactMap(\.match))
             let candidates = Set(items.filter { $0.kind == .app && !$0.isScanned && !taken.contains($0.id) }.map(\.id))
             switch TokenMatching.match(baseline: baseline, usage: usage, candidates: candidates) {
