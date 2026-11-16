@@ -4,7 +4,8 @@ import ThymeCore
 
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
 /// data and record what changed, evaluate rules, keep the alarm registered, enforce (§15), then a short best-effort
-/// upload (and a policy and rules check). Downtime intervals and limit fires also enforce.
+/// upload (and a policy and rules check). Downtime intervals, limit fires and the end of a "one more minute" also
+/// enforce.
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
@@ -70,7 +71,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
-        if name.hasPrefix(Enforcer.downtimePrefix) || name.hasPrefix(Enforcer.limitPrefix) {
+        if Enforcer.owns(name) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalStart, activity: name, at: Date()))
@@ -80,13 +81,23 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         Enforcer.reconcile()
     }
 
+    /// The extra-minute alarm is an end warning (schedules last at least 15 minutes).
+    override func intervalWillEndWarning(for activity: DeviceActivityName) {
+        defer { EnergyMeter.record(.monitor, isCallback: true) }
+        guard activity.rawValue == Enforcer.extraMinuteActivity else { return }
+        try? AppGroup.journal.append(.note("one more minute is up"))
+        Enforcer.endExtraMinutes()
+    }
+
     override func intervalDidEnd(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
         if name.hasPrefix(Enforcer.downtimePrefix) {
             try? AppGroup.journal.append(.note("interval end: \(name)"))
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
-        } else if !name.hasPrefix(Enforcer.limitPrefix) {
+        } else if name == Enforcer.extraMinuteActivity {
+            Enforcer.endExtraMinutes()
+        } else if !Enforcer.owns(name) {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
     }

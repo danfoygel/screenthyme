@@ -119,6 +119,68 @@ struct EnforcementTests {
         #expect(plan(policy, state: state, at: at(20, 30)).downtime == nil)
     }
 
+    @Test func oneMoreMinuteOnADowntimeCategoryShieldPausesDowntimeForAMinute() {
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let policy = Policy(kidID: kid, downtime: [window])
+        var state = EnforcementDayState(day: testDay)
+        state.extraMinutes = [ExtraMinute(itemID: nil, reason: .downtime(window.id), at: at(21, 0, 30))]
+        let during = plan(policy, state: state, at: at(21, 1))
+        #expect(during.downtime == nil)
+        #expect(during.extraMinuteEnds == at(21, 1, 30))
+        let after = plan(policy, state: state, at: at(21, 1, 30))
+        #expect(after.downtime?.windowID == window.id)
+        #expect(after.extraMinuteEnds == nil)
+    }
+
+    @Test func oneMoreMinuteForAnAppLetsOnlyThatAppThrough() {
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let limit = AppLimit(name: "Social", items: [instagram.id, snapchat.id], minutes: 30)
+        let policy = Policy(kidID: kid, downtime: [window], limits: [limit])
+        var state = EnforcementDayState(day: testDay)
+        state.extraMinutes = [ExtraMinute(itemID: instagram.id, reason: .limit(limit.id), at: at(12, 0))]
+        let usage = [instagram.id: 31 * 60.0]
+        let noon = plan(policy, usage: usage, state: state, at: at(12, 0, 59))
+        #expect(noon.exhaustedLimits == [limit.id])
+        #expect(noon.limitedItems == [snapchat.id])
+        #expect(plan(policy, usage: usage, state: state, at: at(12, 1)).limitedItems == [instagram.id, snapchat.id])
+
+        state.extraMinutes = [ExtraMinute(itemID: instagram.id, reason: .downtime(window.id), at: at(21, 0))]
+        #expect(plan(policy, state: state, at: at(21, 0, 30)).downtimeExceptions == [instagram.id])
+        #expect(plan(policy, state: state, at: at(21, 1)).downtimeExceptions.isEmpty)
+    }
+
+    @Test func oneMoreMinuteOnACategoryLimitLiftsTheCategory() {
+        let limit = AppLimit(name: "Social", items: [social.id], minutes: 30)
+        var state = EnforcementDayState(day: testDay)
+        state.extraMinutes = [ExtraMinute(itemID: social.id, reason: .limit(limit.id), at: at(12, 0))]
+        let result = plan(Policy(kidID: kid, limits: [limit]), usage: [instagram.id: 40 * 60.0], state: state, at: at(12, 0, 30))
+        #expect(result.exhaustedLimits == [limit.id])
+        #expect(result.limitedItems.isEmpty)
+    }
+
+    @Test func oneMoreMinuteIsOnceADayPerApp() {
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let limit = AppLimit(name: "Social", items: [social.id], minutes: 30)
+        var state = EnforcementDayState(day: testDay)
+        #expect(state.canTakeExtraMinute(itemID: instagram.id, reason: .limit(limit.id)))
+        #expect(!state.canTakeExtraMinute(itemID: instagram.id, reason: .blocked))
+        state.extraMinutes = [ExtraMinute(itemID: instagram.id, reason: .limit(limit.id), at: at(12, 0))]
+        #expect(!state.canTakeExtraMinute(itemID: instagram.id, reason: .limit(limit.id)))
+        #expect(!state.canTakeExtraMinute(itemID: instagram.id, reason: .downtime(window.id)))
+        #expect(state.canTakeExtraMinute(itemID: snapchat.id, reason: .limit(limit.id)))
+        // With no app (a Downtime category shield): once per window.
+        #expect(state.canTakeExtraMinute(itemID: nil, reason: .downtime(window.id)))
+        state.extraMinutes.append(ExtraMinute(itemID: nil, reason: .downtime(window.id), at: at(21, 0)))
+        #expect(!state.canTakeExtraMinute(itemID: nil, reason: .downtime(window.id)))
+        #expect(state.canTakeExtraMinute(itemID: nil, reason: .downtime(UUID())))
+    }
+
+    @Test func dayStateWithoutExtraMinutesStillLoads() throws {
+        let json = #"{"day":"2026-11-14","limitFires":[],"grants":[]}"#
+        let state = try JSONDecoder().decode(EnforcementDayState.self, from: Data(json.utf8))
+        #expect(state.day == testDay && state.extraMinutes.isEmpty)
+    }
+
     @Test func yesterdaysStateIsIgnored() {
         let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
         var state = EnforcementDayState(day: DayKey(year: 2026, month: 11, day: 13))

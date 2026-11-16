@@ -48,9 +48,7 @@ enum Roller {
     static func registerAll(epochID: UUID, kid: Kid, now: Date = Date()) throws -> LadderEpoch {
         let center = DeviceActivityCenter()
         // Every activity but the Enforcer's. Never an empty list: that stops everything.
-        let old = center.activities.filter {
-            !$0.rawValue.hasPrefix(Enforcer.downtimePrefix) && !$0.rawValue.hasPrefix(Enforcer.limitPrefix)
-        }
+        let old = center.activities.filter { !Enforcer.owns($0.rawValue) }
         if !old.isEmpty { center.stopMonitoring(old) }
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

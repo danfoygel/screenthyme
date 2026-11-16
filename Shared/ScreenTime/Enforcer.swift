@@ -9,8 +9,15 @@ import ThymeCore
 enum Enforcer {
     static let downtimePrefix = "dt."
     static let limitPrefix = "lim."
+    /// Re-applies the plan when a "one more minute" runs out (PLAN.md §15.5).
+    static let extraMinuteActivity = "om.end"
     /// iOS allows 20 activities per app; the wake alarm needs one.
     static let maxActivities = 19
+
+    /// The Enforcer's activities, which the wake alarm's registration leaves alone.
+    static func owns(_ activity: String) -> Bool {
+        activity.hasPrefix(downtimePrefix) || activity.hasPrefix(limitPrefix) || activity == extraMinuteActivity
+    }
 
     // MARK: - Reconcile
 
@@ -27,14 +34,14 @@ enum Enforcer {
             AppGroup.save(state, to: AppGroup.enforcementStateURL)
             let policy = AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-            let usage = Sampler.todayUsage(kid: kid, now: now)
+            let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows)
             apply(plan, policy: policy, items: items)
             AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: Dictionary(policy.limits.map { ($0.id, $0.name) },
                                                                                   uniquingKeysWith: { a, _ in a })),
                           to: AppGroup.enforcementURL)
-            registerActivities(policy: policy, plan: plan, items: items)
+            registerActivities(policy: policy, plan: plan, items: items, now: now)
             return plan
         }
     }
@@ -60,13 +67,36 @@ enum Enforcer {
     static func apply(_ grant: TimeGrant, now: Date = Date()) {
         let config = SharedConfig.load()
         guard let kid = config.kid else { return }
-        let usage = Sampler.todayUsage(kid: kid, now: now)
+        let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
         let windowStart = loadApplied()?.plan.downtime?.interval.start
         reconcile(now: now) { state in
             guard !state.grants.contains(where: { $0.grant.requestID == grant.requestID }) else { return }
             let baseline = grant.itemID.flatMap { usage[$0] } ?? 0
             state.grants.append(AppliedGrant(grant: grant, appliedAt: now, baselineSeconds: baseline, windowStart: windowStart))
             try? AppGroup.journal.append(.note("grant \(grant.approved ? "approved" : "declined"): \(grant.minutes.map { "\($0) min" } ?? "rest of day")"))
+        }
+    }
+
+    /// "One more minute" from a block page: lets `itemID` (or with none, what `reason` blocks) through for a minute,
+    /// once a day. False when it was already taken.
+    @discardableResult
+    static func takeExtraMinute(itemID: UUID?, reason: BlockReason, now: Date = Date()) -> Bool {
+        var taken = false
+        reconcile(now: now) { state in
+            guard state.canTakeExtraMinute(itemID: itemID, reason: reason) else { return }
+            state.extraMinutes.append(ExtraMinute(itemID: itemID, reason: reason, at: now))
+            taken = true
+        }
+        try? AppGroup.journal.append(.note(taken ? "one more minute: \(reason)" : "one more minute already used: \(reason)"))
+        return taken
+    }
+
+    /// The extra-minute alarm: ends what is due (DeviceActivity can call a moment early) and re-applies the plan.
+    static func endExtraMinutes(now: Date = Date()) {
+        reconcile(now: now) { state in
+            for index in state.extraMinutes.indices where state.extraMinutes[index].until <= now.addingTimeInterval(30) {
+                state.extraMinutes[index].until = min(state.extraMinutes[index].until, now)
+            }
         }
     }
 
@@ -218,7 +248,7 @@ enum Enforcer {
     /// One activity per Downtime interval (`dt.<id8>`, split `.a`/`.b` across midnight) and per limit
     /// (`lim.<id8>`, one event `lim.<id8>.<budget>`). Re-registers only what changed: every registration replays
     /// passed thresholds.
-    private static func registerActivities(policy: Policy, plan: EnforcementPlan, items: [UUID: TrackedItem]) {
+    private static func registerActivities(policy: Policy, plan: EnforcementPlan, items: [UUID: TrackedItem], now: Date) {
         var desired: [String: (signature: String, register: (DeviceActivityCenter) throws -> Void)] = [:]
         if policy.enabled {
             for window in policy.downtime {
@@ -244,16 +274,22 @@ enum Enforcer {
                 })
             }
         }
+        if let ends = plan.extraMinuteEnds, let schedule = extraMinuteSchedule(ending: ends, now: now) {
+            desired[extraMinuteActivity] = ("\(schedule.fire.timeIntervalSince1970)", { center in
+                try center.startMonitoring(DeviceActivityName(extraMinuteActivity), during: schedule.schedule)
+            })
+        }
         let registered = AppGroup.load([String: String].self, from: AppGroup.enforcementActivitiesURL) ?? [:]
         let center = DeviceActivityCenter()
         let active = Set(center.activities.map(\.rawValue))
-        let stale = registered.keys.filter { desired[$0] == nil }
-            + active.filter { ($0.hasPrefix(downtimePrefix) || $0.hasPrefix(limitPrefix)) && desired[$0] == nil }
+        let stale = registered.keys.filter { desired[$0] == nil } + active.filter { owns($0) && desired[$0] == nil }
         if !stale.isEmpty {  // never an empty list: that stops every activity
             center.stopMonitoring(Set(stale).map { DeviceActivityName($0) })
         }
         var now: [String: String] = [:]
-        for (name, entry) in desired.sorted(by: { $0.key < $1.key }).prefix(maxActivities) {
+        // The extra-minute alarm first: it is the one that must not be left out.
+        let order = desired.sorted { ($0.key == extraMinuteActivity ? 0 : 1, $0.key) < ($1.key == extraMinuteActivity ? 0 : 1, $1.key) }
+        for (name, entry) in order.prefix(maxActivities) {
             if registered[name] == entry.signature, active.contains(name) {
                 now[name] = entry.signature
                 continue
@@ -269,6 +305,26 @@ enum Enforcer {
             try? AppGroup.journal.append(.note("enforcer: \(desired.count) activities wanted, \(maxActivities) allowed"))
         }
         if now != registered { AppGroup.save(now, to: AppGroup.enforcementActivitiesURL) }
+    }
+
+    /// Schedules count whole minutes and last at least 15, so the alarm is an interval's end warning at the first whole
+    /// minute after `ends` (60–120 s after the press). Nil past 23:59: the new day's reconcile ends it.
+    private static func extraMinuteSchedule(ending ends: Date, now: Date) -> (schedule: DeviceActivitySchedule, fire: Date)? {
+        let calendar = Calendar.current
+        func wholeMinute(_ date: Date, up: Bool) -> Date {
+            let floor = calendar.dateInterval(of: .minute, for: date)?.start ?? date
+            return up && floor < date ? floor.addingTimeInterval(60) : floor
+        }
+        let fire = wholeMinute(ends, up: true)
+        let lastMinute = calendar.startOfDay(for: now).addingTimeInterval(Double(23 * 60 + 59) * 60)
+        let end = min(wholeMinute(now, up: true).addingTimeInterval(16 * 60), lastMinute)
+        guard fire < end else { return nil }
+        let start = min(wholeMinute(now, up: false), end.addingTimeInterval(-15 * 60))
+        func components(_ date: Date) -> DateComponents { calendar.dateComponents([.hour, .minute], from: date) }
+        let warning = Int(end.timeIntervalSince(fire) / 60)
+        let schedule = DeviceActivitySchedule(intervalStart: components(start), intervalEnd: components(end), repeats: false,
+                                              warningTime: DateComponents(minute: warning))
+        return (schedule, fire)
     }
 
     /// Forgets what was registered, so the next reconcile registers everything (after iOS stopped all monitoring).
