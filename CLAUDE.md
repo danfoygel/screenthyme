@@ -18,6 +18,8 @@ Shared/              compiled into the app AND the monitor extension: App Group 
 ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Kid/, Parent/, Components/, Debug/
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
 ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only
+ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
+ThymeShieldAction/   ShieldAction extension: "Ask for more time", queued and sent to CloudKit at once
 ```
 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
@@ -29,7 +31,7 @@ ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own 
 
 | | |
 |---|---|
-| App / extensions | `com.danfoygel.screenthyme`, `.monitor`, `.report` |
+| App / extensions | `com.danfoygel.screenthyme`, `.monitor`, `.report`, `.shield`, `.shieldaction` |
 | App Group | `group.com.danfoygel.screenthyme` |
 | iCloud container | `iCloud.com.danfoygel.screenthyme` (CloudKit; zone `Family`) |
 | Signing team | `ZVU48K8YCD`, automatic signing, development builds only (no Family Controls distribution entitlement) |
@@ -88,6 +90,9 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   `intervalEnd`/`intervalStart` pair. The reconstruction treats the replays as one burst; avoid needless
   re-registration (`ensureMonitoring` is throttled).
 - After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
+- **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses the app scan's items
+  (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing.
+- A press on a category shield (Downtime) names only the category, so Downtime requests are for the whole phone.
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).

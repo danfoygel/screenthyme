@@ -126,7 +126,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Shield
 
-  # The block page's buttons: queue a request for more time (PLAN.md §15.2).
+  # The block page's buttons: queue and send a request for more time (PLAN.md §15.2).
   ThymeShieldAction:
     type: app-extension
     platform: iOS
@@ -135,6 +135,9 @@ targets:
       - Shared/Storage
       - Shared/Shield
       - Shared/ScreenTime/TokenCoding.swift
+      # Sends a request for more time at once: during Downtime nothing else may run to send it.
+      - Shared/Sync/CloudRecords.swift
+      - Shared/Sync/Outbox.swift
     dependencies:
       - package: ThymeKit
         product: ThymeCore
@@ -143,6 +146,8 @@ targets:
       properties:
         com.apple.developer.family-controls: true
         com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.danfoygel.screenthyme]
+        com.apple.developer.icloud-services: [CloudKit]
     info:
       path: ThymeShieldAction/Info.plist
       properties:

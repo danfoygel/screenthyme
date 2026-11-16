@@ -7,8 +7,8 @@ import ThymeCore
 struct KidHomeView: View {
     @Environment(AppModel.self) private var model
     @State private var scan = AppScan.load()
-    @State private var pickingCategories = false
-    @State private var pickingApps = false
+    @State private var pickingAll = false
+    @State private var pickingSelf = false
 
     var body: some View {
         NavigationStack {
@@ -54,20 +54,21 @@ struct KidHomeView: View {
                 }
                 if model.hasDataAccess, let kid = model.config.kid {
                     Section {
-                        Button("Choose categories (\(scan.categories.categoryTokens.count))") { pickingCategories = true }
-                        Button("Choose apps (\(scan.apps.applicationTokens.count) of \(AppScan.maxApps))") { pickingApps = true }
+                        Button("Scan apps (\(scan.all.applicationTokens.count) apps)") { pickingAll = true }
+                        Button(scan.screenThyme.applicationTokens.isEmpty ? "Choose ScreenThyme" : "ScreenThyme chosen") {
+                            pickingSelf = true
+                        }
                     } header: {
                         Text("Apps for Screen Time")
                     } footer: {
-                        Text("For a parent. Under Categories, select All Apps & Categories. Under Apps, pick the apps to block, limit or allow on their own, including ScreenThyme. Everything else is covered by its category.")
-                            .foregroundStyle(scan.apps.applicationTokens.count > AppScan.maxApps ? .red : .secondary)
+                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it.")
                     }
-                    .familyActivityPicker(headerText: "Select All Apps & Categories", isPresented: $pickingCategories,
-                                          selection: $scan.categories)
-                    .familyActivityPicker(headerText: "Up to \(AppScan.maxApps) apps", isPresented: $pickingApps,
-                                          selection: $scan.apps)
-                    .onChange(of: pickingCategories) { if !pickingCategories { AppScan.save(scan, kid: kid) } }
-                    .onChange(of: pickingApps) { if !pickingApps { AppScan.save(scan, kid: kid) } }
+                    .familyActivityPicker(headerText: "Select All Apps & Categories", isPresented: $pickingAll,
+                                          selection: $scan.all)
+                    .familyActivityPicker(headerText: "Select ScreenThyme only", isPresented: $pickingSelf,
+                                          selection: $scan.screenThyme)
+                    .onChange(of: pickingAll) { if !pickingAll { AppScan.save(scan, kid: kid) } }
+                    .onChange(of: pickingSelf) { if !pickingSelf { AppScan.save(scan, kid: kid) } }
                 }
                 if model.config.family == nil {
                     Section("Join the family") {

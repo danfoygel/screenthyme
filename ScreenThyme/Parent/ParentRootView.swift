@@ -224,7 +224,9 @@ struct RequestRow: View {
     private var reason: String {
         let policy = model.data.policy(for: request.kidID)
         switch request.reason {
-        case let .downtime(id): return "during \(policy.downtime.first { $0.id == id }?.name ?? "Downtime")"
+        case let .downtime(id):
+            let name = policy.downtime.first { $0.id == id }?.name ?? "Downtime"
+            return request.itemID == nil ? "during \(name), for the whole phone" : "during \(name)"
         case let .limit(id): return "over the \(policy.limits.first { $0.id == id }?.name ?? "time") limit"
         case .blocked: return "for a blocked app"
         }

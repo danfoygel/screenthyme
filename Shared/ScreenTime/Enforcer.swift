@@ -79,6 +79,10 @@ enum Enforcer {
     private static func apply(_ plan: EnforcementPlan, policy: Policy, items: [UUID: TrackedItem]) {
         let tokens = Tokens(items: items)
         let exempt = Set(items.values.filter { $0.kind == .app && exemptBundleIDs.contains($0.identifier) }.map(\.id))
+        // ScreenThyme's own token, from the app scan.
+        let exemptApps = Set((AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []).compactMap(TokenCoding.application))
+        var allowed = tokens.split(tokens.expandingCategories(plan.alwaysAllowed).union(exempt))
+        allowed.apps.formUnion(exemptApps)
 
         let restrictions = ManagedSettingsStore(named: .init("restrictions"))
         if policy.enabled {
@@ -86,41 +90,54 @@ enum Enforcer {
         } else {
             restrictions.clearAllSettings()
         }
-        let blocked = tokens.split(plan.blockedItems).capped()
-        restrictions.shield.applications = blocked.apps.isEmpty ? nil : blocked.apps
-        restrictions.shield.webDomains = blocked.domains.isEmpty ? nil : blocked.domains
-        restrictions.shield.applicationCategories = blocked.categories.isEmpty ? nil : .specific(blocked.categories)
-        restrictions.shield.webDomainCategories = blocked.categories.isEmpty ? nil : .specific(blocked.categories)
+        var blocked = tokens.split(plan.blockedItems)
+        blocked.apps.subtract(exemptApps)
+        shieldOneByOne(blocked, over: "restrictions")
+        restrictions.shield.applicationCategories = blocked.categories.isEmpty ? nil
+            : .specific(Tokens.capped(blocked.categories), except: Tokens.capped(exemptApps))
+        restrictions.shield.webDomainCategories = blocked.categories.isEmpty ? nil : .specific(Tokens.capped(blocked.categories))
 
+        // Every category but what's allowed: no list of apps, so no cap on how many it blocks.
         let downtime = ManagedSettingsStore(named: .init("downtime"))
         if plan.downtime != nil {
-            let allowedIDs = tokens.expandingCategories(plan.downtimeExceptions).union(exempt)
-            let allowed = tokens.split(allowedIDs).capped()
-            // Known apps by name, so "Ask for more time" learns which app it was; the rest by category.
-            let named = tokens.named(Set(items.keys).subtracting(allowedIDs), besides: allowed)
-            downtime.shield.applications = named.apps.isEmpty ? nil : named.apps
-            downtime.shield.webDomains = named.domains.isEmpty ? nil : named.domains
-            downtime.shield.applicationCategories = .all(except: allowed.apps.union(named.apps))
-            downtime.shield.webDomainCategories = .all(except: allowed.domains.union(named.domains))
+            var exceptions = tokens.split(tokens.expandingCategories(plan.downtimeExceptions).union(exempt))
+            exceptions.apps.formUnion(exemptApps)
+            downtime.shield.applicationCategories = .all(except: Tokens.capped(exceptions.apps))
+            downtime.shield.webDomainCategories = .all(except: Tokens.capped(exceptions.domains))
         } else {
             downtime.clearAllSettings()
         }
 
         let limits = ManagedSettingsStore(named: .init("limits"))
-        if plan.limitedItems.isEmpty {
-            limits.clearAllSettings()
-        } else {
-            let limited = tokens.split(plan.limitedItems)
-            let allowedIDs = tokens.expandingCategories(plan.alwaysAllowed).union(exempt)
-            let allowed = tokens.split(allowedIDs).capped()
-            // Known apps of limited categories by name too, as for Downtime.
-            let named = tokens.named(tokens.expandingCategories(plan.limitedItems).subtracting(allowedIDs), besides: allowed)
-            limits.shield.applications = named.apps.isEmpty ? nil : named.apps
-            limits.shield.webDomains = named.domains.isEmpty ? nil : named.domains
-            limits.shield.applicationCategories = limited.categories.isEmpty ? nil
-                : .specific(limited.categories, except: allowed.apps.union(named.apps))
-            limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
-                : .specific(limited.categories, except: allowed.domains.union(named.domains))
+        var limited = tokens.split(plan.limitedItems)
+        limited.apps.subtract(allowed.apps)
+        limited.domains.subtract(allowed.domains)
+        if plan.limitedItems.isEmpty { limits.clearAllSettings() }
+        shieldOneByOne(limited, over: "limits")
+        limits.shield.applicationCategories = limited.categories.isEmpty ? nil
+            : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.apps))
+        limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
+            : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.domains))
+    }
+
+    /// Stores per shield list: `name`, `name.2`, … up to this many.
+    static let overflowStores = 6
+
+    /// Shields apps and websites by token over `name`, `name.2`, …: a store given more than 50 shields none.
+    private static func shieldOneByOne(_ split: Tokens.Split, over name: String) {
+        // A stable order, so the same app stays in the same store.
+        let apps = split.apps.sorted { TokenCoding.encode($0)?.base64EncodedString() ?? "" < TokenCoding.encode($1)?.base64EncodedString() ?? "" }
+        let domains = split.domains.sorted { TokenCoding.encode($0)?.base64EncodedString() ?? "" < TokenCoding.encode($1)?.base64EncodedString() ?? "" }
+        let limit = Tokens.Split.limit
+        if apps.count > limit * overflowStores || domains.count > limit * overflowStores {
+            try? AppGroup.journal.append(.note("\(name): \(apps.count) apps, \(domains.count) sites; shielding the first \(limit * overflowStores)"))
+        }
+        for index in 0..<overflowStores {
+            let store = ManagedSettingsStore(named: .init(index == 0 ? name : "\(name).\(index + 1)"))
+            let someApps = Set(apps.dropFirst(index * limit).prefix(limit))
+            let someDomains = Set(domains.dropFirst(index * limit).prefix(limit))
+            store.shield.applications = someApps.isEmpty ? nil : someApps
+            store.shield.webDomains = someDomains.isEmpty ? nil : someDomains
         }
     }
 
@@ -166,13 +183,12 @@ enum Enforcer {
             var domains: Set<WebDomainToken> = []
             var categories: Set<ActivityCategoryToken> = []
 
-            /// Per shield setting: with more, iOS shields nothing at all.
+            /// Per shield setting (apps, websites, categories, or exceptions): with more, iOS shields nothing.
             static let limit = 50
+        }
 
-            func capped() -> Split {
-                Split(apps: Set(apps.prefix(Self.limit)), domains: Set(domains.prefix(Self.limit)),
-                      categories: Set(categories.prefix(Self.limit)))
-            }
+        static func capped<T>(_ tokens: Set<T>) -> Set<T> {
+            Set(tokens.prefix(Split.limit))
         }
 
         func split(_ ids: Set<UUID>) -> Split {
@@ -183,23 +199,6 @@ enum Enforcer {
                 case .app: TokenCoding.application(item.tokenData).map { _ = split.apps.insert($0) }
                 case .domain: TokenCoding.webDomain(item.tokenData).map { _ = split.domains.insert($0) }
                 case .category: TokenCoding.category(item.tokenData).map { _ = split.categories.insert($0) }
-                }
-            }
-            return split
-        }
-
-        /// Apps and websites to shield one by one. A button press on a category shield names only the category, so
-        /// only these can ask for more time. They join `allowed` in the category shield's "except" list, which takes
-        /// at most 50 of each; the rest stay under their category.
-        func named(_ ids: Set<UUID>, besides allowed: Split) -> Split {
-            let known = ids.compactMap { items[$0] }.filter { $0.kind != .category }
-                .sorted { $0.identifier < $1.identifier }
-            var split = Split()
-            for item in known {
-                if item.kind == .app, split.apps.count + allowed.apps.count < Split.limit {
-                    TokenCoding.application(item.tokenData).map { _ = split.apps.insert($0) }
-                } else if item.kind == .domain, split.domains.count + allowed.domains.count < Split.limit {
-                    TokenCoding.webDomain(item.tokenData).map { _ = split.domains.insert($0) }
                 }
             }
             return split

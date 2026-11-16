@@ -27,8 +27,7 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     private func make(_ context: ShieldContext, _ target: ShieldContext.Target) -> ShieldConfiguration {
         let reason = context.reason(for: target)
         let pending = context.pendingRequest(for: target) != nil
-        // Only a known app can ask: a request names the app, and the button on an unknown one would do nothing.
-        let canAsk = !pending && target.item != nil && reason != nil
+        let canAsk = !pending && context.requestScope(for: target) != nil
         let label = UIColor.label
         // Fixed colors: iOS 26 draws the primary button much lighter than the color given (systemGreen came out mint),
         // so a white label disappeared. Dark text stays readable either way; the icon would otherwise draw black.

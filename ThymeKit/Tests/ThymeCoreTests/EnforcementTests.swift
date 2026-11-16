@@ -106,6 +106,19 @@ struct EnforcementTests {
         #expect(scanned.isScanned && scanned.displayName == "App")
     }
 
+    @Test func phoneWideGrantPausesDowntimeByTheClock() {
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let request = TimeRequest(kidID: kid, itemID: nil, reason: .downtime(window.id), minutes: 15, at: at(21, 0))
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [AppliedGrant(grant: TimeGrant(request: request, approved: true, minutes: 15, at: at(21, 1), by: "Parent"),
+                                     appliedAt: at(21, 1), windowStart: at(20, 0))]
+        let policy = Policy(kidID: kid, downtime: [window])
+        #expect(plan(policy, state: state, at: at(21, 15)).downtime == nil)
+        #expect(plan(policy, state: state, at: at(21, 16)).downtime?.windowID == window.id)
+        // It belongs to tonight's window only.
+        #expect(plan(policy, state: state, at: at(20, 30)).downtime == nil)
+    }
+
     @Test func yesterdaysStateIsIgnored() {
         let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
         var state = EnforcementDayState(day: DayKey(year: 2026, month: 11, day: 13))

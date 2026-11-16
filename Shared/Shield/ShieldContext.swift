@@ -43,6 +43,12 @@ struct ShieldContext {
         target(app: Application(token: appToken))
     }
 
+    /// A press on a category shield (Downtime, category limits) names only the category.
+    func target(categoryToken: ActivityCategoryToken) -> Target {
+        let category = items.first { $0.kind == .category && TokenCoding.category($0.tokenData) == categoryToken }
+        return Target(item: nil, category: category, name: category?.displayName ?? "These apps")
+    }
+
     func target(domainToken: WebDomainToken) -> Target {
         target(domain: WebDomain(token: domainToken))
     }
@@ -102,36 +108,49 @@ struct ShieldContext {
 
     // MARK: - Requests
 
+    /// What a request from this page would ask for: Downtime off for the whole phone (a press on a category shield
+    /// can't say which app), more time on a limit, or an exception for a blocked app or category. Nil: can't ask.
+    func requestScope(for target: Target) -> (itemID: UUID?, reason: BlockReason)? {
+        switch reason(for: target) {
+        case let .downtime(id)?: (nil, .downtime(id))
+        case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
+        case .blocked?: (target.item?.id ?? target.category?.id).map { ($0, .blocked) }
+        case nil: nil
+        }
+    }
+
+    /// Today's unanswered request this page's request would repeat.
     func pendingRequest(for target: Target) -> TimeRequest? {
+        guard let scope = requestScope(for: target) else { return nil }
         let answered = Set(state?.grants.map(\.grant.requestID) ?? [])
         let today = DayKey(Date())
         return AppGroup.requests.readAll().last { request in
-            DayKey(request.at) == today && !answered.contains(request.id) && request.itemID == target.item?.id
+            DayKey(request.at) == today && !answered.contains(request.id) && request.reason == scope.reason
+                && (scope.itemID == nil || request.itemID == scope.itemID)
         }
     }
 
     func lastAnswer(for target: Target) -> TimeGrant? {
-        guard let item = target.item?.id else { return nil }
-        return state?.grants.last { $0.grant.itemID == item }?.grant
+        guard let scope = requestScope(for: target) else { return nil }
+        return state?.grants.last { $0.grant.reason == scope.reason && $0.grant.itemID == scope.itemID }?.grant
     }
 
-    /// Queues a request for more time and an alert for the parents (uploaded by the app or the next wake).
+    /// Queues a request for more time and an alert for the parents; `RequestSender` sends both at once.
     func request(_ target: Target, minutes: Int?) -> TimeRequest? {
-        guard let kid = config.kid else { return nil }
-        let reason = reason(for: target) ?? .blocked
-        let request = TimeRequest(kidID: kid.id, itemID: target.item?.id, reason: reason, minutes: minutes, at: Date())
-        let why = switch reason {
-        case .downtime: "during Downtime"
-        case let .limit(id): "over the \(applied?.limitNames[id] ?? "time") limit"
-        case .blocked: "though it's not allowed"
+        guard let kid = config.kid, let scope = requestScope(for: target) else { return nil }
+        let request = TimeRequest(kidID: kid.id, itemID: scope.itemID, reason: scope.reason, minutes: minutes, at: Date())
+        let amount = Self.describe(minutes: minutes).capitalizedFirst
+        let body = switch scope.reason {
+        case .downtime: "\(amount) of Downtime off, for the whole phone."
+        case let .limit(id): "\(amount) on the \(applied?.limitNames[id] ?? "time") limit."
+        case .blocked: "\(amount) of \(target.name), which isn't allowed."
         }
-        let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: target.item?.id, at: request.at,
-                                title: "\(kid.displayName) asks for more time",
-                                body: "\(Self.describe(minutes: minutes).capitalizedFirst) of \(target.name), \(why).")
+        let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: scope.itemID, at: request.at,
+                                title: "\(kid.displayName) asks for more time", body: body)
         do {
             try AppGroup.requests.append(contentsOf: [request])
             try AppGroup.outbox.append(contentsOf: [alert])
-            try? AppGroup.journal.append(.note("asked for more time: \(target.name), \(Self.describe(minutes: minutes))"))
+            try? AppGroup.journal.append(.note("asked for more time: \(body)"))
         } catch {
             try? AppGroup.journal.append(.note("request failed: \(error)"))
         }

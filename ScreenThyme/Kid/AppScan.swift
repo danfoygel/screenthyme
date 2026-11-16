@@ -4,16 +4,14 @@ import Foundation
 import ManagedSettings
 import ThymeCore
 
-/// The app scan (PLAN.md §15.3): on the kid's phone, a parent picks all categories and the apps to manage one by one.
-/// Shields need tokens, which Apple's usage data doesn't give (bundle IDs only) and the picker does (tokens only), so
-/// the picks become items of their own (`TrackedItem.isScanned`).
+/// The app scan (PLAN.md §15.3): on the kid's phone, a parent selects All Apps & Categories once. Shields need
+/// tokens, which Apple's usage data doesn't give (bundle IDs only) and the picker does (tokens only), so every app,
+/// website and category becomes an item of its own (`TrackedItem.isScanned`). A second pick of ScreenThyme alone gives
+/// its own token, which Downtime always lets through.
 enum AppScan {
-    /// A store shields at most 50 apps, and an "all except" list names at most 50; leave room for Always Allowed.
-    static let maxApps = 40
-
     struct Saved: Codable {
-        var categories = FamilyActivitySelection()
-        var apps = FamilyActivitySelection()
+        var all = FamilyActivitySelection(includeEntireCategory: true)
+        var screenThyme = FamilyActivitySelection()
     }
 
     static var url: URL { AppGroup.container.appending(path: "scan.json") }
@@ -33,10 +31,14 @@ enum AppScan {
             picked.append(TrackedItem(kidID: kid.id, kind: kind, identifier: TrackedItem.scannedPrefix + hash,
                                       tokenData: data, firstSeen: now))
         }
-        for selection in [saved.categories, saved.apps] {
-            selection.categoryTokens.forEach { add(.category, TokenCoding.encode($0)) }
-            selection.applicationTokens.forEach { add(.app, TokenCoding.encode($0)) }
-            selection.webDomainTokens.forEach { add(.domain, TokenCoding.encode($0)) }
+        saved.all.categoryTokens.forEach { add(.category, TokenCoding.encode($0)) }
+        saved.all.applicationTokens.forEach { add(.app, TokenCoding.encode($0)) }
+        saved.all.webDomainTokens.forEach { add(.domain, TokenCoding.encode($0)) }
+        AppGroup.save(saved.screenThyme.applicationTokens.compactMap(TokenCoding.encode), to: AppGroup.exemptTokensURL)
+        // An empty pick is a cancel: keep the last scan rather than unshield everything.
+        guard !picked.isEmpty else {
+            Enforcer.reconcile(now: now)
+            return
         }
         // The sampler's lock: it rewrites items.json too.
         AppGroup.withLock("sampler") {

@@ -72,6 +72,8 @@ enum AppGroup {
     static var enforcementURL: URL { container.appending(path: "enforcement.json") }
     /// DeviceActivity registrations made by the `Enforcer`: activity name → signature.
     static var enforcementActivitiesURL: URL { container.appending(path: "enforcement-activities.json") }
+    /// Encoded ApplicationTokens Downtime and limits never shield: ScreenThyme's own, from the app scan.
+    static var exemptTokensURL: URL { container.appending(path: "exempt-tokens.json") }
     /// `Sampler`'s last fetch of Apple's per-hour, per-app totals, to take differences from.
     static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
 

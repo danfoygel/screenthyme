@@ -78,8 +78,14 @@ public enum EnforcementPlanner {
         if let downtime = plan.downtime {
             for applied in grants {
                 guard case let .downtime(windowID) = applied.grant.reason, windowID == downtime.windowID,
-                      applied.windowStart == downtime.interval.start, let item = applied.grant.itemID else { continue }
-                if isLeft(applied, usage: usage, now: now) { plan.downtimeExceptions.insert(item) }
+                      applied.windowStart == downtime.interval.start, isLeft(applied, usage: usage, now: now) else { continue }
+                if let item = applied.grant.itemID {
+                    plan.downtimeExceptions.insert(item)
+                } else {
+                    // A request from a Downtime block page is for the whole phone: Downtime pauses.
+                    plan.downtime = nil
+                    break
+                }
             }
         }
 
@@ -119,12 +125,13 @@ public enum EnforcementPlanner {
         return counted.reduce(0) { $0 + (usage[$1] ?? 0) }
     }
 
-    /// A grant still has time left: minutes of the item's use, or of the clock for a scanned item, whose use Apple's
-    /// data doesn't report (always, for a grant until the window or day ends).
+    /// A grant still has time left: minutes of the item's use, or of the clock for the whole phone or a scanned item,
+    /// whose use Apple's data doesn't report (always, for a grant until the window or day ends).
     static func isLeft(_ applied: AppliedGrant, usage: [UUID: Double], now: Date) -> Bool {
         guard let minutes = applied.grant.minutes else { return true }
-        guard let item = applied.grant.itemID else { return false }
-        guard let used = usage[item] else { return now < applied.appliedAt.addingTimeInterval(Double(minutes) * 60) }
+        guard let item = applied.grant.itemID, let used = usage[item] else {
+            return now < applied.appliedAt.addingTimeInterval(Double(minutes) * 60)
+        }
         return used - applied.baselineSeconds < Double(minutes) * 60
     }
 }
