@@ -20,3 +20,6 @@ xcuserdata/
 
 # Device logs (private; never commit)
 *.logarchive
+
+# Personal notes for Claude: device UDIDs, names (never commit)
+CLAUDE.local.md
