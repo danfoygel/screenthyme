@@ -12,6 +12,9 @@ final class AppModel {
 
     private(set) var config: SharedConfig
     let data = FamilyData()
+    /// Family phones nearby, for when there's no internet (PLAN.md §17).
+    let nearby = NearbyLink()
+    @ObservationIgnored var nearbyTicker: Task<Void, Never>?
     var message: String?
     private(set) var isRefreshing = false
     @ObservationIgnored private var isLaunching = false
@@ -40,10 +43,19 @@ final class AppModel {
         message = (error as? CKError).map { "iCloud: \($0.localizedDescription)" } ?? error.localizedDescription
     }
 
+    /// For syncs that run by themselves (refreshes, uploads, heartbeats): offline is normal (PLAN.md §17), and they
+    /// retry on their own.
+    func showUnlessOffline(_ error: any Error) {
+        if let error = error as? CKError, error.isOffline { return }
+        show(error)
+    }
+
     // MARK: - Lifecycle
 
     /// Called by both the launch task and the scene becoming active; only one runs at a time.
     func launched() async {
+        // First, and with no network calls before it: the point is to work offline.
+        updateNearby()
         guard !isLaunching else { return }
         isLaunching = true
         defer { isLaunching = false }
@@ -54,8 +66,10 @@ final class AppModel {
         case .kid:
             ensureMonitoring()
             await sampleNow()
-            Enforcer.reconcile()
-            TokenMatcher.ensureRegistered()
+            await Enforcer.offMain {
+                Enforcer.reconcile()
+                TokenMatcher.ensureRegistered()
+            }
             await flush()
             await sendHeartbeat(.launch)
             await refresh()
@@ -88,16 +102,28 @@ final class AppModel {
         guard let store, !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        if isParent { await PendingSaves.retry(store: store) }
         do {
             let fullFetch = data.needsFullFetch
             if fullFetch { ChangeFetcher.resetToken(for: store) }
             let batch = try await ChangeFetcher.fetch(store: store)
             if fullFetch { data.fullFetchDone() }
             let newAlerts = data.ingest(batch)
+            if data.linkKey == nil, let key = try? await LinkKeyService.fetchOrCreate(store: store) {
+                data.ingest(IngestBatch(linkKeys: [key]))
+                updateNearby()
+            }
             if isKid, let kid = config.kid {
-                KidSync.saveRules(data.rules(for: kid.id), checkedAt: Date())
-                if let policy = data.storedPolicy(for: kid.id) { KidSync.savePolicy(policy) }
-                for grant in batch.grants where grant.kidID == kid.id { Enforcer.apply(grant) }
+                // Rules from before `RuleSet` records; once this phone has a rule set, `KidSync` keeps it current.
+                if AppGroup.loadRules()?.updatedAt == nil {
+                    KidSync.saveRules(data.rules(for: kid.id), checkedAt: Date())
+                }
+                let policy = data.storedPolicy(for: kid.id)
+                let grants = batch.grants.filter { $0.kidID == kid.id }
+                await Enforcer.offMain {
+                    if let policy { KidSync.savePolicy(policy) }
+                    for grant in grants { Enforcer.apply(grant) }
+                }
                 if batch.pings.contains(where: { $0.kidID == kid.id && $0.at > (lastHeartbeatAt ?? .distantPast) }) {
                     await sendHeartbeat(.ping)
                 }
@@ -110,7 +136,7 @@ final class AppModel {
                 notifyHealthIssues()
             }
         } catch {
-            show(error)
+            showUnlessOffline(error)
         }
     }
 

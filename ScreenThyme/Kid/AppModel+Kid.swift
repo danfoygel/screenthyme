@@ -101,24 +101,12 @@ extension AppModel {
                 await refresh()
             }
         } catch {
-            show(error)
+            showUnlessOffline(error)
         }
     }
 
     func sendHeartbeat(_ source: HeartbeatSource) async {
-        guard isKid, let kid = config.kid, let store else { return }
-        authorizationStatus = AuthorizationCenter.shared.authorizationStatus
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        let batteryLevel = UIDevice.current.batteryLevel
-        // One record per kid, overwritten: parents only need the latest.
-        let heartbeat = Heartbeat(id: Replay.stableUUID("heartbeat", kid.id.uuidString), kidID: kid.id, at: Date(),
-                                  source: source, authStatus: authorizationLabel,
-                                  activeActivities: DeviceActivityCenter().activities.map(\.rawValue),
-                                  expectedActivities: config.epoch?.activityNames ?? [],
-                                  appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?",
-                                  backlogCount: Uploader.backlogCount(),
-                                  lastFireAt: AppGroup.journal.lastThresholdAt(),
-                                  batteryLevel: batteryLevel >= 0 ? Double(batteryLevel) : nil)
+        guard isKid, let kid = config.kid, let store, let heartbeat = makeHeartbeat(source) else { return }
         // Today's energy goes with every heartbeat, so a ping always brings fresh numbers.
         EnergyMeter.record(.app, isCallback: false)
         let energy = EnergyMeter.report(kid: kid, day: DayKey(Date()))
@@ -127,8 +115,24 @@ extension AppModel {
             EnergyMeter.markUploaded([energy])
             lastHeartbeatAt = heartbeat.at
         } catch {
-            show(error)
+            showUnlessOffline(error)
         }
+    }
+
+    /// This phone's state now. One record per kid, overwritten: parents only need the latest.
+    func makeHeartbeat(_ source: HeartbeatSource) -> Heartbeat? {
+        guard isKid, let kid = config.kid else { return nil }
+        authorizationStatus = AuthorizationCenter.shared.authorizationStatus
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let batteryLevel = UIDevice.current.batteryLevel
+        return Heartbeat(id: Replay.stableUUID("heartbeat", kid.id.uuidString), kidID: kid.id, at: Date(),
+                         source: source, authStatus: authorizationLabel,
+                         activeActivities: DeviceActivityCenter().activities.map(\.rawValue),
+                         expectedActivities: config.epoch?.activityNames ?? [],
+                         appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?",
+                         backlogCount: Uploader.backlogCount(),
+                         lastFireAt: AppGroup.journal.lastThresholdAt(),
+                         batteryLevel: batteryLevel >= 0 ? Double(batteryLevel) : nil)
     }
 
     /// A day of this phone's capture as a trace file, for the replay tool and test fixtures (PLAN.md §7.2).
@@ -140,5 +144,14 @@ extension AppModel {
         let url = URL.temporaryDirectory.appending(path: "trace-\(kid.displayName)-\(day).json")
         try trace.encoded().write(to: url, options: .atomic)
         return url
+    }
+}
+
+extension Enforcer {
+    /// Enforcing registers DeviceActivity schedules: synchronous calls into Apple's usage-tracking service that can
+    /// hang for more than 10 s. On the app's main thread iOS then kills the app (watchdog 0x8badf00d, twice on the kid's
+    /// phone on Nov 15, 2026), so the app enforces through this. The App Group lock makes it safe on any thread.
+    static func offMain(_ work: @escaping @Sendable () -> Void) async {
+        await Task.detached(priority: .userInitiated, operation: work).value
     }
 }

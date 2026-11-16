@@ -18,6 +18,7 @@ struct IngestBatch: Sendable {
     var policies: [Policy] = []
     var requests: [TimeRequest] = []
     var grants: [TimeGrant] = []
+    var linkKeys: [LinkKey] = []
     var deletedRecordNames: [String] = []
 
     mutating func add(_ record: CKRecord) {
@@ -35,6 +36,7 @@ struct IngestBatch: Sendable {
         case Policy.recordType: Policy.decode(record).map { policies.append($0) }
         case TimeRequest.recordType: TimeRequest.decode(record).map { requests.append($0) }
         case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
+        case LinkKey.recordType: LinkKey.decode(record).map { linkKeys.append($0) }
         default: break
         }
     }
@@ -43,7 +45,7 @@ struct IngestBatch: Sendable {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && requests.isEmpty && grants.isEmpty
-            && deletedRecordNames.isEmpty
+            && linkKeys.isEmpty && deletedRecordNames.isEmpty
     }
 }
 
@@ -67,6 +69,8 @@ final class FamilyData {
         var policies: [UUID: Policy] = [:]
         var requests: [UUID: TimeRequest] = [:]
         var grants: [UUID: TimeGrant] = [:]
+        /// Where builds before link-key.json kept the nearby link's secret; read once, to move it.
+        var linkKey: LinkKey?
     }
 
     private var snapshot = Snapshot()
@@ -86,6 +90,11 @@ final class FamilyData {
     var pings: [UUID: Ping] { snapshot.pings }
     var requests: [UUID: TimeRequest] { snapshot.requests }
     var grants: [UUID: TimeGrant] { snapshot.grants }
+    /// The nearby link's secret (PLAN.md §17), in its own file: a build from a branch without the link rewrites the
+    /// snapshot without the fields it doesn't know, which dropped it once. Fetched by name when missing
+    /// (`LinkKeyService`).
+    private(set) var linkKey: LinkKey?
+    @ObservationIgnored private let linkKeyURL = URL.applicationSupportDirectory.appending(path: "link-key.json")
 
     /// The kid's policy, or an empty one to start editing.
     func policy(for kid: UUID) -> Policy {
@@ -115,12 +124,14 @@ final class FamilyData {
     @ObservationIgnored private(set) var needsFullFetch = false
 
     init() {
+        linkKey = (try? Data(contentsOf: linkKeyURL)).flatMap { try? JSONDecoder.thyme.decode(LinkKey.self, from: $0) }
         guard let data = try? Data(contentsOf: directory.appending(path: "snapshot.json")) else { return }
         if let saved = try? JSONDecoder.thyme.decode(Snapshot.self, from: data), saved.version == Snapshot.currentVersion {
             snapshot = saved
         } else {
             needsFullFetch = true
         }
+        if linkKey == nil, let key = snapshot.linkKey { saveLinkKey(key) }
     }
 
     func fullFetchDone() {
@@ -145,6 +156,7 @@ final class FamilyData {
         }
         for request in batch.requests { snapshot.requests[request.id] = request }
         for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
+        if let key = batch.linkKeys.last, key != linkKey { saveLinkKey(key) }
         for heartbeat in batch.heartbeats where heartbeat.at > (snapshot.heartbeats[heartbeat.kidID]?.at ?? .distantPast) {
             snapshot.heartbeats[heartbeat.kidID] = heartbeat
         }
@@ -213,6 +225,12 @@ final class FamilyData {
     }
 
     // MARK: - Files
+
+    private func saveLinkKey(_ key: LinkKey) {
+        linkKey = key
+        try? JSONEncoder.thyme.encode(key)
+            .write(to: linkKeyURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
 
     private func saveSnapshot() {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

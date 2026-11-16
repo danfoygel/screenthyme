@@ -12,10 +12,11 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
   Journal/           append-only JSONL with flock + fsync, upload ledger
   Reconstruction/    total fires + samples → in-use strip, per-app blocks and totals, live status
   Rules/             RuleEngine (kid-side alerts), HealthEvaluator (parent-side)
+  Link/              nearby link protocol: LinkKey (family secret), LinkSession (hello, AES-GCM frames), LinkBundle
   Energy/            EnergyLedger: our processes' daily energy from kernel counters (sampled by Shared/Energy)
   Replay/            Trace, retarget/schedule, synthetic traces and scenarios
 Shared/              compiled into the app AND the monitor extension: App Group files, SharedConfig, CloudKit records, Uploader
-ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Kid/, Parent/, Components/, Debug/
+ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Nearby/ (local link), Kid/, Parent/, Components/, Debug/
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
 ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only
 ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
@@ -107,5 +108,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - The Enforcer's activities are `dt.<id8>`, `lim.<id8>` and `om.end` (`Enforcer.owns`), and the token matcher's is `tm`; everything else is the wake alarm's.
 - Event names are `t.<minute>` (in iOS's count; journaled in ours) and probes `p.<minute>` (never journaled); the activity is `st.<epoch8>.tot`. Old journals also hold per-app `i.<itemUUID>.<minute>`
   fires, which are ignored.
+- The nearby link (PLAN.md §17) runs only while the app is open, over Wi-Fi (Bonjour) and Bluetooth (L2CAP) at once:
+  kid phones listen, parent phones dial. It needs the family's `LinkKey` record, fetched once with the internet.
+  Records sent nearby keep their CloudKit ids. Its events go to Application Support/nearby-diagnostics.txt.
 - A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change, so phones re-fetch.
 - Record names are `<Type>.<uuid>`, saved with `.allKeys`, so every upload is idempotent.

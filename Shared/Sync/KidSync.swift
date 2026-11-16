@@ -30,7 +30,7 @@ enum KidSync {
                 switch result {
                 case let .success(record):
                     if let set = RuleSet.decode(record) {
-                        saveRules(set.rules, checkedAt: now)
+                        saveRules(set, checkedAt: now)
                     } else if let policy = Policy.decode(record) {
                         savePolicy(policy)
                     } else if let grant = TimeGrant.decode(record) {
@@ -62,7 +62,27 @@ enum KidSync {
             if let current, Set(current.rules) != Set(rules) {
                 try? AppGroup.journal.append(.note("rules updated: \(rules.count)"))
             }
-            AppGroup.saveRules(LocalRules(rules: rules, checkedAt: checkedAt))
+            AppGroup.saveRules(LocalRules(rules: rules, checkedAt: checkedAt, updatedAt: current?.updatedAt))
+        }
+    }
+
+    /// Writes a rule set unless this phone has a newer one: from CloudKit (with `checkedAt`, which records the check),
+    /// or from a parent phone nearby, whose copy may be older than what CloudKit already delivered.
+    static func saveRules(_ set: RuleSet, checkedAt: Date? = nil) {
+        AppGroup.withLock("rules") {
+            let current = AppGroup.loadRules()
+            let checked = checkedAt ?? current?.checkedAt ?? .distantPast
+            guard set.updatedAt >= (current?.updatedAt ?? .distantPast) else {
+                if let checkedAt, var current {
+                    current.checkedAt = checkedAt
+                    AppGroup.saveRules(current)
+                }
+                return
+            }
+            if let current, Set(current.rules) != Set(set.rules) {
+                try? AppGroup.journal.append(.note("rules updated: \(set.rules.count)\(checkedAt == nil ? " (nearby)" : "")"))
+            }
+            AppGroup.saveRules(LocalRules(rules: set.rules, checkedAt: checked, updatedAt: set.updatedAt))
         }
     }
 

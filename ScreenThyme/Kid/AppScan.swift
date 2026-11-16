@@ -34,7 +34,7 @@ enum AppScan {
         AppGroup.save(saved.screenThyme.applicationTokens.compactMap(TokenCoding.encode), to: AppGroup.exemptTokensURL)
         // An empty pick is a cancel: keep the last scan rather than unshield everything.
         guard !picked.isEmpty else {
-            Enforcer.reconcile(now: now)
+            Task { await Enforcer.offMain { Enforcer.reconcile(now: now) } }
             return
         }
         // The sampler's lock: it rewrites items.json too.
@@ -56,8 +56,12 @@ enum AppScan {
             try? AppGroup.newItems.append(contentsOf: changed)
             try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"))
         }
-        Enforcer.reconcile(now: now)
-        TokenMatcher.register(now: now)
+        Task {
+            await Enforcer.offMain {
+                Enforcer.reconcile(now: now)
+                TokenMatcher.register(now: now)
+            }
+        }
     }
 
     private static func item(_ kind: ItemKind, tokenData: Data, kid: Kid, now: Date) -> TrackedItem {

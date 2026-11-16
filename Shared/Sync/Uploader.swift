@@ -17,15 +17,7 @@ enum Uploader {
         let store = CloudStore(family: family)
         let journal = AppGroup.journal
         let pending = journal.pending(days: days)
-
-        // Total fires, and tracking starts as minute-0 fires. Item fires from the old per-app ladders are dropped.
-        var fires: [UsageFire] = []
-        for entry in pending {
-            let parsed = entry.isTrackingStart ? EventName.Parsed(itemID: nil, minute: 0) : entry.parsedEvent
-            guard let parsed, parsed.itemID == nil else { continue }
-            fires.append(UsageFire(id: entry.id, kidID: kid.id, itemID: nil, minute: parsed.minute, firedAt: entry.at,
-                                   day: DayKey(entry.at, calendar: journal.calendar), epochID: config.epoch?.id))
-        }
+        let fires = fires(from: pending, kid: kid, epochID: config.epoch?.id, calendar: journal.calendar)
         let energy = EnergyMeter.pendingReports(kid: kid)
         try await store.save(records: fires.map { try $0.record(in: store.zoneID) }
             + energy.map { try $0.record(in: store.zoneID) })
@@ -39,6 +31,16 @@ enum Uploader {
         _ = try await Outbox.send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
         let alerts = try await Outbox.send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
         return Result(fires: fires.count, samples: samples, alerts: alerts, energyReports: energy.count)
+    }
+
+    /// Total fires, and tracking starts as minute-0 fires. Item fires from the old per-app ladders are dropped.
+    static func fires(from entries: [JournalEntry], kid: Kid, epochID: UUID?, calendar: Calendar) -> [UsageFire] {
+        entries.compactMap { entry in
+            let parsed = entry.isTrackingStart ? EventName.Parsed(itemID: nil, minute: 0) : entry.parsedEvent
+            guard let parsed, parsed.itemID == nil else { return nil }
+            return UsageFire(id: entry.id, kidID: kid.id, itemID: nil, minute: parsed.minute, firedAt: entry.at,
+                             day: DayKey(entry.at, calendar: calendar), epochID: epochID)
+        }
     }
 
     /// Re-sends today's and yesterday's tracking-start markers (idempotent). Markers journaled before they were

@@ -146,6 +146,9 @@ struct FamilyLocation: Codable, Sendable, Hashable {
 struct LocalRules: Codable, Sendable {
     var rules: [Rule]
     var checkedAt: Date
+    /// The `RuleSet` these came from: a parent phone nearby may send an older one than CloudKit's (PLAN.md §17).
+    /// Nil for rules from before rule sets.
+    var updatedAt: Date?
 }
 
 struct SharedConfig: Codable, Sendable {

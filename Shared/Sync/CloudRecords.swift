@@ -136,6 +136,13 @@ extension Ping: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+/// One per family, under a fixed name; belongs to no kid.
+extension LinkKey: CloudRecordable {
+    static let recordType = "LinkKey"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { id }
+}
+
 /// Saves to the family zone. Used by the app and (for uploads) the monitor extension.
 struct CloudStore: Sendable {
     static let zoneName = "Family"

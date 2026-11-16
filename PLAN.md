@@ -642,3 +642,67 @@ for hours, so nothing fetched the policy. The device logs (`log collect`) showed
   of that registration only refine the offset. Probe and replay fires aren't journaled as use. Midnight clears it.
 - `UsageTrackingAgent` logs "`t.<n>/<activity>/<team>.<bundle id>` has N seconds remaining" for each threshold:
   the quickest way to see where iOS's count is.
+
+## 17. Nearby link: family phones talk directly, without the internet (Nov 15, 2026)
+
+CloudKit needs the internet on both phones. In a car, on a plane or camping, the kid's phone keeps capturing and
+enforcing, but parents see nothing and a request for more time can't be answered. When ScreenThyme is open on a kid's
+phone and a parent's phone near each other, the two now talk directly: Bonjour (`_screenthyme._tcp`) over
+Network.framework with `includePeerToPeer`, so a shared Wi-Fi network isn't needed (Apple's peer-to-peer Wi-Fi works
+with Wi-Fi on and no network joined, including in airplane mode with Wi-Fi turned back on).
+
+**Foreground only, by design.** iOS suspends the sockets with the app, the monitor extension lives for seconds, and
+background Bluetooth between two iPhones is too unreliable to build on. So the link starts when the app becomes active
+(before any network call) and stops when it goes to the background. Asking for more time already opens ScreenThyme on
+the kid's phone, which is the case this is mostly for. CloudKit stays the source of truth: every record keeps its
+CloudKit id, so the copies that arrive later overwrite what came nearby.
+
+**Routes:** both at once, the same protocol over either (`LinkTransport`).
+- Wi-Fi (`NetworkTransport`): TCP to a Bonjour service, on a shared network or peer-to-peer Wi-Fi.
+- Bluetooth (`BluetoothRadio`), for Wi-Fi off: the kid phone publishes an L2CAP channel and advertises a service whose
+  one characteristic holds the channel number; the parent phone scans for it, reads the number and opens the channel.
+  Service and characteristic ids are derived from the family secret. No Bluetooth pairing (the link encrypts), and
+  foreground only like Wi-Fi: no background modes. Throughput is tens of KB/s; the first bundle was 37 KB.
+- A phone reachable both ways gets updates on Wi-Fi only (else on its oldest connection); the other connection stays
+  open, idle, for when Wi-Fi drops. The parent rescans every 15 s, since a scan reports a phone only once.
+- Each phone asks once for Local Network and once for Bluetooth access. Development builds log the link's events to
+  Application Support/nearby-diagnostics.txt (copy with `--domain-type appDataContainer`).
+
+**Who talks:** kid phones listen; parent phones browse and dial (`ScreenThyme/Nearby/NearbyLink.swift`).
+- Kid → parent: kid, items, epoch, today's and yesterday's fires and samples, a fresh heartbeat (`source: .nearby`),
+  alerts and requests. Every 15 s while connected the kid sends what changed (`LinkSentFilter`), and samples Apple's
+  data every 60 s, so a parent watching sees current numbers. The parent ingests it into its mirror and shows a banner
+  for alerts under an hour old ("asks for more time" is one).
+- Parent → kid: the kid's policy (newer `updatedAt` wins, as with CloudKit), the last rule set this phone published
+  (`LocalRules.updatedAt` now records the `RuleSet` date, so an older set from a parent nearby can't replace a newer
+  one from CloudKit), and answers from the last two days (`Enforcer.apply`, once per request).
+- A parent's saves of grants, policies, rules and rule sets that fail for lack of network wait in `PendingSaves`
+  (archived `CKRecord`s) and are retried at every refresh. The kid's phone already queues its own uploads.
+
+**Pairing is the family zone.** The zone's owner creates `LinkKey.<fixed id>` (32 random bytes, create-only so two
+launches can't race to different secrets); every phone fetches it by name at refresh (`LinkKeyService`). So each phone
+needs the internet once after this version, and no other pairing step. The protocol (`ThymeCore/Link`, unit-tested):
+- Bonjour TXT `f` = a tag derived from the secret: parents skip other families' services. A kid's service name is
+  derived too, so it doesn't name the kid.
+- Frames: 4-byte length + AES-GCM. Hellos (role, kid id, name, a fresh 32-byte nonce) are sealed with a key derived
+  from the secret. Bundles (lzfse-compressed JSON) use HKDF keys from the secret and both nonces, one per direction,
+  with a counter as the GCM nonce: recorded, replayed, reordered or reflected frames fail. A peer counts as connected
+  only after its first bundle opens, since a hello alone could be a recording.
+- Trust is the same as CloudKit's: every family phone, the kid's included, has the secret, as it already has
+  read/write access to the zone.
+
+**Not covered:** parents don't forward a kid's records to CloudKit for it (the kid's phone uploads them itself when
+it's back online); parent-to-parent sync; rule deletions made offline reach the kid (through the rule set) but the
+`Rule` record's deletion needs the network. The owner may get a second "asks for more time" banner when the kid's
+phone later uploads the alert.
+
+**Status (Nov 15, 2026, the two phones):**
+- Wi-Fi on the home network: connected within a second of the kid phone starting, 596 records (37 KB compressed) in
+  the first bundle, then a few records every 15 s.
+- Bluetooth with Wi-Fi off on both: found and connected 2 s after the parent app opened; the kid's first bundle, 611
+  records (38 KB), arrived within a second, then updates every 15 s. When Wi-Fi came back, updates moved to it.
+- Testing found the kid app killed by the watchdog (`0x8badf00d`, 10 s) while applying a policy on the main thread:
+  `Enforcer.registerActivities` blocks in a synchronous call to Apple's usage-tracking service. It happened before the
+  nearby link too, after a push (`refresh()` → `KidSync.savePolicy`). The app now enforces off the main thread
+  (`Enforcer.offMain`). Monitoring checks (`DeviceActivityCenter().activities`) still run on it.
+- Still to check: peer-to-peer Wi-Fi with no network joined, and an offline request → approval → the app unblocking.

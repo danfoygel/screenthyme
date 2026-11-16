@@ -28,6 +28,7 @@ struct KidHomeView: View {
                     LabeledContent("Apps seen", value: "\(AppGroup.loadItems().count)")
                     LabeledContent("Last wake", value: AppGroup.journal.lastThresholdAt().map(Format.relative) ?? "none yet")
                     LabeledContent("Waiting to upload", value: "\(Uploader.backlogCount())")
+                    LabeledContent("Parent phone nearby", value: model.nearby.summary)
                     if let upload = model.lastUploadAt {
                         LabeledContent("Last upload", value: Format.relative(upload))
                     }
