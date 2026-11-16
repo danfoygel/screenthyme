@@ -30,6 +30,9 @@ struct KidDebugView: View {
                 LabeledContent("Registered", value: active.isEmpty ? "none" : active.joined(separator: ", "))
                 if let activity = Roller.load() {
                     LabeledContent("Thresholds up to", value: "\(activity.upTo) min (\(activity.day))")
+                    if activity.offset != 0 {
+                        LabeledContent("iOS counts less by", value: "\(activity.offset) min")
+                    }
                 }
                 Button("Re-register") { model.startMonitoring() }
                 Button("Stop monitoring", role: .destructive) { model.stopMonitoring() }

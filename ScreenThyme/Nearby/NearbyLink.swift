@@ -4,7 +4,7 @@ import Network
 import Observation
 import ThymeCore
 
-/// Talks to the family's phones nearby, with no internet (PLAN.md §16), over two routes at once:
+/// Talks to the family's phones nearby, with no internet (PLAN.md §17), over two routes at once:
 /// - Wi-Fi: Bonjour on a shared network, or Apple's peer-to-peer Wi-Fi when there's none (Wi-Fi on, no network).
 /// - Bluetooth: an L2CAP channel (`BluetoothRadio`), for when Wi-Fi is off.
 /// Kid phones listen and advertise; parent phones find them and connect. A phone reachable both ways gets updates over

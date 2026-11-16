@@ -12,7 +12,7 @@ final class AppModel {
 
     private(set) var config: SharedConfig
     let data = FamilyData()
-    /// Family phones nearby, for when there's no internet (PLAN.md §16).
+    /// Family phones nearby, for when there's no internet (PLAN.md §17).
     let nearby = NearbyLink()
     @ObservationIgnored var nearbyTicker: Task<Void, Never>?
     var message: String?
@@ -43,7 +43,7 @@ final class AppModel {
         message = (error as? CKError).map { "iCloud: \($0.localizedDescription)" } ?? error.localizedDescription
     }
 
-    /// For syncs that run by themselves (refreshes, uploads, heartbeats): offline is normal (PLAN.md §16), and they
+    /// For syncs that run by themselves (refreshes, uploads, heartbeats): offline is normal (PLAN.md §17), and they
     /// retry on their own.
     func showUnlessOffline(_ error: any Error) {
         if let error = error as? CKError, error.isOffline { return }

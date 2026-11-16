@@ -2,7 +2,7 @@ import CloudKit
 import Foundation
 import ThymeCore
 
-/// Gets the family's nearby-link secret (PLAN.md §16): fetched by name, so phones whose mirror predates it still find
+/// Gets the family's nearby-link secret (PLAN.md §17): fetched by name, so phones whose mirror predates it still find
 /// it; created by the zone's owner when there is none yet.
 enum LinkKeyService {
     static func fetchOrCreate(store: CloudStore) async throws -> LinkKey? {

@@ -32,6 +32,15 @@ struct ParentSettingsView: View {
                 } footer: {
                     Text("Invite the other parent and each kid's Apple Account with read/write permission. Kids open the link on their own phone.")
                 }
+                Section {
+                    TextField("Your name", text: Binding(get: { model.config.parentName ?? "" },
+                                                         set: { name in model.update { $0.parentName = name } }))
+                        .textContentType(.givenName)
+                } header: {
+                    Text("You")
+                } footer: {
+                    Text("What your kids call you, like “Mom” or “Dad”. Their phone shows it when you answer a request for more time.")
+                }
                 Section("Kids") {
                     ForEach(model.data.sortedKids) { kid in
                         NavigationLink(kid.displayName) { KidSettingsView(kid: kid) }

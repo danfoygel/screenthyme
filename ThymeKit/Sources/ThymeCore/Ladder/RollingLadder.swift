@@ -22,6 +22,18 @@ public struct RollingLadder: Sendable {
         return Array(stride(from: first, through: Self.maxMinute, by: step).prefix(lookahead))
     }
 
+    /// Probes for a fresh registration: 2, 4, 8, … minutes below `minute`, and `step`. iOS replays the ones its count
+    /// has passed, so the highest replay shows where its count is (`LadderCalibration`).
+    public func probes(below minute: Int) -> [Int] {
+        var probes: Set<Int> = minute > step ? [step] : []
+        var depth = step
+        while minute - depth > 0 {
+            probes.insert(minute - depth)
+            depth *= 2
+        }
+        return probes.sorted()
+    }
+
     /// Re-register once at most half the window remains above the last crossing.
     public func needsRefill(crossed minute: Int, registeredUpTo: Int) -> Bool {
         registeredUpTo - minute <= step * lookahead / 2

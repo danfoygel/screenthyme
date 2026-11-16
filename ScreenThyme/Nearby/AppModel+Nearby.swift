@@ -1,7 +1,7 @@
 import Foundation
 import ThymeCore
 
-/// What goes over the nearby link (PLAN.md §16). Kid → parent: today's and yesterday's usage, a fresh heartbeat,
+/// What goes over the nearby link (PLAN.md §17). Kid → parent: today's and yesterday's usage, a fresh heartbeat,
 /// alerts and requests for more time. Parent → kid: that kid's rules, policy and answers. Received records go where
 /// CloudKit's copies would, and CloudKit's copies overwrite them later (same ids).
 extension AppModel {
@@ -14,7 +14,7 @@ extension AppModel {
             guard let kid = config.kid else { return stopNearby() }
             configuration = .init(key: key, role: .kid, kidID: kid.id, name: kid.displayName)
         case .parent:
-            configuration = .init(key: key, role: .parent, kidID: nil, name: parentName)
+            configuration = .init(key: key, role: .parent, kidID: nil, name: senderName)
         case .unset:
             return stopNearby()
         }
@@ -42,8 +42,6 @@ extension AppModel {
         nearbyTicker = nil
         nearby.stop()
     }
-
-    var parentName: String { config.family?.isOwner == true ? "Parent A" : "Parent B" }
 
     private func nearbyBundle(for peer: LinkHello) -> LinkBundle {
         switch (config.role, peer.role) {

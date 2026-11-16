@@ -53,6 +53,13 @@ struct ShieldContext {
         target(domain: WebDomain(token: domainToken))
     }
 
+    /// What a button press on this page will name: a page shown through a category shield passes the category to the
+    /// action extension, not the app.
+    func pressed(_ target: Target, inCategory: Bool) -> Target {
+        guard inCategory else { return target }
+        return Target(item: nil, category: target.category, name: target.category?.displayName ?? "These apps")
+    }
+
     private func categoryItem(_ category: ActivityCategory?, name: String?) -> TrackedItem? {
         items.first { candidate in
             guard candidate.kind == .category else { return false }
@@ -104,6 +111,35 @@ struct ShieldContext {
         case nil:
             return "\(target.name) is blocked by ScreenThyme."
         }
+    }
+
+    // MARK: - More time
+
+    /// "Ask for more time" opens this menu (iOS 26.4 submenu items), or with no choice to make asks straight away.
+    enum MoreTime {
+        case oneMoreMinute
+        case ask
+
+        var title: String {
+            switch self {
+            case .oneMoreMinute: "One more minute"
+            case .ask: "Ask a parent"
+            }
+        }
+    }
+
+    /// The menu for a press on `target` (see `pressed`). The page and the action extension compute it alike, so the
+    /// item pressed maps back to the same choice.
+    func moreTimeMenu(for target: Target) -> [MoreTime] {
+        extraMinuteScope(for: target) == nil ? [] : [.oneMoreMinute, .ask]
+    }
+
+    /// What one more minute would let through: as a request would ask (`requestScope`), if today's minute for it is
+    /// unused. Never for apps that aren't allowed.
+    func extraMinuteScope(for target: Target) -> (itemID: UUID?, reason: BlockReason)? {
+        guard let scope = requestScope(for: target) else { return nil }
+        let today = state.flatMap { $0.day == DayKey(Date()) ? $0 : nil } ?? EnforcementDayState(day: DayKey(Date()))
+        return today.canTakeExtraMinute(itemID: scope.itemID, reason: scope.reason) ? scope : nil
     }
 
     // MARK: - Requests

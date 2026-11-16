@@ -3,9 +3,16 @@ import ThymeCore
 
 /// Parent-side actions: rules, pings, health (PLAN.md §4.6, §4.7).
 extension AppModel {
+    /// How this parent signs grants and pings: their name from Settings, else which side of the share they're on.
+    var senderName: String {
+        let name = config.parentName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !name.isEmpty { return name }
+        return config.family?.isOwner == true ? "Parent A" : "Parent B"
+    }
+
     func ping(_ kid: Kid) async {
         guard let store else { return }
-        let ping = Ping(kidID: kid.id, at: Date(), from: parentName)
+        let ping = Ping(kidID: kid.id, at: Date(), from: senderName)
         do {
             try await store.save([ping])
             data.ingest(IngestBatch(pings: [ping]))
@@ -38,7 +45,7 @@ extension AppModel {
     /// Answers a kid's request for more time; the kid's phone fetches the grant by name or gets it nearby. Offline,
     /// the grant waits in `PendingSaves`.
     func answer(_ request: TimeRequest, approved: Bool, minutes: Int?) async {
-        let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: parentName)
+        let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: senderName)
         data.ingest(IngestBatch(grants: [grant]))
         nearby.sendUpdates()
         guard let store else { return }

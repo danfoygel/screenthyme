@@ -9,9 +9,27 @@ enum Roller {
     struct Activity: Codable, Sendable {
         var name: String
         var day: DayKey
-        /// Highest total minute registered.
+        /// Highest threshold registered, in iOS's minutes.
         var upTo = 0
+        /// Since the last fresh registration; nil after midnight, when both counts start over (PLAN.md §16).
+        var calibration: LadderCalibration?
+
+        /// Our minutes minus iOS's.
+        var offset: Int { calibration?.offset ?? 0 }
     }
+
+    /// What a wake-alarm fire was.
+    enum Fire: Equatable {
+        /// Use, at this minute of ours.
+        case use(minute: Int)
+        /// A probe or a replay: it only tells where iOS's count is.
+        case calibration
+        /// Not the wake alarm's (old per-app ladders).
+        case unknown
+    }
+
+    /// Probes replay in random order: wait this long for the rest before the highest settles the offset.
+    static let probeSettleDelay: TimeInterval = 3
 
     static let ladder = RollingLadder()
 
@@ -30,15 +48,17 @@ enum Roller {
     static func registerAll(epochID: UUID, kid: Kid, now: Date = Date()) throws -> LadderEpoch {
         let center = DeviceActivityCenter()
         // Every activity but the Enforcer's. Never an empty list: that stops everything.
-        let old = center.activities.filter {
-            !$0.rawValue.hasPrefix(Enforcer.downtimePrefix) && !$0.rawValue.hasPrefix(Enforcer.limitPrefix)
-        }
+        let old = center.activities.filter { !Enforcer.owns($0.rawValue) }
         if !old.isEmpty { center.stopMonitoring(old) }
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let activity = Activity(name: RollingLadder.activityName(epochID: epochID), day: DayKey(now))
+        let day = DayKey(now)
+        let total = MonitorStateStore.load(day: day).totalMinute
+        let activity = Activity(name: RollingLadder.activityName(epochID: epochID), day: day,
+                                calibration: LadderCalibration(base: total, registeredAt: now))
         try? AppGroup.journal.append(JournalEntry(kind: .trackingStart, activity: activity.name, at: now))
-        try register(activity, after: MonitorStateStore.load(day: activity.day).totalMinute, center: center)
+        // Probes find out whether iOS restarted today's count lower, as a new authorization grant can.
+        try register(activity, after: total, probes: ladder.probes(below: total), center: center)
         let active = center.activities.map(\.rawValue)
         let events = center.events(for: DeviceActivityName(activity.name)).count
         try? AppGroup.journal.append(.note("registered \(activity.name): \(events) events, iOS reports \(active.count) active"))
@@ -49,16 +69,66 @@ enum Roller {
 
     // MARK: - Extension
 
-    /// After a fire: re-register with the next thresholds when running low.
+    /// A fire of the wake alarm, in iOS's minutes, as ours. Probes and replays only calibrate (PLAN.md §16).
+    static func observe(_ eventName: String, at date: Date) -> Fire {
+        if let probe = EventName.parseProbe(eventName) {
+            return probePassed(probe, at: date)
+        }
+        guard let parsed = EventName.parse(eventName), parsed.itemID == nil else { return .unknown }
+        return AppGroup.withLock("roll") {
+            // A new day's counts start over together, even before `intervalStarted` clears the calibration.
+            guard var activity = load(), activity.day == DayKey(date), var calibration = activity.calibration else {
+                return .use(minute: parsed.minute)
+            }
+            if let minute = calibration.ladderFired(parsed.minute, at: date) { return .use(minute: minute) }
+            activity.calibration = calibration
+            save(activity)
+            // Replays can use up the ladder too.
+            if ladder.needsRefill(crossed: parsed.minute, registeredUpTo: activity.upTo) {
+                reregister(activity, after: parsed.minute)
+            }
+            return .calibration
+        }
+    }
+
+    private static func probePassed(_ minute: Int, at date: Date) -> Fire {
+        let recorded = AppGroup.withLock("roll") { () -> Bool in
+            guard var activity = load(), activity.day == DayKey(date), var calibration = activity.calibration,
+                  calibration.probePassed(minute, at: date) else { return false }
+            activity.calibration = calibration
+            save(activity)
+            return true
+        }
+        guard recorded else { return .calibration }
+        Thread.sleep(forTimeInterval: probeSettleDelay)
+        AppGroup.withLock("roll") {
+            // Only the highest probe settles; the others return.
+            guard var activity = load(), var calibration = activity.calibration, calibration.floor == minute,
+                  let after = calibration.settle(at: Date(), step: ladder.step) else { return }
+            activity.calibration = calibration
+            try? AppGroup.journal.append(.note("wake alarm: iOS counts \(calibration.offset) min less than our \(calibration.base)"))
+            reregister(activity, after: after)
+        }
+        return .calibration
+    }
+
+    /// After a fire of use (in our minutes): re-register with the next thresholds when running low.
     static func roll(after minute: Int, state: MonitorDayState) {
         AppGroup.withLock("roll") {
-            guard var activity = load(), ladder.needsRefill(crossed: minute, registeredUpTo: activity.upTo) else { return }
+            guard var activity = load() else { return }
+            if activity.day != state.day { activity.calibration = nil }
+            guard ladder.needsRefill(crossed: minute - activity.offset, registeredUpTo: activity.upTo) else { return }
             activity.day = state.day
-            do {
-                try register(activity, after: max(minute, state.totalMinute), center: DeviceActivityCenter())
-            } catch {
-                try? AppGroup.journal.append(.note("roll failed: \(error.localizedDescription)"))
-            }
+            reregister(activity, after: max(minute, state.totalMinute) - activity.offset)
+        }
+    }
+
+    /// Call under the "roll" lock. `minute` is iOS's.
+    private static func reregister(_ activity: Activity, after minute: Int) {
+        do {
+            try register(activity, after: minute, center: DeviceActivityCenter())
+        } catch {
+            try? AppGroup.journal.append(.note("roll failed: \(error.localizedDescription)"))
         }
     }
 
@@ -69,13 +139,16 @@ enum Roller {
             let today = DayKey(now)
             guard var activity = load(), activity.day != today else { return }
             activity.day = today
+            activity.calibration = nil
             try? register(activity, after: 0, center: DeviceActivityCenter())
         }
     }
 
     // MARK: - Registration
 
-    private static func register(_ activity: Activity, after minute: Int, center: DeviceActivityCenter) throws {
+    /// Ladder events after `minute` and `probes`, all in iOS's minutes.
+    private static func register(_ activity: Activity, after minute: Int, probes: [Int] = [],
+                                 center: DeviceActivityCenter) throws {
         var activity = activity
         let minutes = ladder.thresholds(after: minute)
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
@@ -83,9 +156,17 @@ enum Roller {
             events[.init(EventName.total(minute: minute))] = DeviceActivityEvent(
                 threshold: DateComponents(minute: minute), includesPastActivity: true)
         }
+        for probe in probes {
+            events[.init(EventName.probe(minute: probe))] = DeviceActivityEvent(
+                threshold: DateComponents(minute: probe), includesPastActivity: true)
+        }
         try center.startMonitoring(DeviceActivityName(activity.name), during: schedule, events: events)
         activity.upTo = minutes.last ?? minute
         try JSONEncoder.thyme.encode(activity).write(to: url, options: .atomic)
+    }
+
+    private static func save(_ activity: Activity) {
+        try? JSONEncoder.thyme.encode(activity).write(to: url, options: .atomic)
     }
 
     static func load() -> Activity? {

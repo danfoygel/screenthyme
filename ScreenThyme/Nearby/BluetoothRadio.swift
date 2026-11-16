@@ -2,7 +2,7 @@ import CoreBluetooth
 import Foundation
 import ThymeCore
 
-/// The nearby link's Bluetooth route (PLAN.md §16), for when Wi-Fi is off. A kid phone publishes an L2CAP channel and
+/// The nearby link's Bluetooth route (PLAN.md §17), for when Wi-Fi is off. A kid phone publishes an L2CAP channel and
 /// advertises a service whose one characteristic holds the channel's number (PSM); a parent phone scans for that
 /// service, reads the number and opens the channel, a plain byte stream. The service and characteristic ids are derived
 /// from the family secret, so other families' phones never look for them. No Bluetooth pairing: `LinkSession`

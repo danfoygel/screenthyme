@@ -1,7 +1,7 @@
 import CloudKit
 import Foundation
 
-/// Records a parent phone saved without the internet, kept and retried on every refresh (PLAN.md §16). An answer given
+/// Records a parent phone saved without the internet, kept and retried on every refresh (PLAN.md §17). An answer given
 /// to a kid nearby, offline, must still reach CloudKit: for the other parent, and for the kid's phone, which looks for
 /// its answer there until it has one.
 enum PendingSaves {

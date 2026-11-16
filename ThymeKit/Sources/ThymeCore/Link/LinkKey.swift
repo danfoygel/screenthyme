@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// The family's secret for talking to its phones nearby, without the internet (PLAN.md §16). The family zone's owner
+/// The family's secret for talking to its phones nearby, without the internet (PLAN.md §17). The family zone's owner
 /// creates it once; it syncs as `LinkKey.<id>`, so every phone that joined the family has it and no other phone does.
 public struct LinkKey: Codable, Sendable, Hashable, Identifiable {
     /// One per family zone, under a fixed name, so every phone can fetch it by name.

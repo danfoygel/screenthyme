@@ -20,7 +20,8 @@ ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fe
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
 ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only
 ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
-ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme
+ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme;
+                     "One more minute" runs the Enforcer itself (PLAN.md §15.5)
 ```
 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
@@ -75,14 +76,18 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 
 - **Never register many events.** Thousands crashed Apple's `UsageTrackingAgent` on smaller phones (PLAN.md §12).
   The wake alarm is one activity with 10 total-use events (`Shared/ScreenTime/Roller.swift`, `RollingLadder`),
-  re-registered by the extension when half are used and at midnight. Per-app thresholds were removed once data access
+  re-registered by the extension when half are used and at midnight. A fresh registration adds about 8 probes below
+  today's total, because iOS can restart its count lower after a grant (PLAN.md §16). Per-app thresholds were removed once data access
   worked (PLAN.md §13; history before `a860884`).
 - **Data access** (`AuthorizationStatus.approvedWithDataAccess`, iOS 26.4) needs the
   `com.apple.developer.family-controls.app-and-website-usage` entitlement on the app *and* the monitor extension.
   `DeviceActivityData.activitySegments` is declared in the SwiftUI overlay, so import SwiftUI.
   `FamilyActivityData.installedApplications` hangs.
 - `AuthorizationCenter.shared.authorizationStatus` is unreliable in the extension: don't gate on it there.
-- Any new authorization grant stops all monitoring; `requestAuthorization` re-registers.
+- Any new authorization grant stops all monitoring; `requestAuthorization` re-registers. It can also restart iOS's
+  count of today's use lower: `LadderCalibration` finds the offset, and journaled fires are in our minutes.
+- Apple's Screen Time settings for the kid (even re-sent unchanged from a parent's device) can reset ScreenThyme to
+  "not determined": extension fetches fail `unauthorized`, and the extension alerts parents (PLAN.md §16).
 - Silent pushes are rationed: don't depend on one reaching the kid app. Rules reach the extension through the
   `RuleSet.<kid id>` and `Policy.<kid id>` records, fetched at every wake (`KidSync`, App Group `rules.json` and `policy.json`); parents must publish it after every rule change.
 - **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.
@@ -98,9 +103,10 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).
-- Event names are `t.<minute>`; the activity is `st.<epoch8>.tot`. Old journals also hold per-app `i.<itemUUID>.<minute>`
+- The Enforcer's activities are `dt.<id8>`, `lim.<id8>` and `om.end` (`Enforcer.owns`); everything else is the wake alarm's.
+- Event names are `t.<minute>` (in iOS's count; journaled in ours) and probes `p.<minute>` (never journaled); the activity is `st.<epoch8>.tot`. Old journals also hold per-app `i.<itemUUID>.<minute>`
   fires, which are ignored.
-- The nearby link (PLAN.md §16) runs only while the app is open, over Wi-Fi (Bonjour) and Bluetooth (L2CAP) at once:
+- The nearby link (PLAN.md §17) runs only while the app is open, over Wi-Fi (Bonjour) and Bluetooth (L2CAP) at once:
   kid phones listen, parent phones dial. It needs the family's `LinkKey` record, fetched once with the internet.
   Records sent nearby keep their CloudKit ids. Its events go to Application Support/nearby-diagnostics.txt.
 - A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change, so phones re-fetch.

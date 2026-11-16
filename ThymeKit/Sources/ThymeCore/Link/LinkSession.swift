@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// One connection between two family phones, without the network: framing, the hello exchange and encryption
-/// (PLAN.md §16). The app feeds it bytes from the socket and writes out what it returns.
+/// (PLAN.md §17). The app feeds it bytes from the socket and writes out what it returns.
 ///
 /// Every frame is a 4-byte big-endian length and an AES-GCM box. Hellos are sealed with a key derived from the family
 /// secret, so a phone outside the family can't read or send one. Later messages use keys derived from the secret and

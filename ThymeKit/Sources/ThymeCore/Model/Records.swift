@@ -153,7 +153,7 @@ public struct UsageFire: Codable, Sendable, Hashable, Identifiable {
 
 public enum HeartbeatSource: String, Codable, Sendable {
     case fire, backgroundRefresh, ping, launch, manual
-    /// Sent to a parent phone nearby, over the local link (PLAN.md §16).
+    /// Sent to a parent phone nearby, over the local link (PLAN.md §17).
     case nearby
 }
 
