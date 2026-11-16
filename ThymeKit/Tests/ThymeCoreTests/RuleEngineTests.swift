@@ -112,4 +112,20 @@ struct HealthEvaluatorTests {
         #expect(HealthEvaluator.issues(latest: heartbeat(at: at(10, 0), auth: "approved"), lastFireAt: nil, now: at(10, 5),
                                        calendar: utc) == [.dataAccessLost])
     }
+
+    @Test func accessLossAlertsOncePerLoss() {
+        let engine = RuleEngine(kidID: testKid.id, kidName: "Emma", items: [:], calendar: utc)
+        var state = MonitorDayState(day: testDay)
+        let first = engine.accessAlert(hasAccess: false, at: at(10, 0), state: &state)
+        let again = engine.accessAlert(hasAccess: false, at: at(10, 4), state: &state)
+        // A timeout says nothing either way.
+        let timeout = engine.accessAlert(hasAccess: nil, at: at(10, 6), state: &state)
+        let afterTimeout = engine.accessAlert(hasAccess: false, at: at(10, 8), state: &state)
+        // Back, then lost again.
+        let back = engine.accessAlert(hasAccess: true, at: at(15, 0), state: &state)
+        let lostAgain = engine.accessAlert(hasAccess: false, at: at(16, 0), state: &state)
+        #expect(first?.title == "Emma: ScreenThyme lost usage data" && first?.ruleID == nil)
+        #expect(again == nil && timeout == nil && afterTimeout == nil && back == nil)
+        #expect(lostAgain != nil)
+    }
 }

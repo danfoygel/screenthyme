@@ -21,6 +21,17 @@ public enum EventName {
         "t.\(minute)"
     }
 
+    /// A threshold below the known total, to find where iOS's count is (`LadderCalibration`). Never journaled.
+    public static func probe(minute: Int) -> String {
+        "p.\(minute)"
+    }
+
+    public static func parseProbe(_ raw: String) -> Int? {
+        let parts = raw.split(separator: ".")
+        guard parts.count == 2, parts[0] == "p" else { return nil }
+        return Int(parts[1])
+    }
+
     public static func parse(_ raw: String) -> Parsed? {
         let parts = raw.split(separator: ".")
         switch (parts.first, parts.count) {

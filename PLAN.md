@@ -581,3 +581,28 @@ category ids) for the app, which shows `AskForTimeView`:
   Downtime through the scan's ScreenThyme pick.
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
   approval, the app opens while Downtime stays on for the rest.
+
+## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
+
+A parent's Always Allowed change didn't reach the kid's phone for over an hour: the monitor extension hadn't woken
+for hours, so nothing fetched the policy. The device logs (`log collect`) showed two separate causes, in this order:
+
+1. `ScreenTimeAgent` receives the family's Screen Time settings ("blueprints": bedtime, budgets; the restore in §15).
+2. Half a minute later it requests "internal authorization", and FamilyControls logs *Reset authorization … not
+   determined* for ScreenThyme. iOS stops our activities.
+3. The app re-registers. Threshold fires keep coming, but every fetch in the extension fails `unauthorized`.
+4. Hours later, "Allow usage data access" → *Approved with Data Access*. Screen Time's internal authorization is
+   revoked, and iOS stops our activities 0.4 s after the app re-registered.
+5. The app re-registers again. `UsageTrackingAgent` now puts the next threshold about half an hour of use away;
+   just before the grant it was under a minute away.
+
+- **Apple's Screen Time takes data access back silently.** The app learned of it only at a heartbeat (app launch).
+  The extension now alerts parents at the first refused fetch (`RuleEngine.accessAlert`, once per loss and day).
+- **A new grant can restart iOS's count of today's use lower** (by tens of minutes), while thresholds still replay
+  "from midnight" in iOS's count. A ladder registered above our total then waits that much use for its next wake.
+  A fresh registration now adds **probes** below our total (2, 4, 8, … min under it, and 2 min; `p.<minute>`).
+  iOS replays those it has passed; after 3 s the highest one settles `LadderCalibration.offset` (ours minus iOS's),
+  and the ladder re-registers in iOS's minutes. Fires are journaled as `t.<our minute>`. Ladder replays within 60 s
+  of that registration only refine the offset. Probe and replay fires aren't journaled as use. Midnight clears it.
+- `UsageTrackingAgent` logs "`t.<n>/<activity>/<team>.<bundle id>` has N seconds remaining" for each threshold:
+  the quickest way to see where iOS's count is.
