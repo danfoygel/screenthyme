@@ -146,6 +146,25 @@ public struct RuleEngine: Sendable {
         }
     }
 
+    /// Not a parent's rule: the phone lost data access (Apple's Screen Time can take it back, PLAN.md §16), so wakes
+    /// get no per-app numbers. One alert per loss and day; a fetch that works re-arms it. `hasAccess` is nil when the
+    /// fetch said neither (a timeout).
+    public func accessAlert(hasAccess: Bool?, at: Date, state: inout MonitorDayState) -> AlertRecord? {
+        let key = "access-lost"
+        switch hasAccess {
+        case true?:
+            state.fired.remove(key)
+            return nil
+        case false? where !state.fired.contains(key):
+            state.fired.insert(key)
+            return AlertRecord(kidID: kidID, ruleID: nil, itemID: nil, at: at,
+                               title: "\(kidName): ScreenThyme lost usage data",
+                               body: "Apple's Screen Time took it back on \(kidName)'s phone. Open ScreenThyme there and allow usage data access; Screen Time limits for \(kidName) in Settings can take it again.")
+        default:
+            return nil
+        }
+    }
+
     /// The start of the quiet window containing `at`, or nil if `at` is outside every window.
     func quietWindowStart(at: Date, start: Int, end: Int, weekdays: Set<Int>) -> Date? {
         DailyWindow(startMinute: start, endMinute: end, weekdays: weekdays).occurrence(containing: at, calendar: calendar)?.start
