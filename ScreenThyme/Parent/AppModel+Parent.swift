@@ -5,7 +5,7 @@ import ThymeCore
 extension AppModel {
     func ping(_ kid: Kid) async {
         guard let store else { return }
-        let ping = Ping(kidID: kid.id, at: Date(), from: config.family?.isOwner == true ? "Parent A" : "Parent B")
+        let ping = Ping(kidID: kid.id, at: Date(), from: parentName)
         do {
             try await store.save([ping])
             data.ingest(IngestBatch(pings: [ping]))
@@ -18,32 +18,40 @@ extension AppModel {
     func save(_ rule: Rule) async {
         data.ingest(IngestBatch(rules: [rule]))
         do {
-            try await store?.save([rule])
+            if let store { try await PendingSaves.save([rule], to: store) }
             try await publishRuleSet(for: rule.kidID)
         } catch {
             show(error)
         }
     }
 
-    /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`).
+    /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`) or gets it nearby.
     func save(_ policy: Policy) async {
         var policy = policy
         policy.updatedAt = Date()
         data.ingest(IngestBatch(policies: [policy]))
-        do { try await store?.save([policy]) } catch { show(error) }
+        nearby.sendUpdates()
+        guard let store else { return }
+        do { try await PendingSaves.save([policy], to: store) } catch { show(error) }
     }
 
-    /// Answers a kid's request for more time; the kid's phone fetches the grant by name.
+    /// Answers a kid's request for more time; the kid's phone fetches the grant by name or gets it nearby. Offline,
+    /// the grant waits in `PendingSaves`.
     func answer(_ request: TimeRequest, approved: Bool, minutes: Int?) async {
-        let by = config.family?.isOwner == true ? "Parent A" : "Parent B"
-        let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: by)
+        let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: parentName)
         data.ingest(IngestBatch(grants: [grant]))
-        do { try await store?.save([grant]) } catch { show(error) }
+        nearby.sendUpdates()
+        guard let store else { return }
+        do { try await PendingSaves.save([grant], to: store) } catch { show(error) }
     }
 
-    /// The kid's whole rule list as one record, which the kid's monitor extension fetches by name (`KidSync`).
+    /// The kid's whole rule list as one record, which the kid's monitor extension fetches by name (`KidSync`), and
+    /// this phone sends to the kid's phone nearby.
     private func publishRuleSet(for kidID: UUID) async throws {
-        try await store?.save([RuleSet(kidID: kidID, rules: data.rules(for: kidID))])
+        let set = RuleSet(kidID: kidID, rules: data.rules(for: kidID))
+        rememberPublished(set)
+        nearby.sendUpdates()
+        if let store { try await PendingSaves.save([set], to: store) }
     }
 
     /// Development: launched with `-addTestRules <kid name>`, saves one rule of each kid-side kind for that kid, set
@@ -100,12 +108,9 @@ extension AppModel {
     func delete(_ rule: Rule) async {
         let name = "\(Rule.recordType).\(rule.id.uuidString)"
         data.ingest(IngestBatch(deletedRecordNames: [name]))
-        do {
-            try await store?.delete(recordNames: [name])
-            try await publishRuleSet(for: rule.kidID)
-        } catch {
-            show(error)
-        }
+        // The rule set is what kid phones read, so it goes out even when the deletion can't (offline).
+        do { try await store?.delete(recordNames: [name]) } catch { show(error) }
+        do { try await publishRuleSet(for: rule.kidID) } catch { show(error) }
     }
 
     func healthIssues(for kid: Kid, now: Date = Date()) -> [HealthIssue] {

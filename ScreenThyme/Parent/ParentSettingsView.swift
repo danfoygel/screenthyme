@@ -38,6 +38,16 @@ struct ParentSettingsView: View {
                     }
                 }
                 Section {
+                    LabeledContent("Kids' phones", value: model.nearby.summary)
+                    if PendingSaves.count > 0 {
+                        LabeledContent("Waiting for the internet", value: "\(PendingSaves.count) changes")
+                    }
+                } header: {
+                    Text("Nearby")
+                } footer: {
+                    Text("With ScreenThyme open on both phones and Wi-Fi on, a kid's phone nearby sends its usage and requests for more time straight to this one, and gets your answers back, with no internet needed.")
+                }
+                Section {
                     Button("Allow notifications") { Task { await Notifier.requestPermission() } }
                     Button("Re-install push subscriptions") { Task { await model.reinstallSubscriptions() } }
                 }

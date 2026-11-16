@@ -51,6 +51,10 @@ targets:
         UIBackgroundModes: [remote-notification, fetch]
         BGTaskSchedulerPermittedIdentifiers: [com.danfoygel.screenthyme.refresh]
         CKSharingSupported: true
+        # The nearby link: Bonjour over Wi-Fi and peer-to-peer Wi-Fi, no internet (PLAN.md §16).
+        NSBonjourServices: [_screenthyme._tcp]
+        NSLocalNetworkUsageDescription: ScreenThyme talks to your family's phones nearby, so usage and answers to requests for more time arrive even without the internet.
+        NSBluetoothAlwaysUsageDescription: ScreenThyme talks to your family's phones nearby over Bluetooth when Wi-Fi is off, so usage and answers to requests for more time still arrive.
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
     settings:

@@ -81,6 +81,11 @@ struct AskForTimeView: View {
                         } else {
                             Label("Asked for \(ShieldContext.describe(minutes: sent.minutes)). Waiting for an answer…",
                                   systemImage: "hourglass")
+                            if let parent = model.nearby.peers.first {
+                                Label("\(parent.hello.name)'s phone is nearby and has your request.",
+                                      systemImage: "antenna.radiowaves.left.and.right")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -107,6 +112,7 @@ struct AskForTimeView: View {
     private func send(_ target: ShieldContext.Target, _ context: ShieldContext) {
         let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         sent = context.request(target, minutes: minutes, note: note.isEmpty ? nil : note)
+        model.nearby.sendUpdates()
     }
 
     /// Uploads the request, then checks for the answer every few seconds while this is open.

@@ -18,9 +18,13 @@ struct ScreenThymeApp: App {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await AppModel.shared.launched() }
-            } else if phase == .background, AppModel.shared.isKid {
-                // Counts the time the kid spent looking at the app.
-                EnergyMeter.record(.app, isCallback: false)
+            } else if phase == .background {
+                // iOS suspends the sockets anyway; closing them lets the other phone notice at once.
+                AppModel.shared.stopNearby()
+                if AppModel.shared.isKid {
+                    // Counts the time the kid spent looking at the app.
+                    EnergyMeter.record(.app, isCallback: false)
+                }
             }
         }
     }

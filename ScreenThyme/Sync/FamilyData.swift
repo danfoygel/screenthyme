@@ -18,6 +18,7 @@ struct IngestBatch: Sendable {
     var policies: [Policy] = []
     var requests: [TimeRequest] = []
     var grants: [TimeGrant] = []
+    var linkKeys: [LinkKey] = []
     var deletedRecordNames: [String] = []
 
     mutating func add(_ record: CKRecord) {
@@ -35,6 +36,7 @@ struct IngestBatch: Sendable {
         case Policy.recordType: Policy.decode(record).map { policies.append($0) }
         case TimeRequest.recordType: TimeRequest.decode(record).map { requests.append($0) }
         case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
+        case LinkKey.recordType: LinkKey.decode(record).map { linkKeys.append($0) }
         default: break
         }
     }
@@ -43,7 +45,7 @@ struct IngestBatch: Sendable {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && requests.isEmpty && grants.isEmpty
-            && deletedRecordNames.isEmpty
+            && linkKeys.isEmpty && deletedRecordNames.isEmpty
     }
 }
 
@@ -67,6 +69,8 @@ final class FamilyData {
         var policies: [UUID: Policy] = [:]
         var requests: [UUID: TimeRequest] = [:]
         var grants: [UUID: TimeGrant] = [:]
+        /// Missing from older snapshots; fetched by name when it is (`LinkKeyService`).
+        var linkKey: LinkKey?
     }
 
     private var snapshot = Snapshot()
@@ -86,6 +90,7 @@ final class FamilyData {
     var pings: [UUID: Ping] { snapshot.pings }
     var requests: [UUID: TimeRequest] { snapshot.requests }
     var grants: [UUID: TimeGrant] { snapshot.grants }
+    var linkKey: LinkKey? { snapshot.linkKey }
 
     /// The kid's policy, or an empty one to start editing.
     func policy(for kid: UUID) -> Policy {
@@ -145,6 +150,7 @@ final class FamilyData {
         }
         for request in batch.requests { snapshot.requests[request.id] = request }
         for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
+        if let key = batch.linkKeys.last { snapshot.linkKey = key }
         for heartbeat in batch.heartbeats where heartbeat.at > (snapshot.heartbeats[heartbeat.kidID]?.at ?? .distantPast) {
             snapshot.heartbeats[heartbeat.kidID] = heartbeat
         }
