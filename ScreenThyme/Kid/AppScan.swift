@@ -26,10 +26,7 @@ enum AppScan {
         AppGroup.save(saved, to: url)
         var picked: [TrackedItem] = []
         func add(_ kind: ItemKind, _ data: Data?) {
-            guard let data else { return }
-            let hash = SHA256.hash(data: data).prefix(8).map { String(format: "%02x", $0) }.joined()
-            picked.append(TrackedItem(kidID: kid.id, kind: kind, identifier: TrackedItem.scannedPrefix + hash,
-                                      tokenData: data, firstSeen: now))
+            data.map { picked.append(item(kind, tokenData: $0, kid: kid, now: now)) }
         }
         saved.all.categoryTokens.forEach { add(.category, TokenCoding.encode($0)) }
         saved.all.applicationTokens.forEach { add(.app, TokenCoding.encode($0)) }
@@ -60,5 +57,25 @@ enum AppScan {
             try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"))
         }
         Enforcer.reconcile(now: now)
+    }
+
+    private static func item(_ kind: ItemKind, tokenData: Data, kid: Kid, now: Date) -> TrackedItem {
+        let hash = SHA256.hash(data: tokenData).prefix(8).map { String(format: "%02x", $0) }.joined()
+        return TrackedItem(kidID: kid.id, kind: kind, identifier: TrackedItem.scannedPrefix + hash, tokenData: tokenData,
+                           firstSeen: now)
+    }
+
+    /// The scanned item for an app picked in Apple's picker; one installed since the scan becomes an item now.
+    static func item(for token: ApplicationToken, kid: Kid, now: Date = Date()) -> TrackedItem? {
+        if let known = AppGroup.loadItems().first(where: { $0.kind == .app && TokenCoding.application($0.tokenData) == token }) {
+            return known
+        }
+        guard let data = TokenCoding.encode(token) else { return nil }
+        let new = item(.app, tokenData: data, kid: kid, now: now)
+        AppGroup.withLock("sampler") {
+            AppGroup.saveItems(AppGroup.loadItems() + [new])
+            try? AppGroup.newItems.append(contentsOf: [new])
+        }
+        return new
     }
 }

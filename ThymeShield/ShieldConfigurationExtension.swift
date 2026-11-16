@@ -2,7 +2,7 @@ import ManagedSettings
 import ManagedSettingsUI
 import UIKit
 
-/// The block page (PLAN.md §15.2): says why something is blocked and offers "Ask for more time".
+/// The block page (PLAN.md §15.2, §15.4): says why something is blocked; "Ask for more time" opens ScreenThyme.
 final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     override func configuration(shielding application: Application) -> ShieldConfiguration {
         let context = ShieldContext()
@@ -26,8 +26,8 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     private func make(_ context: ShieldContext, _ target: ShieldContext.Target) -> ShieldConfiguration {
         let reason = context.reason(for: target)
-        let pending = context.pendingRequest(for: target) != nil
-        let canAsk = !pending && context.requestScope(for: target) != nil
+        // Opens ScreenThyme, which asks (or shows the waiting request and its answer).
+        let canAsk = reason != nil
         let label = UIColor.label
         // Fixed colors: iOS 26 draws the primary button much lighter than the color given (systemGreen came out mint),
         // so a white label disappeared. Dark text stays readable either way; the icon would otherwise draw black.
@@ -38,11 +38,8 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             icon: UIImage(systemName: symbol)?.withTintColor(green, renderingMode: .alwaysOriginal),
             title: .init(text: context.title(for: reason), color: label),
             subtitle: .init(text: context.subtitle(for: target, reason: reason), color: .secondaryLabel),
-            primaryButtonLabel: .init(text: pending ? "Open ScreenThyme" : "OK", color: .black),
+            primaryButtonLabel: .init(text: "OK", color: .black),
             primaryButtonBackgroundColor: green,
-            secondaryButtonLabel: !canAsk ? nil : .init(text: "Ask for more time", color: .systemGreen),
-            secondaryButtonSubmenuItems: !canAsk ? nil : ShieldContext.requestChoices.map { minutes in
-                ShieldContext.describe(minutes: minutes).capitalizedFirst
-            })
+            secondaryButtonLabel: canAsk ? .init(text: "Ask for more time", color: .systemGreen) : nil)
     }
 }

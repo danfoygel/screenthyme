@@ -6,6 +6,9 @@ import ThymeCore
 /// The kid's phone (PLAN.md §4.9): an honest status screen. Setup steps are for a parent.
 struct KidHomeView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
+    /// Opened from a block page's "Ask for more time".
+    @State private var ask: AskSheet?
     @State private var scan = AppScan.load()
     @State private var pickingAll = false
     @State private var pickingSelf = false
@@ -86,6 +89,10 @@ struct KidHomeView: View {
                 TestModeSection()
             }
             .navigationTitle("ScreenThyme")
+            .sheet(item: $ask) { AskForTimeView(ask: $0.ask) }
+            .onChange(of: scenePhase, initial: true) {
+                if scenePhase == .active, let taken = ShieldContext.Ask.take() { ask = AskSheet(ask: taken) }
+            }
             .refreshable {
                 await model.sampleNow()
                 await model.flush()
@@ -104,4 +111,9 @@ struct KidHomeView: View {
         let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
         return epoch.activityNames.allSatisfy(active.contains) ? "on" : "stopped (open the app to restart)"
     }
+}
+
+private struct AskSheet: Identifiable {
+    let id = UUID()
+    let ask: ShieldContext.Ask
 }

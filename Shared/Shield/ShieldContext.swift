@@ -86,7 +86,7 @@ struct ShieldContext {
 
     func subtitle(for target: Target, reason: BlockReason?) -> String {
         if let request = pendingRequest(for: target) {
-            return "You asked for \(Self.describe(minutes: request.minutes)). Open ScreenThyme to see your parent's answer."
+            return "You asked for \(Self.describe(minutes: request.minutes)). Tap Ask for more time to see the answer."
         }
         if let answer = lastAnswer(for: target), !answer.approved {
             return "Your parent said no to more time for \(target.name) today."
@@ -108,11 +108,11 @@ struct ShieldContext {
 
     // MARK: - Requests
 
-    /// What a request from this page would ask for: Downtime off for the whole phone (a press on a category shield
-    /// can't say which app), more time on a limit, or an exception for a blocked app or category. Nil: can't ask.
+    /// What a request for `target` asks for: Downtime off for that app (or the whole phone, with no app), more time on
+    /// a limit, or an exception for a blocked app or category. Nil: nothing to ask for.
     func requestScope(for target: Target) -> (itemID: UUID?, reason: BlockReason)? {
         switch reason(for: target) {
-        case let .downtime(id)?: (nil, .downtime(id))
+        case let .downtime(id)?: (target.item?.id, .downtime(id))
         case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
         case .blocked?: (target.item?.id ?? target.category?.id).map { ($0, .blocked) }
         case nil: nil
@@ -135,16 +135,18 @@ struct ShieldContext {
         return state?.grants.last { $0.grant.reason == scope.reason && $0.grant.itemID == scope.itemID }?.grant
     }
 
-    /// Queues a request for more time and an alert for the parents; `RequestSender` sends both at once.
-    func request(_ target: Target, minutes: Int?) -> TimeRequest? {
+    /// Queues a request for more time and an alert for the parents, for the app to upload.
+    func request(_ target: Target, minutes: Int?, note: String? = nil) -> TimeRequest? {
         guard let kid = config.kid, let scope = requestScope(for: target) else { return nil }
-        let request = TimeRequest(kidID: kid.id, itemID: scope.itemID, reason: scope.reason, minutes: minutes, at: Date())
+        let request = TimeRequest(kidID: kid.id, itemID: scope.itemID, reason: scope.reason, minutes: minutes, at: Date(),
+                                  note: note)
         let amount = Self.describe(minutes: minutes).capitalizedFirst
-        let body = switch scope.reason {
-        case .downtime: "\(amount) of Downtime off, for the whole phone."
+        var body = switch scope.reason {
+        case .downtime: scope.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) during Downtime."
         case let .limit(id): "\(amount) on the \(applied?.limitNames[id] ?? "time") limit."
-        case .blocked: "\(amount) of \(target.name), which isn't allowed."
+        case .blocked: "\(amount), though it isn't allowed."
         }
+        if let note { body += " \u{201C}\(note)\u{201D}" }
         let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: scope.itemID, at: request.at,
                                 title: "\(kid.displayName) asks for more time", body: body)
         do {
@@ -155,6 +157,37 @@ struct ShieldContext {
             try? AppGroup.journal.append(.note("request failed: \(error)"))
         }
         return request
+    }
+
+    /// The block page's "Ask for more time": what was blocked, written by the button's extension for ScreenThyme,
+    /// which it opens next (the configuration extension can't write the App Group).
+    struct Ask: Codable {
+        var itemID: UUID?
+        var categoryID: UUID?
+        var at: Date
+
+        static var url: URL { AppGroup.container.appending(path: "ask.json") }
+
+        func save() {
+            AppGroup.save(self, to: Self.url)
+        }
+
+        /// The ask from the last minute, once.
+        static func take(now: Date = Date()) -> Ask? {
+            defer { try? FileManager.default.removeItem(at: url) }
+            guard let ask = AppGroup.load(Ask.self, from: url), now.timeIntervalSince(ask.at) < 60 else { return nil }
+            return ask
+        }
+    }
+
+    func target(_ ask: Ask) -> Target {
+        let item = items.first { $0.id == ask.itemID }
+        let category = items.first { $0.id == ask.categoryID }
+        return Target(item: item, category: category, name: (item ?? category)?.displayName ?? "This app")
+    }
+
+    func target(item: TrackedItem) -> Target {
+        Target(item: item, category: categoryItem(nil, name: item.category), name: item.displayName)
     }
 
     static let requestChoices: [Int?] = [15, 60, nil]

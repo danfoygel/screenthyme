@@ -565,7 +565,17 @@ through (`exempt-tokens.json`). Apps installed later are covered by their catego
 - Downtime shields every category except Always Allowed: no app list, so no cap.
 - Blocked apps and exhausted limits' apps are shielded one by one over `restrictions`/`limits` plus overflow stores
   `.2`…`.6` (50 each).
-- Requests: from Downtime, Downtime off for the whole phone; from a limit, more time on that limit; from a blocked
-  app or category, an exception for it. The action extension uploads the request at once (CloudKit entitlement),
-  since during Downtime no use means no wakes.
 - Grants on scanned items and the whole phone run by the clock: Apple's data has no usage for them.
+
+### 15.4 Ask for more time in ScreenThyme
+
+The block page's one extra button, "Ask for more time", opens ScreenThyme (`openParentalControlsApp`, iOS 26.5;
+confirmed on the kid's phone). Just before, the action extension writes what was blocked (`ask.json`: item and
+category ids) for the app, which shows `AskForTimeView`:
+- From a limit or Blocked page the app is known. From a Downtime page only the category is, so the kid picks the app
+  in Apple's picker (names, icons, search); its token matches a scanned item, or becomes one.
+- How much (15 min, 1 hour, until Downtime ends or the rest of today) and an optional note for the parents.
+- The request names the app: a Downtime grant lets that app through (`.all(except:)`), not the whole phone. With no
+  app chosen, Downtime pauses for the whole phone.
+- The screen uploads the request and checks for the answer every 5 s while open. ScreenThyme is exempt from
+  Downtime through the scan's ScreenThyme pick.

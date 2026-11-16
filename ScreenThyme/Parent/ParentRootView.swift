@@ -205,6 +205,9 @@ struct RequestRow: View {
                 Text(Format.relative(request.at)).font(.caption).foregroundStyle(.secondary)
             }
             Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason).")
+            if let note = request.note {
+                Text("\u{201C}\(note)\u{201D}").italic()
+            }
             HStack {
                 Button("Approve") { answer(true, request.minutes) }
                     .buttonStyle(.borderedProminent)

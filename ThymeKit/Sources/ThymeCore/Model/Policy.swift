@@ -116,7 +116,8 @@ public enum BlockReason: Codable, Sendable, Hashable {
     case blocked
 }
 
-/// The kid asked for more time from a block page. `minutes == nil` asks for the rest of the day (or of Downtime).
+/// The kid asked for more time, in ScreenThyme (opened from a block page). `minutes == nil` asks for the rest of the day
+/// (or of Downtime).
 public struct TimeRequest: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var kidID: UUID
@@ -124,20 +125,24 @@ public struct TimeRequest: Codable, Sendable, Hashable, Identifiable {
     public var reason: BlockReason
     public var minutes: Int?
     public var at: Date
+    /// The kid's words to the parents.
+    public var note: String?
 
-    public init(id: UUID = UUID(), kidID: UUID, itemID: UUID?, reason: BlockReason, minutes: Int?, at: Date) {
+    public init(id: UUID = UUID(), kidID: UUID, itemID: UUID?, reason: BlockReason, minutes: Int?, at: Date,
+                note: String? = nil) {
         self.id = id
         self.kidID = kidID
         self.itemID = itemID
         self.reason = reason
         self.minutes = minutes
         self.at = at
+        self.note = note
     }
 }
 
 /// A parent's answer, saved as `TimeGrant.<request id>` so the kid's phone can fetch it by name.
-/// For a limit, `minutes` are added to that limit today. For Downtime, the item is exempt for `minutes` of use, or
-/// until the window ends when `minutes == nil`.
+/// For a limit, `minutes` are added to that limit today. For Downtime, the item (or with no item, the whole phone) is
+/// exempt for `minutes` of use or of the clock, or until the window ends when `minutes == nil`.
 public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID { requestID }
     public var requestID: UUID
