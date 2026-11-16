@@ -4,7 +4,7 @@ import ThymeCore
 
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
 /// data and record what changed, evaluate rules, keep the alarm registered, enforce (§15), then a short best-effort
-/// upload (and a policy and rules check every 10 minutes). Downtime intervals and limit fires also enforce.
+/// upload (and a policy and rules check). Downtime intervals and limit fires also enforce.
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
