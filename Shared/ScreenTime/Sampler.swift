@@ -44,27 +44,36 @@ enum Sampler {
         return AppGroup.withLock("sampler") { record(fetched, kid: kid, now: now) }
     }
 
+    /// What a sample from the extension got.
+    struct Blocking: Sendable {
+        var result: Result?
+        /// The fetch was refused: the phone has no data access (Apple's Screen Time can take it back, PLAN.md §16).
+        var unauthorized = false
+    }
+
     /// For the extension, whose callbacks are synchronous: waits up to `timeout`.
-    static func sampleBlocking(kid: Kid, timeout: TimeInterval = 3) -> Result? {
+    static func sampleBlocking(kid: Kid, timeout: TimeInterval = 3) -> Blocking {
         let box = ResultBox()
         let done = DispatchSemaphore(value: 0)
         Task.detached {
             do {
-                box.result = try await sample(kid: kid)
+                box.outcome.result = try await sample(kid: kid)
             } catch {
+                // The refusal prints as "unauthorized"; its type isn't documented.
+                box.outcome.unauthorized = String(describing: error).contains("unauthorized")
                 try? AppGroup.journal.append(.note("sample failed: \(error)"))
             }
             done.signal()
         }
         guard done.wait(timeout: .now() + timeout) == .success else {
             try? AppGroup.journal.append(.note("sample timed out after \(Int(timeout)) s"))
-            return nil
+            return Blocking()
         }
-        return box.result
+        return box.outcome
     }
 
     private final class ResultBox: @unchecked Sendable {
-        var result: Result?
+        var outcome = Blocking()
     }
 
     // MARK: - Fetch
