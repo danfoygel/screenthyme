@@ -21,8 +21,9 @@ struct ShieldContext {
     func target(app: Application, category: ActivityCategory? = nil) -> Target {
         let item = items.first { candidate in
             guard candidate.kind == .app else { return false }
-            if let bundle = app.bundleIdentifier { return candidate.identifier == bundle }
-            return app.token != nil && TokenCoding.application(candidate.tokenData) == app.token
+            // Scanned items have only a token; Apple's data items only a bundle ID.
+            if let token = app.token, TokenCoding.application(candidate.tokenData) == token { return true }
+            return app.bundleIdentifier.map { candidate.identifier == $0 } ?? false
         }
         return Target(item: item, category: categoryItem(category, name: item?.category),
                       name: app.localizedDisplayName ?? item?.displayName ?? "This app")
@@ -31,8 +32,8 @@ struct ShieldContext {
     func target(domain: WebDomain, category: ActivityCategory? = nil) -> Target {
         let item = items.first { candidate in
             guard candidate.kind == .domain else { return false }
-            if let name = domain.domain { return candidate.identifier == name }
-            return domain.token != nil && TokenCoding.webDomain(candidate.tokenData) == domain.token
+            if let token = domain.token, TokenCoding.webDomain(candidate.tokenData) == token { return true }
+            return domain.domain.map { candidate.identifier == $0 } ?? false
         }
         return Target(item: item, category: categoryItem(category, name: item?.category),
                       name: domain.domain ?? item?.displayName ?? "This website")
@@ -127,8 +128,13 @@ struct ShieldContext {
         let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: target.item?.id, at: request.at,
                                 title: "\(kid.displayName) asks for more time",
                                 body: "\(Self.describe(minutes: minutes).capitalizedFirst) of \(target.name), \(why).")
-        try? AppGroup.requests.append(contentsOf: [request])
-        try? AppGroup.outbox.append(contentsOf: [alert])
+        do {
+            try AppGroup.requests.append(contentsOf: [request])
+            try AppGroup.outbox.append(contentsOf: [alert])
+            try? AppGroup.journal.append(.note("asked for more time: \(target.name), \(Self.describe(minutes: minutes))"))
+        } catch {
+            try? AppGroup.journal.append(.note("request failed: \(error)"))
+        }
         return request
     }
 

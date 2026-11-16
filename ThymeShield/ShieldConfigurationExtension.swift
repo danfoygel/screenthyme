@@ -27,6 +27,8 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     private func make(_ context: ShieldContext, _ target: ShieldContext.Target) -> ShieldConfiguration {
         let reason = context.reason(for: target)
         let pending = context.pendingRequest(for: target) != nil
+        // Only a known app can ask: a request names the app, and the button on an unknown one would do nothing.
+        let canAsk = !pending && target.item != nil && reason != nil
         let label = UIColor.label
         // Fixed colors: iOS 26 draws the primary button much lighter than the color given (systemGreen came out mint),
         // so a white label disappeared. Dark text stays readable either way; the icon would otherwise draw black.
@@ -39,8 +41,8 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             subtitle: .init(text: context.subtitle(for: target, reason: reason), color: .secondaryLabel),
             primaryButtonLabel: .init(text: pending ? "Open ScreenThyme" : "OK", color: .black),
             primaryButtonBackgroundColor: green,
-            secondaryButtonLabel: pending ? nil : .init(text: "Ask for more time", color: .systemGreen),
-            secondaryButtonSubmenuItems: pending ? nil : ShieldContext.requestChoices.map { minutes in
+            secondaryButtonLabel: !canAsk ? nil : .init(text: "Ask for more time", color: .systemGreen),
+            secondaryButtonSubmenuItems: !canAsk ? nil : ShieldContext.requestChoices.map { minutes in
                 ShieldContext.describe(minutes: minutes).capitalizedFirst
             })
     }

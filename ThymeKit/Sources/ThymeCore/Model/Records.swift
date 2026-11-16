@@ -23,9 +23,18 @@ public enum ItemKind: String, Codable, Sendable, CaseIterable {
     case app, domain
     /// One of Apple's activity categories ("Social"), a target for limits and Always Allowed.
     case category
+
+    public var title: String {
+        switch self {
+        case .app: "App"
+        case .domain: "Website"
+        case .category: "Category"
+        }
+    }
 }
 
-/// An app, website or category seen in Apple's activity data on a kid's phone. Discovered automatically; no scan.
+/// An app, website or category seen in Apple's activity data on a kid's phone (discovered automatically), or chosen in
+/// the app scan there (`isScanned`: a token, no bundle ID).
 public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     /// Derived from kid and `identifier` (see `TrackedItem.id(kid:kind:identifier:)`), so every device agrees.
     public var id: UUID
@@ -56,6 +65,13 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
         self.firstSeen = firstSeen
     }
 
+    /// Identifier prefix of items from the app scan on the kid's phone (`FamilyActivityPicker`), which gives a token
+    /// but no bundle ID or name; the rest of the identifier is a hash of the token.
+    public static let scannedPrefix = "token:"
+
+    /// From the app scan: has a token for shields, but no usage in Apple's data (that has bundle IDs, no tokens).
+    public var isScanned: Bool { identifier.hasPrefix(Self.scannedPrefix) }
+
     public static func id(kid: UUID, kind: ItemKind, identifier: String) -> UUID {
         Replay.stableUUID("item", kid.uuidString, kind.rawValue, identifier)
     }
@@ -64,6 +80,7 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     public var displayName: String {
         if let nickname { return nickname }
         if let name { return name }
+        if isScanned { return kind.title }
         switch kind {
         case .app: return identifier.split(separator: ".").last.map(String.init) ?? identifier
         case .domain: return identifier.hasPrefix("www.") ? String(identifier.dropFirst(4)) : identifier

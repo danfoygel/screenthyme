@@ -79,7 +79,7 @@ public enum EnforcementPlanner {
             for applied in grants {
                 guard case let .downtime(windowID) = applied.grant.reason, windowID == downtime.windowID,
                       applied.windowStart == downtime.interval.start, let item = applied.grant.itemID else { continue }
-                if isLeft(applied, usage: usage) { plan.downtimeExceptions.insert(item) }
+                if isLeft(applied, usage: usage, now: now) { plan.downtimeExceptions.insert(item) }
             }
         }
 
@@ -102,7 +102,7 @@ public enum EnforcementPlanner {
         plan.blockedItems = policy.blocked
         for applied in grants {
             guard applied.grant.reason == .blocked, let item = applied.grant.itemID else { continue }
-            if isLeft(applied, usage: usage) { plan.blockedItems.remove(item) }
+            if isLeft(applied, usage: usage, now: now) { plan.blockedItems.remove(item) }
         }
         return plan
     }
@@ -119,10 +119,12 @@ public enum EnforcementPlanner {
         return counted.reduce(0) { $0 + (usage[$1] ?? 0) }
     }
 
-    /// A use-based grant still has time left (always, for a grant until the window or day ends).
-    static func isLeft(_ applied: AppliedGrant, usage: [UUID: Double]) -> Bool {
+    /// A grant still has time left: minutes of the item's use, or of the clock for a scanned item, whose use Apple's
+    /// data doesn't report (always, for a grant until the window or day ends).
+    static func isLeft(_ applied: AppliedGrant, usage: [UUID: Double], now: Date) -> Bool {
         guard let minutes = applied.grant.minutes else { return true }
         guard let item = applied.grant.itemID else { return false }
-        return (usage[item] ?? 0) - applied.baselineSeconds < Double(minutes) * 60
+        guard let used = usage[item] else { return now < applied.appliedAt.addingTimeInterval(Double(minutes) * 60) }
+        return used - applied.baselineSeconds < Double(minutes) * 60
     }
 }

@@ -92,6 +92,20 @@ struct EnforcementTests {
         #expect(plan(policy, usage: [instagram.id: 55 * 60.0], state: state, at: at(21, 30)).downtimeExceptions.isEmpty)
     }
 
+    @Test func scannedItemGrantLastsForItsMinutesOfClock() {
+        // A scanned app has a token but no usage in Apple's data, so its grant runs by the clock.
+        let scanned = TrackedItem(kidID: kid, kind: .app, identifier: TrackedItem.scannedPrefix + "ab12", firstSeen: dayStart)
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let request = TimeRequest(kidID: kid, itemID: scanned.id, reason: .downtime(window.id), minutes: 15, at: at(21, 0))
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [AppliedGrant(grant: TimeGrant(request: request, approved: true, minutes: 15, at: at(21, 1), by: "Parent"),
+                                     appliedAt: at(21, 1), windowStart: at(20, 0))]
+        let policy = Policy(kidID: kid, downtime: [window])
+        #expect(plan(policy, state: state, at: at(21, 15)).downtimeExceptions == [scanned.id])
+        #expect(plan(policy, state: state, at: at(21, 16)).downtimeExceptions.isEmpty)
+        #expect(scanned.isScanned && scanned.displayName == "App")
+    }
+
     @Test func yesterdaysStateIsIgnored() {
         let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
         var state = EnforcementDayState(day: DayKey(year: 2026, month: 11, day: 13))
