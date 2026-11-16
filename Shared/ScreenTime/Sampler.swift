@@ -179,6 +179,10 @@ enum Sampler {
                 usage[TrackedItem.id(kid: kid.id, kind: kind, identifier: parts[1]), default: 0] += seconds
             }
         }
+        // A scanned app uses what its match in Apple's data uses.
+        for item in AppGroup.loadItems() {
+            if let match = item.match, let seconds = usage[match] { usage[item.id] = seconds }
+        }
         return usage
     }
 

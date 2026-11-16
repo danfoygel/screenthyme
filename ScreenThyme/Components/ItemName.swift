@@ -3,8 +3,8 @@ import ManagedSettings
 import SwiftUI
 import ThymeCore
 
-/// An app's or website's name: a nickname if set, else Apple's label for its token (icon and name), else a readable
-/// form of the bundle ID or domain.
+/// An app's or website's name: a nickname if set, else Apple's label for its token (icon and name), else the App
+/// Store's name and icon, else a readable form of the bundle ID or domain.
 struct ItemName: View {
     let item: TrackedItem?
     var showIcon = true
@@ -13,6 +13,19 @@ struct ItemName: View {
         if let item {
             if item.nickname == nil, let label = tokenLabel(item) {
                 label
+            } else if item.nickname == nil, let name = AppCatalog.shared.entries[item.identifier]?.name {
+                // From the App Store lookup, on parents' phones.
+                if showIcon, let icon = AppCatalog.shared.icon(for: item) {
+                    Label {
+                        Text(name)
+                    } icon: {
+                        AsyncImage(url: icon) { $0.resizable() } placeholder: { Color.secondary.opacity(0.2) }
+                            .frame(width: 22, height: 22)
+                            .clipShape(.rect(cornerRadius: 5))
+                    }
+                } else {
+                    Text(name)
+                }
             } else {
                 Text(item.displayName)
             }

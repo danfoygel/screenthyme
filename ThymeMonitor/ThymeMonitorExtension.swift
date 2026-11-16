@@ -4,7 +4,8 @@ import ThymeCore
 
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
 /// data and record what changed, evaluate rules, keep the alarm registered, enforce (§15), then a short best-effort
-/// upload (and a policy and rules check). Downtime intervals and limit fires also enforce.
+/// upload (and a policy and rules check). Downtime intervals and limit fires also enforce; token-match fires learn
+/// which app a scanned token is (§15.5).
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
@@ -16,6 +17,12 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         if activity.rawValue.hasPrefix(Enforcer.limitPrefix) {
             try? AppGroup.journal.append(.note("limit reached: \(event.rawValue)"))
             Enforcer.limitFired(event.rawValue)
+            return
+        }
+        if activity == TokenMatcher.activity {
+            let config = SharedConfig.load()
+            if let kid = config.kid { TokenMatcher.fired(event.rawValue, kid: kid) }
+            upload(config)
             return
         }
         let entry = JournalEntry(kind: .threshold, activity: activity.rawValue, event: event.rawValue, at: Date())
@@ -52,6 +59,10 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
+        if activity == TokenMatcher.activity {
+            TokenMatcher.intervalStarted()
+            return
+        }
         if name.hasPrefix(Enforcer.downtimePrefix) || name.hasPrefix(Enforcer.limitPrefix) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {
@@ -68,7 +79,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         if name.hasPrefix(Enforcer.downtimePrefix) {
             try? AppGroup.journal.append(.note("interval end: \(name)"))
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
-        } else if !name.hasPrefix(Enforcer.limitPrefix) {
+        } else if !name.hasPrefix(Enforcer.limitPrefix), activity != TokenMatcher.activity {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
     }

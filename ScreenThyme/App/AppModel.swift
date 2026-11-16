@@ -55,6 +55,7 @@ final class AppModel {
             ensureMonitoring()
             await sampleNow()
             Enforcer.reconcile()
+            TokenMatcher.ensureRegistered()
             await flush()
             await sendHeartbeat(.launch)
             await refresh()

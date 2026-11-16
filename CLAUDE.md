@@ -92,12 +92,14 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
 - **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses the app scan's items
   (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing.
+- Scanned tokens are matched to Apple's bundle IDs by watching use (`TokenMatcher`, activity `tm`, events
+  `m.<item id>`; PLAN.md §15.5). `Roller.registerAll` leaves `tm` alone.
 - A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
   `AskForTimeView` (PLAN.md §15.4).
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).
-- Event names are `t.<minute>`; the activity is `st.<epoch8>.tot`. Old journals also hold per-app `i.<itemUUID>.<minute>`
+- Event names are `t.<minute>`; the activity is `st.<epoch8>.tot`. Enforcement uses `dt.<id8>`, `lim.<id8>` and `tm`. Old journals also hold per-app `i.<itemUUID>.<minute>`
   fires, which are ignored.
 - A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change, so phones re-fetch.
 - Record names are `<Type>.<uuid>`, saved with `.allKeys`, so every upload is idempotent.

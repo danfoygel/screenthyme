@@ -51,6 +51,8 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     public var category: String?
     public var nickname: String?
     public var firstSeen: Date
+    /// For a scanned item: the item from Apple's data for the same app, learned by watching use (`TokenMatching`).
+    public var match: UUID?
 
     public init(kidID: UUID, kind: ItemKind, identifier: String, name: String? = nil, tokenData: Data? = nil,
                 category: String? = nil, nickname: String? = nil, firstSeen: Date) {
@@ -82,7 +84,7 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
         if let name { return name }
         if isScanned { return kind.title }
         switch kind {
-        case .app: return identifier.split(separator: ".").last.map(String.init) ?? identifier
+        case .app: return BuiltInApps.names[identifier] ?? identifier.split(separator: ".").last.map(String.init) ?? identifier
         case .domain: return identifier.hasPrefix("www.") ? String(identifier.dropFirst(4)) : identifier
         case .category: return identifier
         }

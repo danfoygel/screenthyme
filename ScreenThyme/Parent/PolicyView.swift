@@ -207,38 +207,55 @@ struct ItemSelectionView: View {
     let title: String
     let items: [UUID: TrackedItem]
     @Binding var selection: Set<UUID>
+    @State private var search = ""
 
     var body: some View {
+        // Only items with a token can be shielded: those from the app scan on the kid's phone (PLAN.md §15.3).
+        // Scanned apps get a name to sort and search by once matched to Apple's data (§15.5).
+        let catalog = AppCatalog.shared
+        let named = items.values.filter { $0.tokenData != nil }.map { ($0, catalog.name(of: $0, in: items)) }
         List {
-            // Only items with a token can be shielded: those from the app scan on the kid's phone (PLAN.md §15.3).
-            // Their names exist only in `Label`s, so there's no search and no sorting by name.
-            if !items.values.contains(where: { $0.tokenData != nil }) {
-                Text("On the kid's phone, open ScreenThyme and choose categories and apps under Apps for Screen Time.")
+            if named.isEmpty {
+                Text("On the kid's phone, open ScreenThyme and scan apps under Apps for Screen Time.")
                     .foregroundStyle(.secondary)
             }
             ForEach([ItemKind.category, .app, .domain], id: \.self) { kind in
-                let group = items.values
-                    .filter { $0.kind == kind && $0.tokenData != nil }
-                    .sorted { $0.identifier < $1.identifier }
+                let group = named.filter { $0.0.kind == kind && $0.1 != nil
+                    && (search.isEmpty || $0.1!.localizedCaseInsensitiveContains(search)) }
+                    .sorted { $0.1!.localizedCaseInsensitiveCompare($1.1!) == .orderedAscending }
                 if !group.isEmpty {
                     Section(kind.pluralTitle) {
-                        ForEach(group) { item in
-                            Button {
-                                if selection.contains(item.id) { selection.remove(item.id) } else { selection.insert(item.id) }
-                            } label: {
-                                HStack {
-                                    ItemName(item: item)
-                                    Spacer()
-                                    if selection.contains(item.id) { Image(systemName: "checkmark").foregroundStyle(.tint) }
-                                }
-                            }
-                            .tint(.primary)
-                        }
+                        ForEach(group, id: \.0.id) { row($0.0) }
                     }
                 }
             }
+            // Never used since the scan (or a category): only Apple's label knows the name.
+            let unnamed = named.filter { $0.1 == nil }.map(\.0).sorted { $0.kind.rawValue < $1.kind.rawValue }
+            if search.isEmpty, !unnamed.isEmpty {
+                Section {
+                    ForEach(unnamed) { row($0) }
+                } header: {
+                    Text("Not matched yet")
+                } footer: {
+                    Text("Apps get a name to search by the first time they're used for a minute after the scan.")
+                }
+            }
         }
+        .searchable(text: $search)
         .navigationTitle(title)
+    }
+
+    private func row(_ item: TrackedItem) -> some View {
+        Button {
+            if selection.contains(item.id) { selection.remove(item.id) } else { selection.insert(item.id) }
+        } label: {
+            HStack {
+                ItemName(item: item)
+                Spacer()
+                if selection.contains(item.id) { Image(systemName: "checkmark").foregroundStyle(.tint) }
+            }
+        }
+        .tint(.primary)
     }
 }
 

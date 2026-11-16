@@ -57,6 +57,7 @@ enum AppScan {
             try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"))
         }
         Enforcer.reconcile(now: now)
+        TokenMatcher.register(now: now)
     }
 
     private static func item(_ kind: ItemKind, tokenData: Data, kid: Kid, now: Date) -> TrackedItem {

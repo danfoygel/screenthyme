@@ -581,3 +581,19 @@ category ids) for the app, which shows `AskForTimeView`:
   Downtime through the scan's ScreenThyme pick.
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
   approval, the app opens while Downtime stays on for the rest.
+
+### 15.5 Matching scanned tokens to Apple's data
+
+Tokens can't be decoded (only Apple's daemons can), and iOS shows a token beside its bundle ID only inside the report
+and shield extensions, which can't export anything. But the kid's phone holds both halves, so the match is learned
+from use (`TokenMatching`, `TokenMatcher`):
+- One activity, `tm`, with an event `m.<item id>` at 1 minute of use (`includesPastActivity: false`) for each scanned
+  app not matched yet (81 on the kid's phone after the scan; 380 events ran fine there, §12). Registered after a scan,
+  at app launch if missing, and on the first interval start of each day, which drops matched apps.
+- A fire wakes the monitor, which samples Apple's data. The one unmatched app from the data with 50–180 s of use since
+  registration (since midnight on later days) is the match, saved as `TrackedItem.match`. Two or more: retried the
+  next day.
+- A matched scanned app uses its match's numbers (`Sampler.todayUsage`): limits count it, grants run by use.
+- Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
+  `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
+  name. Unmatched ones are listed apart, by `Label` only.
