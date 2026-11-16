@@ -579,3 +579,5 @@ category ids) for the app, which shows `AskForTimeView`:
   app chosen, Downtime pauses for the whole phone.
 - The screen uploads the request and checks for the answer every 5 s while open. ScreenThyme is exempt from
   Downtime through the scan's ScreenThyme pick.
+- **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
+  approval, the app opens while Downtime stays on for the rest.
