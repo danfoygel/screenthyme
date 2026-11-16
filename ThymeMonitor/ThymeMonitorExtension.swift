@@ -5,7 +5,7 @@ import ThymeCore
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
 /// data and record what changed, evaluate rules, keep the alarm registered, enforce (§15), then a short best-effort
 /// upload (and a policy and rules check). Downtime intervals, limit fires and the end of a "one more minute" also
-/// enforce.
+/// enforce; token-match fires learn which app a scanned token is (§15.6).
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
@@ -17,6 +17,14 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         if activity.rawValue.hasPrefix(Enforcer.limitPrefix) {
             try? AppGroup.journal.append(.note("limit reached: \(event.rawValue)"))
             Enforcer.limitFired(event.rawValue)
+            return
+        }
+        // By the event's name too: the first `tm` fires on a phone went the wake alarm's way (cause unknown).
+        if event.rawValue.hasPrefix(TokenMatcher.eventPrefix) || activity.rawValue == TokenMatcher.activity.rawValue {
+            try? AppGroup.journal.append(.note("token match fired: \(event.rawValue)"))
+            let config = SharedConfig.load()
+            if let kid = config.kid { TokenMatcher.fired(event.rawValue, kid: kid) }
+            upload(config)
             return
         }
         let at = Date()
@@ -71,6 +79,10 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
+        if name == TokenMatcher.activity.rawValue {
+            TokenMatcher.intervalStarted()
+            return
+        }
         if Enforcer.owns(name) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {
@@ -97,7 +109,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
         } else if name == Enforcer.extraMinuteActivity {
             Enforcer.endExtraMinutes()
-        } else if !Enforcer.owns(name) {
+        } else if !Enforcer.owns(name), name != TokenMatcher.activity.rawValue {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
     }
