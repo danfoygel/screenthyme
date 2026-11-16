@@ -28,13 +28,17 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         let reason = context.reason(for: target)
         let pending = context.pendingRequest(for: target) != nil
         let label = UIColor.label
+        // Fixed colors: iOS 26 draws the primary button much lighter than the color given (systemGreen came out mint),
+        // so a white label disappeared. Dark text stays readable either way; the icon would otherwise draw black.
+        let green = UIColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1)
+        let symbol = reason.map { if case .downtime = $0 { "moon.zzz.fill" } else { "hourglass" } } ?? "hand.raised.fill"
         return ShieldConfiguration(
             backgroundBlurStyle: .systemMaterial,
-            icon: UIImage(systemName: reason.map { if case .downtime = $0 { "moon.zzz.fill" } else { "hourglass" } } ?? "hand.raised.fill"),
+            icon: UIImage(systemName: symbol)?.withTintColor(green, renderingMode: .alwaysOriginal),
             title: .init(text: context.title(for: reason), color: label),
             subtitle: .init(text: context.subtitle(for: target, reason: reason), color: .secondaryLabel),
-            primaryButtonLabel: .init(text: pending ? "Open ScreenThyme" : "OK", color: .white),
-            primaryButtonBackgroundColor: .systemGreen,
+            primaryButtonLabel: .init(text: pending ? "Open ScreenThyme" : "OK", color: .black),
+            primaryButtonBackgroundColor: green,
             secondaryButtonLabel: pending ? nil : .init(text: "Ask for more time", color: .systemGreen),
             secondaryButtonSubmenuItems: pending ? nil : ShieldContext.requestChoices.map { minutes in
                 ShieldContext.describe(minutes: minutes).capitalizedFirst
