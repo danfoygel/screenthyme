@@ -17,15 +17,57 @@ public struct AppliedGrant: Codable, Sendable, Hashable {
     }
 }
 
+/// "One more minute" from a block page (PLAN.md §15.5): the kid lets a blocked app through for a minute of the clock,
+/// without asking. `itemID` is what the press named: the app, or for a category shield the category (a limit) or
+/// nothing (Downtime, which then pauses for the whole phone).
+public struct ExtraMinute: Codable, Sendable, Hashable {
+    public var itemID: UUID?
+    public var reason: BlockReason
+    public var at: Date
+    public var until: Date
+
+    public static let duration: TimeInterval = 60
+
+    public init(itemID: UUID?, reason: BlockReason, at: Date) {
+        self.itemID = itemID
+        self.reason = reason
+        self.at = at
+        self.until = at.addingTimeInterval(Self.duration)
+    }
+
+    public func isActive(at now: Date) -> Bool {
+        at <= now && now < until
+    }
+}
+
 /// What the kid's phone remembers about enforcement today. Reset at each new day.
 public struct EnforcementDayState: Codable, Sendable, Hashable {
     public var day: DayKey
     /// Limit id → the budget (minutes) at which its threshold event fired today.
     public var limitFires: [UUID: Int] = [:]
     public var grants: [AppliedGrant] = []
+    public var extraMinutes: [ExtraMinute] = []
 
     public init(day: DayKey) {
         self.day = day
+    }
+
+    /// Files written before a field existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        day = try container.decode(DayKey.self, forKey: .day)
+        limitFires = try container.decodeIfPresent([UUID: Int].self, forKey: .limitFires) ?? [:]
+        grants = try container.decodeIfPresent([AppliedGrant].self, forKey: .grants) ?? []
+        extraMinutes = try container.decodeIfPresent([ExtraMinute].self, forKey: .extraMinutes) ?? []
+    }
+
+    /// One more minute is once a day per app, or with no app (a Downtime category shield) once per Downtime window.
+    /// Never for apps that aren't allowed at all.
+    public func canTakeExtraMinute(itemID: UUID?, reason: BlockReason) -> Bool {
+        guard reason != .blocked else { return false }
+        return !extraMinutes.contains { taken in
+            if let itemID { taken.itemID == itemID } else { taken.itemID == nil && taken.reason == reason }
+        }
     }
 }
 
@@ -51,6 +93,8 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
     public var blockedItems: Set<UUID> = []
     /// Always Allowed items, also exempt from exhausted limits.
     public var alwaysAllowed: Set<UUID> = []
+    /// When the first running "one more minute" ends: the kid's phone re-applies the plan then.
+    public var extraMinuteEnds: Date?
 
     public init() {}
 }
@@ -66,6 +110,8 @@ public enum EnforcementPlanner {
         let today = DayKey(now, calendar: calendar)
         let grants = state.day == today ? state.grants.filter(\.grant.approved) : []
         let limitFires = state.day == today ? state.limitFires : [:]
+        let extraMinutes = state.day == today ? state.extraMinutes.filter { $0.isActive(at: now) } : []
+        plan.extraMinuteEnds = extraMinutes.map(\.until).min()
         plan.alwaysAllowed = policy.alwaysAllowed
 
         // Downtime.
@@ -88,6 +134,11 @@ public enum EnforcementPlanner {
                 }
             }
         }
+        if let downtime = plan.downtime {
+            for minute in extraMinutes where minute.reason == .downtime(downtime.windowID) {
+                if let item = minute.itemID { plan.downtimeExceptions.insert(item) } else { plan.downtime = nil }
+            }
+        }
 
         // Limits.
         let weekday = calendar.component(.weekday, from: now)
@@ -101,6 +152,15 @@ public enum EnforcementPlanner {
             if used >= budget || limitFires[limit.id] == budget {
                 plan.exhaustedLimits.insert(limit.id)
                 plan.limitedItems.formUnion(limit.items.subtracting(policy.alwaysAllowed))
+            }
+        }
+        // One more minute lets the pressed item through every exhausted limit; the limit stays used up.
+        for minute in extraMinutes {
+            guard case let .limit(limitID) = minute.reason, plan.exhaustedLimits.contains(limitID) else { continue }
+            if let item = minute.itemID {
+                plan.limitedItems.remove(item)
+            } else if let limit = policy.limits.first(where: { $0.id == limitID }) {
+                plan.limitedItems.subtract(limit.items)
             }
         }
 

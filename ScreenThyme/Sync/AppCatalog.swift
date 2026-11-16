@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import ThymeCore
 
-/// Real names and icons for the bundle IDs in Apple's data (PLAN.md §15.5), from the App Store's public lookup, cached
+/// Real names and icons for the bundle IDs in Apple's data (PLAN.md §15.6), from the App Store's public lookup, cached
 /// on a parent's phone. Apple's built-in apps aren't in the store: `BuiltInApps` names those.
 @MainActor @Observable
 final class AppCatalog {

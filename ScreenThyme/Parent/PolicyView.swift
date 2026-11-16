@@ -211,7 +211,7 @@ struct ItemSelectionView: View {
 
     var body: some View {
         // Only items with a token can be shielded: those from the app scan on the kid's phone (PLAN.md §15.3).
-        // Scanned apps get a name to sort and search by once matched to Apple's data (§15.5).
+        // Scanned apps get a name to sort and search by once matched to Apple's data (§15.6).
         let catalog = AppCatalog.shared
         let named = items.values.filter { $0.tokenData != nil }.map { ($0, catalog.name(of: $0, in: items)) }
         List {

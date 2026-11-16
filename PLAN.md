@@ -537,10 +537,8 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   reconciles**, so a missed callback corrects itself within one wake of use.
 - `Roller.registerAll` no longer stops every activity, only the wake alarm's.
 - Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
-  "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" has a submenu (iOS 26.4) with
-  15 minutes / 1 hour / Rest of today. The ShieldAction extension writes the TimeRequest to the App Group and opens
-  ScreenThyme (`openParentalControlsApp`, iOS 26.5) or closes with a local notification. ScreenThyme uploads the
-  request and, while open, checks for the grant every few seconds.
+  "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" opens ScreenThyme (§15.4), or
+  while one more minute is left, a submenu (iOS 26.4): One more minute / Ask a parent (§15.5).
 - The kid's policy and grants arrive through a fetch by name (`Policy.<kid>`, `RuleSet.<kid>`,
   `TimeGrant.<open request ids>`) at wakes and app launches, plus the kid app's zone fetch on silent pushes.
 
@@ -582,7 +580,29 @@ category ids) for the app, which shows `AskForTimeView`:
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
   approval, the app opens while Downtime stays on for the rest.
 
-### 15.5 Matching scanned tokens to Apple's data
+### 15.5 One more minute
+
+Like Apple's: from a Downtime or limit block page, the kid can let the app through for a minute without asking, once a
+day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iOS 26.4): **One more minute** /
+**Ask a parent** (§15.4). Once the minute is used, the button asks straight away. Never for Blocked apps.
+- The press decides what is lifted, as a request would (`ShieldContext.requestScope`). An app shielded by itself (a
+  per-app limit) lets that app through. A category shield (a category limit) names only the category, so that
+  category is let through. Downtime's shield is always a category shield and names no app, so Downtime pauses for the
+  whole phone for the minute. Once a day per app, or for a Downtime press, once per window
+  (`EnforcementDayState.canTakeExtraMinute`). The block page computes the menu for what its press will name
+  (`ShieldContext.pressed`), so the action extension maps the item pressed back to the same choice.
+- The ShieldAction extension records an `ExtraMinute` (60 s of the clock) in `enforcement-state.json`, runs the
+  `Enforcer`, which lifts it from the stores, and answers `.defer`, so iOS re-evaluates the shield and opens the app.
+  The extension compiles the Enforcer and `UsageSnapshot` (today's use, without Apple's data or SwiftUI).
+- Shielded again by the activity `om.end`: schedules count whole minutes and last at least 15, so it is a ~16-minute
+  interval whose end warning falls at the first whole minute after the minute ends (60–120 s after the press). The
+  monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
+  reshields it.
+- No alert to parents; the journal notes each one.
+- **Not yet tried on a phone:** whether the submenu sends only the submenu actions, and whether `.defer` opens the app
+  once the stores stop shielding it.
+
+### 15.6 Matching scanned tokens to Apple's data
 
 Tokens can't be decoded (only Apple's daemons can), and iOS shows a token beside its bundle ID only inside the report
 and shield extensions, which can't export anything. But the kid's phone holds both halves, so the match is learned
@@ -593,7 +613,32 @@ from use (`TokenMatching`, `TokenMatcher`):
 - A fire wakes the monitor, which samples Apple's data. The one unmatched app from the data with 50–180 s of use since
   registration (since midnight on later days) is the match, saved as `TrackedItem.match`. Two or more: retried the
   next day.
-- A matched scanned app uses its match's numbers (`Sampler.todayUsage`): limits count it, grants run by use.
+- A matched scanned app uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
   name. Unmatched ones are listed apart, by `Label` only.
+
+## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
+
+A parent's Always Allowed change didn't reach the kid's phone for over an hour: the monitor extension hadn't woken
+for hours, so nothing fetched the policy. The device logs (`log collect`) showed two separate causes, in this order:
+
+1. `ScreenTimeAgent` receives the family's Screen Time settings ("blueprints": bedtime, budgets; the restore in §15).
+2. Half a minute later it requests "internal authorization", and FamilyControls logs *Reset authorization … not
+   determined* for ScreenThyme. iOS stops our activities.
+3. The app re-registers. Threshold fires keep coming, but every fetch in the extension fails `unauthorized`.
+4. Hours later, "Allow usage data access" → *Approved with Data Access*. Screen Time's internal authorization is
+   revoked, and iOS stops our activities 0.4 s after the app re-registered.
+5. The app re-registers again. `UsageTrackingAgent` now puts the next threshold about half an hour of use away;
+   just before the grant it was under a minute away.
+
+- **Apple's Screen Time takes data access back silently.** The app learned of it only at a heartbeat (app launch).
+  The extension now alerts parents at the first refused fetch (`RuleEngine.accessAlert`, once per loss and day).
+- **A new grant can restart iOS's count of today's use lower** (by tens of minutes), while thresholds still replay
+  "from midnight" in iOS's count. A ladder registered above our total then waits that much use for its next wake.
+  A fresh registration now adds **probes** below our total (2, 4, 8, … min under it, and 2 min; `p.<minute>`).
+  iOS replays those it has passed; after 3 s the highest one settles `LadderCalibration.offset` (ours minus iOS's),
+  and the ladder re-registers in iOS's minutes. Fires are journaled as `t.<our minute>`. Ladder replays within 60 s
+  of that registration only refine the offset. Probe and replay fires aren't journaled as use. Midnight clears it.
+- `UsageTrackingAgent` logs "`t.<n>/<activity>/<team>.<bundle id>` has N seconds remaining" for each threshold:
+  the quickest way to see where iOS's count is.

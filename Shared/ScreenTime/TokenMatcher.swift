@@ -2,7 +2,7 @@ import DeviceActivity
 import Foundation
 import ThymeCore
 
-/// The token-matching events (PLAN.md §15.5): one activity, `tm`, with an event `m.<item id>` at one minute of use for
+/// The token-matching events (PLAN.md §15.6): one activity, `tm`, with an event `m.<item id>` at one minute of use for
 /// each scanned app not matched to Apple's data yet. Registered after a scan and on the first interval start of each
 /// day, which drops the events of apps matched since; every registration loads Apple's daemon, so no more often.
 enum TokenMatcher {
@@ -32,7 +32,7 @@ enum TokenMatcher {
             center.stopMonitoring([activity])
             return
         }
-        AppGroup.save(State(day: DayKey(now), baseline: Sampler.todayUsage(kid: kid, now: now)), to: url)
+        AppGroup.save(State(day: DayKey(now), baseline: UsageSnapshot.todayUsage(kid: kid, now: now)), to: url)
         do {
             try center.startMonitoring(activity, during: Roller.schedule, events: events)
             try? AppGroup.journal.append(.note("token match: watching \(events.count) apps"))
@@ -59,7 +59,7 @@ enum TokenMatcher {
         _ = Sampler.sampleBlocking(kid: kid)  // fresh numbers; takes the sampler lock itself
         let state = AppGroup.load(State.self, from: url)
         let baseline = state.flatMap { $0.day == DayKey(now) ? $0.baseline : nil } ?? [:]
-        let usage = Sampler.todayUsage(kid: kid, now: now)
+        let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
         AppGroup.withLock("sampler") {
             var items = AppGroup.loadItems()
             guard let index = items.firstIndex(where: { $0.id == itemID }), items[index].match == nil else {

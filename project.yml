@@ -126,7 +126,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Shield
 
-  # The block page's buttons: "Ask for more time" opens ScreenThyme (PLAN.md §15.4).
+  # The block page's buttons: "Ask for more time" opens ScreenThyme (PLAN.md §15.4); "One more minute" enforces
+  # here (§15.5), so it needs the Enforcer.
   ThymeShieldAction:
     type: app-extension
     platform: iOS
@@ -135,6 +136,8 @@ targets:
       - Shared/Storage
       - Shared/Shield
       - Shared/ScreenTime/TokenCoding.swift
+      - Shared/ScreenTime/Enforcer.swift
+      - Shared/ScreenTime/UsageSnapshot.swift
     dependencies:
       - package: ThymeKit
         product: ThymeCore

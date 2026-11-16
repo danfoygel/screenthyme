@@ -4,8 +4,8 @@ import ThymeCore
 
 /// Capture (PLAN.md §13). Each total-use threshold wakes the extension: journal the fire, fetch Apple's per-app
 /// data and record what changed, evaluate rules, keep the alarm registered, enforce (§15), then a short best-effort
-/// upload (and a policy and rules check). Downtime intervals and limit fires also enforce; token-match fires learn
-/// which app a scanned token is (§15.5).
+/// upload (and a policy and rules check). Downtime intervals, limit fires and the end of a "one more minute" also
+/// enforce; token-match fires learn which app a scanned token is (§15.6).
 /// Anything not uploaded here is sent by the app. Each callback ends by metering this process's energy use
 /// (`EnergyMeter`), so parents can see what capture costs the kid's battery.
 final class ThymeMonitorExtension: DeviceActivityMonitor {
@@ -27,16 +27,28 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             upload(config)
             return
         }
-        let entry = JournalEntry(kind: .threshold, activity: activity.rawValue, event: event.rawValue, at: Date())
+        let at = Date()
+        let minute: Int
+        switch Roller.observe(event.rawValue, at: at) {
+        case let .use(ours):
+            minute = ours
+        case .calibration:
+            return
+        case .unknown:
+            // A leftover registration from the old per-app ladders.
+            try? AppGroup.journal.append(JournalEntry(kind: .threshold, activity: activity.rawValue, event: event.rawValue, at: at))
+            return
+        }
+        // In our minutes, which differ from the event's after iOS restarted today's count lower (PLAN.md §16).
+        let entry = JournalEntry(kind: .threshold, activity: activity.rawValue, event: EventName.total(minute: minute), at: at)
         try? AppGroup.journal.append(entry)
         let config = SharedConfig.load()
-        // Only total fires; anything else is a leftover registration from the old per-app ladders.
-        guard let parsed = entry.parsedEvent, parsed.itemID == nil else { return }
 
         // No authorization check: `authorizationStatus` is unreliable in the extension (sampling never ran behind
-        // it). A phone without data access fails the fetch, which `sampleBlocking` journals.
-        let sampled = config.kid.flatMap { Sampler.sampleBlocking(kid: $0) }
-        let wake = WakeObservation(at: entry.at, totalMinute: parsed.minute,
+        // it). A phone without data access fails the fetch, which `sampleBlocking` reports.
+        let sample = config.kid.map { Sampler.sampleBlocking(kid: $0) }
+        let sampled = sample?.result
+        let wake = WakeObservation(at: entry.at, totalMinute: minute,
                                    itemSeconds: sampled?.itemSeconds ?? [:],
                                    intervalSeconds: sampled?.intervalSeconds ?? [:],
                                    newItems: sampled?.newItems.map(\.id) ?? [])
@@ -46,14 +58,20 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             if let kid = config.kid {
                 let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
                 let engine = RuleEngine(kidID: kid.id, kidName: kid.displayName, items: items)
-                try? AppGroup.outbox.append(contentsOf: engine.process(wake, state: &state, rules: config.currentRules))
+                var alerts = engine.process(wake, state: &state, rules: config.currentRules)
+                let hasAccess: Bool? = sampled != nil ? true : sample?.unauthorized == true ? false : nil
+                if let lost = engine.accessAlert(hasAccess: hasAccess, at: entry.at, state: &state) {
+                    alerts.append(lost)
+                    try? AppGroup.journal.append(.note("alert: no data access"))
+                }
+                try? AppGroup.outbox.append(contentsOf: alerts)
             } else {
                 state.record(wake)
             }
             MonitorStateStore.save(state)
             return state
         }
-        Roller.roll(after: parsed.minute, state: state)
+        Roller.roll(after: minute, state: state)
         Enforcer.reconcile(now: entry.at)
         upload(config)
     }
@@ -65,7 +83,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             TokenMatcher.intervalStarted()
             return
         }
-        if name.hasPrefix(Enforcer.downtimePrefix) || name.hasPrefix(Enforcer.limitPrefix) {
+        if Enforcer.owns(name) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalStart, activity: name, at: Date()))
@@ -75,13 +93,23 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         Enforcer.reconcile()
     }
 
+    /// The extra-minute alarm is an end warning (schedules last at least 15 minutes).
+    override func intervalWillEndWarning(for activity: DeviceActivityName) {
+        defer { EnergyMeter.record(.monitor, isCallback: true) }
+        guard activity.rawValue == Enforcer.extraMinuteActivity else { return }
+        try? AppGroup.journal.append(.note("one more minute is up"))
+        Enforcer.endExtraMinutes()
+    }
+
     override func intervalDidEnd(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
         if name.hasPrefix(Enforcer.downtimePrefix) {
             try? AppGroup.journal.append(.note("interval end: \(name)"))
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
-        } else if !name.hasPrefix(Enforcer.limitPrefix), name != TokenMatcher.activity.rawValue {
+        } else if name == Enforcer.extraMinuteActivity {
+            Enforcer.endExtraMinutes()
+        } else if !Enforcer.owns(name), name != TokenMatcher.activity.rawValue {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
     }

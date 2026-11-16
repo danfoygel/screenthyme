@@ -8,13 +8,6 @@ import ThymeCore
 /// Capture (PLAN.md §13): fetches Apple's per-hour, per-app totals for today (iOS 26.4 data access) and turns the
 /// change since the previous fetch into `UsageSample`s, discovering new apps and websites on the way.
 enum Sampler {
-    /// Apple's totals at the last fetch: hour start (seconds since 1970) → item key → seconds.
-    struct Snapshot: Codable {
-        var day: DayKey
-        var at: Date
-        var hours: [String: [String: Double]]
-    }
-
     struct Result: Sendable {
         var samples: [UsageSample] = []
         var newItems: [TrackedItem] = []
@@ -44,27 +37,36 @@ enum Sampler {
         return AppGroup.withLock("sampler") { record(fetched, kid: kid, now: now) }
     }
 
+    /// What a sample from the extension got.
+    struct Blocking: Sendable {
+        var result: Result?
+        /// The fetch was refused: the phone has no data access (Apple's Screen Time can take it back, PLAN.md §16).
+        var unauthorized = false
+    }
+
     /// For the extension, whose callbacks are synchronous: waits up to `timeout`.
-    static func sampleBlocking(kid: Kid, timeout: TimeInterval = 3) -> Result? {
+    static func sampleBlocking(kid: Kid, timeout: TimeInterval = 3) -> Blocking {
         let box = ResultBox()
         let done = DispatchSemaphore(value: 0)
         Task.detached {
             do {
-                box.result = try await sample(kid: kid)
+                box.outcome.result = try await sample(kid: kid)
             } catch {
+                // The refusal prints as "unauthorized"; its type isn't documented.
+                box.outcome.unauthorized = String(describing: error).contains("unauthorized")
                 try? AppGroup.journal.append(.note("sample failed: \(error)"))
             }
             done.signal()
         }
         guard done.wait(timeout: .now() + timeout) == .success else {
             try? AppGroup.journal.append(.note("sample timed out after \(Int(timeout)) s"))
-            return nil
+            return Blocking()
         }
-        return box.result
+        return box.outcome
     }
 
     private final class ResultBox: @unchecked Sendable {
-        var result: Result?
+        var outcome = Blocking()
     }
 
     // MARK: - Fetch
@@ -105,7 +107,7 @@ enum Sampler {
     private static func record(_ fetched: Fetched, kid: Kid, now: Date) -> Result {
         let hours = fetched.hours
         let day = DayKey(now)
-        let previous = loadSnapshot().flatMap { $0.day == day ? $0 : nil }
+        let previous = UsageSnapshot.load().flatMap { $0.day == day ? $0 : nil }
         var known = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // On the very first fetch everything is "new"; only later discoveries count as new apps.
         let firstEver = known.isEmpty
@@ -163,35 +165,7 @@ enum Sampler {
         }
         try? AppGroup.newItems.append(contentsOf: changedItems)
         AppGroup.saveItems(Array(known.values))
-        saveSnapshot(Snapshot(day: day, at: now, hours: hours.mapValues { $0.mapValues(\.seconds) }))
+        UsageSnapshot(day: day, at: now, hours: hours.mapValues { $0.mapValues(\.seconds) }).save()
         return result
-    }
-
-    /// Apple's seconds today per app and website, as of the last fetch.
-    static func todayUsage(kid: Kid, now: Date = Date()) -> [UUID: Double] {
-        guard let snapshot = loadSnapshot(), snapshot.day == DayKey(now) else { return [:] }
-        var usage: [UUID: Double] = [:]
-        for items in snapshot.hours.values {
-            for (key, seconds) in items {
-                let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
-                guard parts.count == 2 else { continue }
-                let kind: ItemKind = parts[0] == "web" ? .domain : .app
-                usage[TrackedItem.id(kid: kid.id, kind: kind, identifier: parts[1]), default: 0] += seconds
-            }
-        }
-        // A scanned app uses what its match in Apple's data uses.
-        for item in AppGroup.loadItems() {
-            if let match = item.match, let seconds = usage[match] { usage[item.id] = seconds }
-        }
-        return usage
-    }
-
-    private static func loadSnapshot() -> Snapshot? {
-        guard let data = try? Data(contentsOf: AppGroup.snapshotURL) else { return nil }
-        return try? JSONDecoder.thyme.decode(Snapshot.self, from: data)
-    }
-
-    private static func saveSnapshot(_ snapshot: Snapshot) {
-        try? JSONEncoder.thyme.encode(snapshot).write(to: AppGroup.snapshotURL, options: .atomic)
     }
 }
