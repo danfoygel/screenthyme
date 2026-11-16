@@ -18,14 +18,20 @@ public enum TokenMatching {
 
     /// - Parameters:
     ///   - baseline: seconds per item from Apple's data when the event was registered (empty for a midnight start).
+    ///   - previous: seconds per item at the fetch before this fire's. Of several apps near a minute, the one in use
+    ///     just now is the one: another may have spent its minute long ago, its own event dropped or not yet matched.
     ///   - usage: seconds per item now.
     ///   - candidates: apps from Apple's data that no scanned item matches yet.
-    public static func match(baseline: [UUID: Double], usage: [UUID: Double], candidates: Set<UUID>) -> Result {
+    public static func match(baseline: [UUID: Double], previous: [UUID: Double] = [:], usage: [UUID: Double],
+                             candidates: Set<UUID>) -> Result {
         let near = Set(candidates.filter { window.contains((usage[$0] ?? 0) - (baseline[$0] ?? 0)) })
-        switch near.count {
+        // None grew: a wake fetched between the crossing and this fire, so growth says nothing.
+        let growing = near.filter { (usage[$0] ?? 0) > (previous[$0] ?? 0) }
+        let chosen = growing.isEmpty ? near : growing
+        switch chosen.count {
         case 0: return .none
-        case 1: return .matched(near.first!)
-        default: return .ambiguous(near)
+        case 1: return .matched(chosen.first!)
+        default: return .ambiguous(chosen)
         }
     }
 }

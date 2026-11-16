@@ -611,8 +611,9 @@ from use (`TokenMatching`, `TokenMatcher`):
   app not matched yet (81 on the kid's phone after the scan; 380 events ran fine there, §12). Registered after a scan,
   at app launch if missing, and on the first interval start of each day, which drops matched apps.
 - A fire wakes the monitor, which samples Apple's data. The one unmatched app from the data with 50–180 s of use since
-  registration (since midnight on later days) is the match, saved as `TrackedItem.match`. Two or more: retried the
-  next day.
+  registration (since midnight on later days) is the match, saved as `TrackedItem.match`. Of several, only those
+  used since the fetch before the fire count (another may have spent its minute long ago, its own event dropped or not
+  matched). Still two or more: retried the next day.
 - A matched scanned app uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's

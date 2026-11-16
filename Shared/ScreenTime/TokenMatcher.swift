@@ -56,6 +56,7 @@ enum TokenMatcher {
     /// An app reached a minute of use: find it in Apple's data.
     static func fired(_ event: String, kid: Kid, now: Date = Date()) {
         guard event.hasPrefix(eventPrefix), let itemID = UUID(uuidString: String(event.dropFirst(eventPrefix.count))) else { return }
+        let previous = UsageSnapshot.todayUsage(kid: kid, now: now)
         _ = Sampler.sampleBlocking(kid: kid)  // fresh numbers; takes the sampler lock itself
         let state = AppGroup.load(State.self, from: url)
         let baseline = state.flatMap { $0.day == DayKey(now) ? $0.baseline : nil } ?? [:]
@@ -68,7 +69,8 @@ enum TokenMatcher {
             }
             let taken = Set(items.compactMap(\.match))
             let candidates = Set(items.filter { $0.kind == .app && !$0.isScanned && !taken.contains($0.id) }.map(\.id))
-            switch TokenMatching.match(baseline: baseline, usage: usage, candidates: candidates) {
+            switch TokenMatching.match(baseline: baseline, previous: previous, usage: usage,
+                                       candidates: candidates) {
             case let .matched(id):
                 items[index].match = id
                 AppGroup.saveItems(items)
@@ -78,7 +80,8 @@ enum TokenMatcher {
             case .none:
                 try? AppGroup.journal.append(.note("token match: no app near a minute"))
             case let .ambiguous(ids):
-                try? AppGroup.journal.append(.note("token match: \(ids.count) apps near a minute, retrying tomorrow"))
+                let names = ids.compactMap { id in items.first { $0.id == id }?.identifier }.sorted()
+                try? AppGroup.journal.append(.note("token match: \(names.joined(separator: ", ")) near a minute, retrying tomorrow"))
             }
         }
     }

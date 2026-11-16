@@ -65,6 +65,11 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 # Library/Application Support/push-diagnostics.txt (copy with --domain-type appDataContainer)
 ```
 
+## Pull requests
+
+- **Never push more work to a merged PR's branch: a merged PR can't be updated.** Check first
+  (`gh pr view <n> --json state`); once it's merged, branch from the latest `main` and open a new PR.
+
 ## What runs where
 
 - **Simulator:** parent UI, test mode, replay tool with "This phone only". No DeviceActivity fires and no iCloud account, so no capture or sync.
