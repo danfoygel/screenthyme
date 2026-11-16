@@ -8,13 +8,6 @@ import ThymeCore
 /// Capture (PLAN.md §13): fetches Apple's per-hour, per-app totals for today (iOS 26.4 data access) and turns the
 /// change since the previous fetch into `UsageSample`s, discovering new apps and websites on the way.
 enum Sampler {
-    /// Apple's totals at the last fetch: hour start (seconds since 1970) → item key → seconds.
-    struct Snapshot: Codable {
-        var day: DayKey
-        var at: Date
-        var hours: [String: [String: Double]]
-    }
-
     struct Result: Sendable {
         var samples: [UsageSample] = []
         var newItems: [TrackedItem] = []
@@ -105,7 +98,7 @@ enum Sampler {
     private static func record(_ fetched: Fetched, kid: Kid, now: Date) -> Result {
         let hours = fetched.hours
         let day = DayKey(now)
-        let previous = loadSnapshot().flatMap { $0.day == day ? $0 : nil }
+        let previous = UsageSnapshot.load().flatMap { $0.day == day ? $0 : nil }
         var known = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // On the very first fetch everything is "new"; only later discoveries count as new apps.
         let firstEver = known.isEmpty
@@ -163,31 +156,7 @@ enum Sampler {
         }
         try? AppGroup.newItems.append(contentsOf: changedItems)
         AppGroup.saveItems(Array(known.values))
-        saveSnapshot(Snapshot(day: day, at: now, hours: hours.mapValues { $0.mapValues(\.seconds) }))
+        UsageSnapshot(day: day, at: now, hours: hours.mapValues { $0.mapValues(\.seconds) }).save()
         return result
-    }
-
-    /// Apple's seconds today per app and website, as of the last fetch.
-    static func todayUsage(kid: Kid, now: Date = Date()) -> [UUID: Double] {
-        guard let snapshot = loadSnapshot(), snapshot.day == DayKey(now) else { return [:] }
-        var usage: [UUID: Double] = [:]
-        for items in snapshot.hours.values {
-            for (key, seconds) in items {
-                let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
-                guard parts.count == 2 else { continue }
-                let kind: ItemKind = parts[0] == "web" ? .domain : .app
-                usage[TrackedItem.id(kid: kid.id, kind: kind, identifier: parts[1]), default: 0] += seconds
-            }
-        }
-        return usage
-    }
-
-    private static func loadSnapshot() -> Snapshot? {
-        guard let data = try? Data(contentsOf: AppGroup.snapshotURL) else { return nil }
-        return try? JSONDecoder.thyme.decode(Snapshot.self, from: data)
-    }
-
-    private static func saveSnapshot(_ snapshot: Snapshot) {
-        try? JSONEncoder.thyme.encode(snapshot).write(to: AppGroup.snapshotURL, options: .atomic)
     }
 }

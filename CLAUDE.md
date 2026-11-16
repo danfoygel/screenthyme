@@ -19,7 +19,8 @@ ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fe
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
 ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only
 ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
-ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme
+ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme;
+                     "One more minute" runs the Enforcer itself (PLAN.md §15.5)
 ```
 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
@@ -97,6 +98,7 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).
+- The Enforcer's activities are `dt.<id8>`, `lim.<id8>` and `om.end` (`Enforcer.owns`); everything else is the wake alarm's.
 - Event names are `t.<minute>`; the activity is `st.<epoch8>.tot`. Old journals also hold per-app `i.<itemUUID>.<minute>`
   fires, which are ignored.
 - A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change, so phones re-fetch.

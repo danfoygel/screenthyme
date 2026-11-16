@@ -537,10 +537,8 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   reconciles**, so a missed callback corrects itself within one wake of use.
 - `Roller.registerAll` no longer stops every activity, only the wake alarm's.
 - Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
-  "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" has a submenu (iOS 26.4) with
-  15 minutes / 1 hour / Rest of today. The ShieldAction extension writes the TimeRequest to the App Group and opens
-  ScreenThyme (`openParentalControlsApp`, iOS 26.5) or closes with a local notification. ScreenThyme uploads the
-  request and, while open, checks for the grant every few seconds.
+  "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" opens ScreenThyme (§15.4), or
+  while one more minute is left, a submenu (iOS 26.4): One more minute / Ask a parent (§15.5).
 - The kid's policy and grants arrive through a fetch by name (`Policy.<kid>`, `RuleSet.<kid>`,
   `TimeGrant.<open request ids>`) at wakes and app launches, plus the kid app's zone fetch on silent pushes.
 
@@ -581,3 +579,25 @@ category ids) for the app, which shows `AskForTimeView`:
   Downtime through the scan's ScreenThyme pick.
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
   approval, the app opens while Downtime stays on for the rest.
+
+### 15.5 One more minute
+
+Like Apple's: from a Downtime or limit block page, the kid can let the app through for a minute without asking, once a
+day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iOS 26.4): **One more minute** /
+**Ask a parent** (§15.4). Once the minute is used, the button asks straight away. Never for Blocked apps.
+- The press decides what is lifted, as a request would (`ShieldContext.requestScope`). An app shielded by itself (a
+  per-app limit) lets that app through. A category shield (a category limit) names only the category, so that
+  category is let through. Downtime's shield is always a category shield and names no app, so Downtime pauses for the
+  whole phone for the minute. Once a day per app, or for a Downtime press, once per window
+  (`EnforcementDayState.canTakeExtraMinute`). The block page computes the menu for what its press will name
+  (`ShieldContext.pressed`), so the action extension maps the item pressed back to the same choice.
+- The ShieldAction extension records an `ExtraMinute` (60 s of the clock) in `enforcement-state.json`, runs the
+  `Enforcer`, which lifts it from the stores, and answers `.defer`, so iOS re-evaluates the shield and opens the app.
+  The extension compiles the Enforcer and `UsageSnapshot` (today's use, without Apple's data or SwiftUI).
+- Shielded again by the activity `om.end`: schedules count whole minutes and last at least 15, so it is a ~16-minute
+  interval whose end warning falls at the first whole minute after the minute ends (60–120 s after the press). The
+  monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
+  reshields it.
+- No alert to parents; the journal notes each one.
+- **Not yet tried on a phone:** whether the submenu sends only the submenu actions, and whether `.defer` opens the app
+  once the stores stop shielding it.
