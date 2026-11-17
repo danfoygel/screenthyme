@@ -23,6 +23,9 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
     public var start: Date
     public var end: Date
     public var seconds: Double
+    /// Set when the phone's in-use minutes don't account for this use: it happened sometime in this window, and the
+    /// block is only drawn at its end.
+    public var somewhereIn: DateInterval?
 
     public var id: String { "\(itemID)-\(start.timeIntervalSince1970)" }
     /// The share of the stretch the item was in use: 1 when it filled it.
@@ -62,6 +65,9 @@ public enum Reconstructor {
     static let catchUpWindow: TimeInterval = 900
     /// Samples this close together are one stretch on a lane.
     static let blockGap: TimeInterval = 5
+    /// Use beyond the phone's in-use minutes in a sample's window, by less than this, is the minute iOS hasn't
+    /// counted yet: it stays on the in-use minutes.
+    static let uncounted: TimeInterval = 60
 
     public static func build(_ input: DayInput) -> DayTimeline {
         let total = clean(input.total, dayStart: input.dayStart)
@@ -77,7 +83,7 @@ public enum Reconstructor {
         }
         return DayTimeline(inUse: inUse,
                            runs: mergeRuns(inUse),
-                           blocks: blocks(input.samples),
+                           blocks: blocks(input.samples, inUse: inUse),
                            items: items,
                            totalMinutes: total.points.last?.minute ?? 0,
                            preTrackingMinutes: preTracking,
@@ -85,25 +91,54 @@ public enum Reconstructor {
                            lastTotalFireAt: total.points.last?.at)
     }
 
-    /// Each item's samples, with back-to-back ones merged into one stretch.
-    static func blocks(_ samples: [UsageSample]) -> [UsageBlock] {
+    /// Each item's samples placed in time, with back-to-back pieces merged into one stretch.
+    static func blocks(_ samples: [UsageSample], inUse: [InUseMinute] = []) -> [UsageBlock] {
+        let used = mergeRuns(inUse, gap: blockGap)
         var blocks: [UsageBlock] = []
         let byItem = Dictionary(grouping: samples.filter { $0.seconds > 0 }, by: \.itemID)
         for (item, itemSamples) in byItem {
             var current: UsageBlock?
-            for sample in itemSamples.sorted(by: { $0.start < $1.start }) {
-                if var block = current, sample.start.timeIntervalSince(block.end) <= blockGap {
-                    block.end = max(block.end, sample.end)
-                    block.seconds += sample.seconds
+            for piece in itemSamples.flatMap({ place($0, used: used) }).sorted(by: { $0.start < $1.start }) {
+                if var block = current, (block.somewhereIn == nil) == (piece.somewhereIn == nil),
+                   piece.start.timeIntervalSince(block.end) <= blockGap {
+                    block.end = max(block.end, piece.end)
+                    block.seconds += piece.seconds
+                    if let window = piece.somewhereIn, let earlier = block.somewhereIn {
+                        block.somewhereIn = DateInterval(start: min(earlier.start, window.start),
+                                                         end: max(earlier.end, window.end))
+                    }
                     current = block
                 } else {
                     if let current { blocks.append(current) }
-                    current = UsageBlock(itemID: item, start: sample.start, end: sample.end, seconds: sample.seconds)
+                    current = piece
                 }
             }
             if let current { blocks.append(current) }
         }
         return blocks.sorted { $0.start < $1.start }
+    }
+
+    /// Where a sample's use happened. A sample only says "this many seconds since the previous fetch" (clipped to the
+    /// hour), and after the phone sat idle that window is most of an hour; the in-use minutes say when, within it,
+    /// the phone was in use. The seconds are shared over those minutes. Use they don't account for (before tracking
+    /// started, or too short to reach a wake) is drawn at its real length just before them, or at the window's end.
+    static func place(_ sample: UsageSample, used: [DateInterval]) -> [UsageBlock] {
+        let window = DateInterval(start: min(sample.start, sample.end), end: sample.end)
+        let covered = used.compactMap { $0.intersection(with: window) }.filter { $0.duration > 0 }
+        let total = covered.reduce(0) { $0 + $1.duration }
+        let excess = total == 0 ? sample.seconds : sample.seconds > total + uncounted ? sample.seconds - total : 0
+        let onCovered = sample.seconds - excess
+        var pieces = covered.map { stretch in
+            UsageBlock(itemID: sample.itemID, start: stretch.start, end: stretch.end,
+                       seconds: onCovered * stretch.duration / total)
+        }
+        if excess > 0 {
+            let end = covered.first?.start ?? window.end
+            let start = max(window.start, end.addingTimeInterval(-excess))
+            pieces.insert(UsageBlock(itemID: sample.itemID, start: start, end: max(end, start.addingTimeInterval(1)),
+                                     seconds: excess, somewhereIn: window), at: 0)
+        }
+        return pieces
     }
 
     static func inCatchUp(_ date: Date, starts: [Date]) -> Bool {
@@ -214,10 +249,10 @@ public enum Reconstructor {
         return (minutes.sorted { $0.start < $1.start }, preTracking)
     }
 
-    static func mergeRuns(_ minutes: [InUseMinute]) -> [DateInterval] {
+    static func mergeRuns(_ minutes: [InUseMinute], gap: TimeInterval = runGap) -> [DateInterval] {
         var runs: [DateInterval] = []
         for minute in minutes {
-            if let last = runs.last, minute.start.timeIntervalSince(last.end) <= runGap {
+            if let last = runs.last, minute.start.timeIntervalSince(last.end) <= gap {
                 runs[runs.count - 1] = DateInterval(start: last.start, end: max(last.end, minute.end))
             } else {
                 runs.append(DateInterval(start: minute.start, end: minute.end))

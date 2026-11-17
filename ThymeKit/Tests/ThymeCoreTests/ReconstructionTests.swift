@@ -38,6 +38,43 @@ struct ReconstructionTests {
         #expect(result.items[youtube]?.minutes == 20)
     }
 
+    @Test func useAfterIdleIsPlacedWhenThePhoneWasInUse() {
+        // Roblox's first sample covers 9:10 (the previous wake) to 9:42; the phone was idle until 9:40.
+        let (input, result) = timeline([
+            SyntheticSession(item: youtube, start: at(9, 0), minutes: 10),
+            SyntheticSession(item: roblox, start: at(9, 40), minutes: 4),
+        ])
+        #expect(input.samples.contains { $0.itemID == roblox && $0.start == at(9, 10) })
+        let blox = result.blocks.filter { $0.itemID == roblox }
+        #expect(blox.count == 1)
+        #expect(blox.first?.start == at(9, 40) && blox.first?.end == at(9, 44))
+        #expect(blox.first?.intensity == 1 && blox.first?.somewhereIn == nil)
+    }
+
+    @Test func useTheInUseMinutesMissIsDrawnAtItsLengthAndMarked() {
+        // 30 s at 15:05 never reached a wake; the 16:00 hour's fetch reports it for 15:00–16:00.
+        let sample = UsageSample(id: UUID(), kidID: testKid.id, itemID: youtube, day: testDay,
+                                 start: at(15, 0), end: at(16, 0), seconds: 30)
+        let result = Reconstructor.build(DayInput(dayStart: dayStart, total: [], samples: [sample]))
+        let block = result.blocks.first
+        #expect(block?.start == at(15, 59, 30) && block?.end == at(16, 0))
+        #expect(block?.somewhereIn == DateInterval(start: at(15, 0), end: at(16, 0)))
+        #expect(result.items[youtube]?.seconds == 30)
+    }
+
+    @Test func useBeyondTheInUseMinutesGoesJustBeforeThem() {
+        // Two minutes in use at 15:40–15:42, but Apple counts five: three happened before tracking caught them.
+        let sample = UsageSample(id: UUID(), kidID: testKid.id, itemID: youtube, day: testDay,
+                                 start: at(15, 0), end: at(15, 42), seconds: 300)
+        let result = Reconstructor.build(DayInput(dayStart: dayStart, total: [FirePoint(minute: 1, at: at(15, 41)),
+                                                                               FirePoint(minute: 2, at: at(15, 42))],
+                                                  samples: [sample]))
+        let blocks = result.blocks.sorted { $0.start < $1.start }
+        #expect(blocks.map(\.start) == [at(15, 37), at(15, 40)])
+        #expect(blocks.map(\.seconds) == [180, 120])
+        #expect(blocks.first?.somewhereIn != nil && blocks.last?.somewhereIn == nil)
+    }
+
     @Test func fastSwitchingKeepsExactTotals() {
         let trace = SyntheticScenario.fastSwitching.trace(kid: testKid, day: testDay, calendar: utc)
         let result = Reconstructor.build(DayInput(fires: trace.fires(calendar: utc), samples: trace.samples, dayStart: dayStart))

@@ -118,6 +118,10 @@ struct UsageCalendar: View {
                                            bottomTrailingRadius: isLast ? 4 : 0, topTrailingRadius: isFirst ? 4 : 0)
         return ZStack(alignment: .topLeading) {
             shape.fill(color.opacity(0.12 + 0.28 * block.intensity))
+            // Use the phone's in-use minutes don't place: its time is a guess, so dashed.
+            if block.somewhereIn != nil {
+                shape.strokeBorder(color, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            }
             Rectangle().fill(color).frame(width: 3)
             if piece.isLabeled && height >= 14 {
                 VStack(alignment: .leading, spacing: 1) {
@@ -125,7 +129,7 @@ struct UsageCalendar: View {
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     if height >= 32 {
-                        Text("\(Format.time(block.start)) · \(Format.minutes(minutes(block)))")
+                        Text("\(Format.time(block.start)) · \(duration(block))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -146,16 +150,21 @@ struct UsageCalendar: View {
         .offset(x: gutter + 4 + column * CGFloat(piece.column), y: y(piece.start))
     }
 
-    private func minutes(_ block: UsageBlock) -> Int {
-        max(1, Int((block.seconds / 60).rounded()))
+    private func duration(_ block: UsageBlock) -> String {
+        block.seconds < 60 ? "\(Int(block.seconds.rounded())) s" : Format.minutes(Int((block.seconds / 60).rounded()))
     }
 
     private func detail(_ block: UsageBlock) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ItemName(item: items[block.itemID]).font(.headline)
             Text("\(Format.time(block.start))–\(Format.time(block.end))").monospacedDigit()
-            Text("\(Format.minutes(minutes(block))) of use")
-            if block.intensity < 0.95 {
+            Text("\(duration(block)) of use")
+            if let window = block.somewhereIn {
+                Text("Sometime between \(Format.time(window.start)) and \(Format.time(window.end)): the phone's check-ins don't say when.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if block.intensity < 0.95 {
                 Text("In use for \(Int((block.intensity * 100).rounded()))% of this stretch, alongside other apps.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
