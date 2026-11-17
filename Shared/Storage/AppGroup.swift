@@ -183,8 +183,10 @@ struct SharedConfig: Codable, Sendable {
 
     /// A day from this phone's own journal and samples.
     func dayInput(_ day: DayKey) -> DayInput {
-        DayInput(entries: AppGroup.journal.entries(on: day),
-                 samples: AppGroup.samples.readAll().filter { $0.day == day }, dayStart: day.start())
+        var input = DayInput(entries: AppGroup.journal.entries(on: day),
+                             samples: AppGroup.samples.readAll().filter { $0.day == day }, dayStart: day.start())
+        input.websites = Set(AppGroup.loadItems().filter { $0.kind == .domain }.map(\.id))
+        return input
     }
 }
 

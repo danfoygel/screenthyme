@@ -131,9 +131,14 @@ struct KidDayView: View {
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
             }
             Section {
+                NavigationLink { KidTimelineView(kid: kid, day: day) } label: {
+                    Label("Day timeline", systemImage: "calendar.day.timeline.left")
+                }
+            }
+            Section {
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start(), tint: kid.color)
             } footer: {
-                Text("Each block is Apple's count for that app between two of the phone's check-ins (every 2 minutes of use). Fainter means the app was in use for only part of that time. Tap a block for times.")
+                Text("Apple counts each app's use between two of the phone's check-ins (every 2 minutes of use); each block puts that count on the minutes just before an on-time check-in. Fainter means the app was in use for only part of that time. Tap a block for times.")
             }
             Section("Apps") {
                 ForEach(used.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, usage in

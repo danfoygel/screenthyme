@@ -40,6 +40,7 @@ public enum SyntheticTrace {
         var samples: [UsageSample] = []
         // Per item: seconds since the last wake, and when that use began.
         var pending: [UUID: (seconds: Double, since: Date)] = [:]
+        var lastWake: Date?
         for session in sessions.sorted(by: { $0.start < $1.start }) {
             for index in 0..<session.minutes {
                 let minuteStart = session.start.addingTimeInterval(Double(index) * 60)
@@ -51,11 +52,14 @@ public enum SyntheticTrace {
                 guard total % options.step == 0 else { continue }
                 fires.append(FirePoint(minute: total, at: at))
                 for (item, use) in pending {
+                    // Like `Sampler`: Apple's numbers only say "since the previous fetch", within the hour.
+                    let hour = calendar.dateInterval(of: .hour, for: use.since)?.start ?? use.since
                     samples.append(UsageSample(id: Replay.stableUUID("sample", kid.uuidString, item.uuidString, "\(at.timeIntervalSince1970)"),
                                                kidID: kid, itemID: item, day: DayKey(at, calendar: calendar),
-                                               start: use.since, end: at, seconds: use.seconds, reportedAt: at))
+                                               start: max(hour, lastWake ?? hour), end: at, seconds: use.seconds, reportedAt: at))
                 }
                 pending = [:]
+                lastWake = at
             }
         }
         fires = fires.map { fire in

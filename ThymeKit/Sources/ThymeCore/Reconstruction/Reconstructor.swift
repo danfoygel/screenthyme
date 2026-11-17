@@ -23,6 +23,9 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
     public var start: Date
     public var end: Date
     public var seconds: Double
+    /// Set when no on-time check-in places this use: it happened sometime in this window, and the block is drawn
+    /// at a best guess.
+    public var somewhereIn: DateInterval?
 
     public var id: String { "\(itemID)-\(start.timeIntervalSince1970)" }
     /// The share of the stretch the item was in use: 1 when it filled it.
@@ -33,6 +36,8 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
 
 public struct DayTimeline: Sendable {
     public var inUse: [InUseMinute]
+    /// How well each stretch of the day can be placed in time, from the check-ins.
+    public var coverage: [CoverageSpan]
     /// Stretches of continuous use (gaps of at most `Reconstructor.runGap`).
     public var runs: [DateInterval]
     public var blocks: [UsageBlock]
@@ -75,9 +80,11 @@ public enum Reconstructor {
             usage.lastAt = max(usage.lastAt, sample.end)
             items[sample.itemID] = usage
         }
+        let stretches = CheckIns.stretches(input)
         return DayTimeline(inUse: inUse,
+                           coverage: CheckIns.coverage(stretches),
                            runs: mergeRuns(inUse),
-                           blocks: blocks(input.samples),
+                           blocks: merge(CheckIns.pieces(stretches, websites: input.websites)),
                            items: items,
                            totalMinutes: total.points.last?.minute ?? 0,
                            preTrackingMinutes: preTracking,
@@ -85,25 +92,29 @@ public enum Reconstructor {
                            lastTotalFireAt: total.points.last?.at)
     }
 
-    /// Each item's samples, with back-to-back ones merged into one stretch.
-    static func blocks(_ samples: [UsageSample]) -> [UsageBlock] {
+    /// Each item's pieces, with back-to-back ones (both placed, or both guessed) merged into one stretch.
+    static func merge(_ pieces: [UsageBlock]) -> [UsageBlock] {
         var blocks: [UsageBlock] = []
-        let byItem = Dictionary(grouping: samples.filter { $0.seconds > 0 }, by: \.itemID)
-        for (item, itemSamples) in byItem {
+        for (_, itemPieces) in Dictionary(grouping: pieces, by: \.itemID) {
             var current: UsageBlock?
-            for sample in itemSamples.sorted(by: { $0.start < $1.start }) {
-                if var block = current, sample.start.timeIntervalSince(block.end) <= blockGap {
-                    block.end = max(block.end, sample.end)
-                    block.seconds += sample.seconds
+            for piece in itemPieces.sorted(by: { $0.start < $1.start }) {
+                if var block = current, (block.somewhereIn == nil) == (piece.somewhereIn == nil),
+                   piece.start.timeIntervalSince(block.end) <= blockGap {
+                    block.end = max(block.end, piece.end)
+                    block.seconds += piece.seconds
+                    if let window = piece.somewhereIn, let earlier = block.somewhereIn {
+                        block.somewhereIn = DateInterval(start: min(earlier.start, window.start),
+                                                         end: max(earlier.end, window.end))
+                    }
                     current = block
                 } else {
                     if let current { blocks.append(current) }
-                    current = UsageBlock(itemID: item, start: sample.start, end: sample.end, seconds: sample.seconds)
+                    current = piece
                 }
             }
             if let current { blocks.append(current) }
         }
-        return blocks.sorted { $0.start < $1.start }
+        return blocks.sorted { ($0.start, $0.end, $0.seconds) < ($1.start, $1.end, $1.seconds) }
     }
 
     static func inCatchUp(_ date: Date, starts: [Date]) -> Bool {
@@ -214,10 +225,10 @@ public enum Reconstructor {
         return (minutes.sorted { $0.start < $1.start }, preTracking)
     }
 
-    static func mergeRuns(_ minutes: [InUseMinute]) -> [DateInterval] {
+    static func mergeRuns(_ minutes: [InUseMinute], gap: TimeInterval = runGap) -> [DateInterval] {
         var runs: [DateInterval] = []
         for minute in minutes {
-            if let last = runs.last, minute.start.timeIntervalSince(last.end) <= runGap {
+            if let last = runs.last, minute.start.timeIntervalSince(last.end) <= gap {
                 runs[runs.count - 1] = DateInterval(start: last.start, end: max(last.end, minute.end))
             } else {
                 runs.append(DateInterval(start: minute.start, end: minute.end))

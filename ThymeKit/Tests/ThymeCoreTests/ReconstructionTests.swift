@@ -38,6 +38,19 @@ struct ReconstructionTests {
         #expect(result.items[youtube]?.minutes == 20)
     }
 
+    @Test func useAfterIdleIsPlacedWhenThePhoneWasInUse() {
+        // Roblox's first sample covers 9:10 (the previous wake) to 9:42; the phone was idle until 9:40.
+        let (input, result) = timeline([
+            SyntheticSession(item: youtube, start: at(9, 0), minutes: 10),
+            SyntheticSession(item: roblox, start: at(9, 40), minutes: 4),
+        ])
+        #expect(input.samples.contains { $0.itemID == roblox && $0.start == at(9, 10) })
+        let blox = result.blocks.filter { $0.itemID == roblox }
+        #expect(blox.count == 1)
+        #expect(blox.first?.start == at(9, 40) && blox.first?.end == at(9, 44))
+        #expect(blox.first?.intensity == 1 && blox.first?.somewhereIn == nil)
+    }
+
     @Test func fastSwitchingKeepsExactTotals() {
         let trace = SyntheticScenario.fastSwitching.trace(kid: testKid, day: testDay, calendar: utc)
         let result = Reconstructor.build(DayInput(fires: trace.fires(calendar: utc), samples: trace.samples, dayStart: dayStart))

@@ -7,6 +7,7 @@ struct KidDebugView: View {
     @Environment(AppModel.self) private var model
     @State private var day = DayKey(Date())
     @State private var exportURL: URL?
+    @AppStorage("timelineScale") private var timelineScale = 120.0
 
     var body: some View {
         let input = model.config.dayInput(day)
@@ -42,6 +43,10 @@ struct KidDebugView: View {
                 LabeledContent("Apps and sites (Apple)", value: Format.minutes(timeline.appMinutes))
                 LabeledContent("Samples", value: "\(input.samples.count)")
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start())
+                NavigationLink("Day timeline") {
+                    UsageCalendar(timeline: timeline, items: items, dayStart: day.start(), scale: $timelineScale)
+                        .navigationTitle(day.description)
+                }
                 ForEach(timeline.items.sorted { $0.value.seconds > $1.value.seconds }, id: \.key) { id, usage in
                     LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
                 }
