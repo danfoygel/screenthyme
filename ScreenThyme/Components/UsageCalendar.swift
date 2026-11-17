@@ -9,10 +9,13 @@ struct UsageCalendar: View {
     let items: [UUID: TrackedItem]
     let dayStart: Date
     var showWebsites = false
+    /// Leaves out blocks with under `shortUse` of use: brief switches between apps.
+    var hideShort = true
     /// Points per hour; pinching changes it.
     @Binding var scale: Double
 
     static let scales: ClosedRange<Double> = 30...960
+    static let shortUse: TimeInterval = 120
 
     @State private var selected: CalendarPiece?
     @State private var position = ScrollPosition(edge: .top)
@@ -68,7 +71,9 @@ struct UsageCalendar: View {
     }
 
     private var blocks: [UsageBlock] {
-        timeline.blocks.filter { showWebsites || items[$0.itemID]?.kind != .domain }
+        timeline.blocks.filter {
+            (showWebsites || items[$0.itemID]?.kind != .domain) && (!hideShort || $0.seconds >= Self.shortUse)
+        }
     }
 
     /// To an hour before the first use, or the current hour on a day with none yet.

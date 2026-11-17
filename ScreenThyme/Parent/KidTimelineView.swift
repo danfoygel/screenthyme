@@ -8,6 +8,7 @@ struct KidTimelineView: View {
     @State var day: DayKey
     @AppStorage("timelineScale") private var scale = 120.0
     @AppStorage("timelineWebsites") private var showWebsites = false
+    @AppStorage("timelineHideShort") private var hideShort = true
 
     var body: some View {
         let (_, timeline) = model.timeline(kid: kid.id, day: day)
@@ -27,7 +28,7 @@ struct KidTimelineView: View {
                 .padding(.vertical, 6)
             Divider()
             UsageCalendar(timeline: timeline, items: model.data.items(for: kid.id), dayStart: day.start(),
-                          showWebsites: showWebsites, scale: $scale)
+                          showWebsites: showWebsites, hideShort: hideShort, scale: $scale)
         }
         .navigationTitle("Timeline")
         .navigationBarTitleDisplayMode(.inline)
@@ -39,6 +40,7 @@ struct KidTimelineView: View {
                     .disabled(scale >= UsageCalendar.scales.upperBound)
                 Menu("Options", systemImage: "ellipsis") {
                     Toggle("Show websites", isOn: $showWebsites)
+                    Toggle("Hide short use (under 2 min)", isOn: $hideShort)
                 }
             }
         }
