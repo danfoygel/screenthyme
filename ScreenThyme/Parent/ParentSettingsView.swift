@@ -123,10 +123,12 @@ struct KidSettingsView: View {
                 }
                 Button("Ping now") { Task { await model.ping(kid) } }
                 NavigationLink("Apps seen (\(model.data.items(for: kid.id).count))") { TrackedItemsView(kid: kid) }
-                let scanned = TokenMatchesView.scannedApps(in: model.data.items(for: kid.id))
-                if !scanned.isEmpty {
-                    NavigationLink("App matches (\(scanned.filter { $0.match != nil }.count) of \(scanned.count))") {
-                        TokenMatchesView(kid: kid)
+                ForEach([ItemKind.app, .domain], id: \.self) { kind in
+                    let scanned = TokenMatchesView.scanned(kind, in: model.data.items(for: kid.id))
+                    if !scanned.isEmpty {
+                        NavigationLink("\(TokenMatchesView.title(kind)) (\(scanned.filter { $0.match != nil }.count) of \(scanned.count))") {
+                            TokenMatchesView(kid: kid, kind: kind)
+                        }
                     }
                 }
             }

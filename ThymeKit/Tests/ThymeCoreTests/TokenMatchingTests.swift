@@ -44,6 +44,13 @@ struct TokenMatchingTests {
         #expect(!TokenMatching.isFresh(dataAt: now, registeredAt: nil))
     }
 
+    @Test func missedEventsRetryAtMostEveryFifteenMinutes() {
+        let now = Date()
+        #expect(!TokenMatching.canRetry(registeredAt: now.addingTimeInterval(-5 * 60), now: now))
+        #expect(TokenMatching.canRetry(registeredAt: now.addingTimeInterval(-15 * 60), now: now))
+        #expect(TokenMatching.canRetry(registeredAt: nil, now: now))
+    }
+
     @Test func builtInAppsHaveNames() {
         let safari = TrackedItem(kidID: UUID(), kind: .app, identifier: "com.apple.mobilesafari", firstSeen: Date())
         #expect(safari.displayName == "Safari")
