@@ -21,6 +21,14 @@ public enum TokenMatching {
         return abs(registeredAt.timeIntervalSince(dataAt)) <= freshness
     }
 
+    /// How long after a registration events that fired without a match can be re-armed by registering again.
+    public static let retryInterval: TimeInterval = 15 * 60
+
+    public static func canRetry(registeredAt: Date?, now: Date) -> Bool {
+        guard let registeredAt else { return true }
+        return now.timeIntervalSince(registeredAt) >= retryInterval
+    }
+
     public enum Result: Equatable, Sendable {
         case matched(UUID)
         case none

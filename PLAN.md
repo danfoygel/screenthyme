@@ -614,7 +614,9 @@ from use (`TokenMatching`, `TokenMatcher`):
 - A fire wakes the monitor, which samples Apple's data. The one unmatched item of the same kind (app or website) from
   the data with 50–180 s of use since registration (since midnight on later days) is the match, saved as
   `TrackedItem.match`. Of several, only those used since the fetch before the fire count (another may have spent its
-  minute long ago, its own event dropped or not matched). Still two or more: retried the next day.
+  minute long ago, its own event dropped or not matched). Still two or more, or none: the item's event is spent (an
+  event fires once per registration), so it is noted in `State.spent`, and the matcher registers again at a miss or
+  at the next wake once the last registration is 15 minutes old. That restarts every unmatched item's minute.
 - Websites: Apple's data lists subdomains apart (`ss.example.edu` beside `example.edu`), and pages count embedded
   frames' domains too (ad and video SDKs), so a website's minute can coincide with another domain's and come out
   ambiguous more often than an app's. Not yet seen on a phone.

@@ -11,8 +11,8 @@ enum Enforcer {
     static let limitPrefix = "lim."
     /// Re-applies the plan when a "one more minute" runs out (PLAN.md §15.5).
     static let extraMinuteActivity = "om.end"
-    /// iOS allows 20 activities per app; the wake alarm needs one.
-    static let maxActivities = 19
+    /// iOS allows 20 activities per app; the wake alarm and the token matcher (`tm`) need one each.
+    static let maxActivities = 18
 
     /// The Enforcer's activities, which the wake alarm's registration leaves alone.
     static func owns(_ activity: String) -> Bool {

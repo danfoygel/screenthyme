@@ -21,6 +21,9 @@ enum TokenMatcher {
         var dataAt: Date?
         /// What the events cover (`coverage`); nil in older files, which watched apps only.
         var coverage: Int?
+        /// Items whose event fired without a match since the registration: an event fires once, so they wait for the
+        /// next one (`retryIfDue`).
+        var spent: [UUID]?
     }
 
     /// Bumped when registration starts watching more kinds of items, so phones re-register: 2 = apps and websites.
@@ -56,8 +59,11 @@ enum TokenMatcher {
         }
         if !sampled { _ = Sampler.sampleBlocking(kid: kid) }  // takes the sampler lock itself
         let snapshot = UsageSnapshot.load()
-        AppGroup.save(State(day: DayKey(now), baseline: UsageSnapshot.todayUsage(kid: kid, now: now), registeredAt: now,
-                            dataAt: snapshot?.day == DayKey(now) ? snapshot?.at : nil, coverage: coverage), to: url)
+        AppGroup.withLock("token-match") {
+            AppGroup.save(State(day: DayKey(now), baseline: UsageSnapshot.todayUsage(kid: kid, now: now),
+                                registeredAt: now, dataAt: snapshot?.day == DayKey(now) ? snapshot?.at : nil,
+                                coverage: coverage), to: url)
+        }
         do {
             try center.startMonitoring(activity, during: Roller.schedule, events: events)
             try? AppGroup.journal.append(.note("token match: watching \(apps) apps, \(sites) websites"))
@@ -99,11 +105,11 @@ enum TokenMatcher {
         }
         let baseline = state.flatMap { $0.day == DayKey(now) ? $0.baseline : nil } ?? [:]
         let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
-        AppGroup.withLock("sampler") {
+        let missed = AppGroup.withLock("sampler") { () -> Bool in
             var items = AppGroup.loadItems()
             guard let index = items.firstIndex(where: { $0.id == itemID }), items[index].match == nil else {
                 try? AppGroup.journal.append(.note("token match: unknown or already matched"))
-                return
+                return false
             }
             let taken = Set(items.compactMap(\.match))
             let kind = items[index].kind
@@ -116,12 +122,33 @@ enum TokenMatcher {
                 try? AppGroup.newItems.append(contentsOf: [items[index]])
                 let name = items.first { $0.id == id }?.identifier ?? "?"
                 try? AppGroup.journal.append(.note("token match: \(name)"))
+                return false
             case .none:
                 try? AppGroup.journal.append(.note("token match: no \(kind == .app ? "app" : "website") near a minute"))
+                return true
             case let .ambiguous(ids):
                 let names = ids.compactMap { id in items.first { $0.id == id }?.identifier }.sorted()
-                try? AppGroup.journal.append(.note("token match: \(names.joined(separator: ", ")) near a minute, retrying tomorrow"))
+                try? AppGroup.journal.append(.note("token match: \(names.joined(separator: ", ")) near a minute"))
+                return true
             }
         }
+        guard missed else { return }
+        AppGroup.withLock("token-match") {
+            guard var state = AppGroup.load(State.self, from: url), state.day == DayKey(now) else { return }
+            state.spent = Array(Set(state.spent ?? []).union([itemID]))
+            AppGroup.save(state, to: url)
+        }
+        retryIfDue(now: now, sampled: true)
+    }
+
+    /// Re-registers when events fired without a match and the last registration is old enough
+    /// (`TokenMatching.retryInterval`): after a miss, and at each wake, so a miss soon after a registration still gets
+    /// its retry. A registration restarts every unmatched item's minute and loads Apple's daemon, so no more often.
+    static func retryIfDue(now: Date = Date(), sampled: Bool) {
+        guard let state = AppGroup.load(State.self, from: url), state.day == DayKey(now),
+              let spent = state.spent, !spent.isEmpty,
+              TokenMatching.canRetry(registeredAt: state.registeredAt, now: now) else { return }
+        try? AppGroup.journal.append(.note("token match: retrying \(spent.count) missed"))
+        register(now: now, sampled: sampled)
     }
 }

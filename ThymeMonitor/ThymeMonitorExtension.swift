@@ -73,6 +73,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         }
         Roller.roll(after: minute, state: state)
         Enforcer.reconcile(now: entry.at)
+        TokenMatcher.retryIfDue(now: entry.at, sampled: sampled != nil)
         upload(config)
     }
 
