@@ -10,6 +10,16 @@ public enum TokenMatching {
     /// the wake that reads the data comes a moment after the crossing.
     public static let window: ClosedRange<TimeInterval> = 50...180
 
+    /// How old Apple's data behind a baseline may be when the events are registered.
+    public static let freshness: TimeInterval = 120
+
+    /// Whether a baseline from data fetched at `dataAt` shows use as of `registeredAt`. Without a fetch that day
+    /// (nil), it doesn't.
+    public static func isFresh(dataAt: Date?, registeredAt: Date?) -> Bool {
+        guard let dataAt, let registeredAt else { return false }
+        return abs(registeredAt.timeIntervalSince(dataAt)) <= freshness
+    }
+
     public enum Result: Equatable, Sendable {
         case matched(UUID)
         case none

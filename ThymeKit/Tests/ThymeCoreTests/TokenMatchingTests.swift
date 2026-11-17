@@ -36,6 +36,14 @@ struct TokenMatchingTests {
         #expect(TokenMatching.match(baseline: [:], usage: [a: 30], candidates: [a]) == .none)
     }
 
+    @Test func aBaselineFromHoursOldDataIsStale() {
+        let now = Date()
+        #expect(TokenMatching.isFresh(dataAt: now.addingTimeInterval(-30), registeredAt: now))
+        #expect(!TokenMatching.isFresh(dataAt: now.addingTimeInterval(-6 * 3600), registeredAt: now))
+        #expect(!TokenMatching.isFresh(dataAt: nil, registeredAt: now))
+        #expect(!TokenMatching.isFresh(dataAt: now, registeredAt: nil))
+    }
+
     @Test func builtInAppsHaveNames() {
         let safari = TrackedItem(kidID: UUID(), kind: .app, identifier: "com.apple.mobilesafari", firstSeen: Date())
         #expect(safari.displayName == "Safari")

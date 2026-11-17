@@ -614,6 +614,9 @@ from use (`TokenMatching`, `TokenMatcher`):
   registration (since midnight on later days) is the match, saved as `TrackedItem.match`. Of several, only those
   used since the fetch before the fire count (another may have spent its minute long ago, its own event dropped or not
   matched). Still two or more: retried the next day.
+- The baseline is taken from a fresh fetch of Apple's data. A fire whose baseline came from stale data (the app's
+  fetch failed, or nothing had fetched for hours) re-registers from the data the fire just fetched, instead of
+  matching against it.
 - A matched scanned app uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
