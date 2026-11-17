@@ -51,7 +51,6 @@ enum Roller {
         let old = center.activities.filter {
             !Enforcer.owns($0.rawValue) && $0.rawValue != TokenMatcher.activity.rawValue
         }
-        if !old.isEmpty { center.stopMonitoring(old) }
         // The old state stays until the new registration replaces it: a registration that throws must not leave the
         // alarm running with no state, which stops every roll and the midnight restart.
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -60,8 +59,14 @@ enum Roller {
         let activity = Activity(name: RollingLadder.activityName(epochID: epochID), day: day,
                                 calibration: LadderCalibration(base: total, registeredAt: now))
         try? AppGroup.journal.append(JournalEntry(kind: .trackingStart, activity: activity.name, at: now))
-        // Probes find out whether iOS restarted today's count lower, as a new authorization grant can.
-        try register(activity, after: total, probes: ladder.probes(below: total), center: center)
+        // Under the lock, the extension's callbacks for this registration (its interval start, the replays) wait for
+        // the new state. Without it, an old or missing state made the interval start re-register from 0 over ours,
+        // dropping the probes.
+        try AppGroup.withLock("roll") {
+            if !old.isEmpty { center.stopMonitoring(old) }
+            // Probes find out whether iOS restarted today's count lower, as a new authorization grant can.
+            try register(activity, after: total, probes: ladder.probes(below: total), center: center)
+        }
         let active = center.activities.map(\.rawValue)
         let events = center.events(for: DeviceActivityName(activity.name)).count
         try? AppGroup.journal.append(.note("registered \(activity.name): \(events) events, iOS reports \(active.count) active"))
@@ -136,15 +141,25 @@ enum Roller {
         }
     }
 
-    /// A new interval: at midnight, start over. Our own re-registrations also start an interval; those find the
+    /// At the first callback of a new day, start over: the alarm's own midnight interval start, or any other callback
+    /// if that one was missed or its registration failed. Until then the alarm sits at yesterday's thresholds, which
+    /// today's count won't reach for hours of use. Our own re-registrations also start an interval; those find the
     /// activity already on today and do nothing.
-    static func intervalStarted(now: Date = Date()) {
+    static func startDayIfNeeded(now: Date = Date()) {
         AppGroup.withLock("roll") {
             let today = DayKey(now)
-            guard var activity = load() ?? recovered(), activity.day != today else { return }
+            // Only the current epoch's alarm: after monitoring was stopped, the Enforcer's intervals must not bring
+            // back a leftover state's.
+            guard var activity = load() ?? recovered(), activity.day != today,
+                  SharedConfig.load().epoch?.activityNames.contains(activity.name) == true else { return }
             activity.day = today
             activity.calibration = nil
-            try? register(activity, after: 0, center: DeviceActivityCenter())
+            do {
+                try register(activity, after: 0, center: DeviceActivityCenter())
+                try? AppGroup.journal.append(.note("wake alarm: new day"))
+            } catch {
+                try? AppGroup.journal.append(.note("wake alarm: new day failed: \(error.localizedDescription)"))
+            }
         }
     }
 

@@ -102,6 +102,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - The wake alarm's state is `Rolling/activity.json`. Without it the alarm runs but never rolls or restarts at midnight:
   no fires for the rest of the day. The app re-registers when it's missing, and the extension rebuilds it from the
   epoch; the app holds a background task while registering, since a suspension mid-registration lost it once.
+  The midnight restart (`Roller.startDayIfNeeded`) runs at any extension callback of a new day, and the app
+  re-registers when the state is from an earlier day. The journal notes each restart ("wake alarm: new day").
 - Several sessions install builds on the kid's phone. A build from a branch behind `main` silently undoes `main`'s
   work there (it once dropped `tm`): install only from a branch that contains the latest `main`.
 - **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.
