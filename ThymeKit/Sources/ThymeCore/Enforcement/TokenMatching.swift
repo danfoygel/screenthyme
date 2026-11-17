@@ -1,8 +1,9 @@
 import Foundation
 
-/// Learns which app a scanned token is (PLAN.md §15.6). The app scan gives tokens without bundle IDs, Apple's data
-/// bundle IDs without tokens. Each unmatched scanned app gets a DeviceActivity event at one minute of use counted from
-/// its registration; when one fires, the app from Apple's data that has used about a minute since then is the one.
+/// Learns which app or website a scanned token is (PLAN.md §15.6). The app scan gives tokens without bundle IDs or
+/// domains, Apple's data bundle IDs and domains without tokens. Each unmatched scanned item gets a DeviceActivity event
+/// at one minute of use counted from its registration; when one fires, the item of its kind from Apple's data that
+/// has used about a minute since then is the one.
 public enum TokenMatching {
     /// The event's threshold.
     public static let threshold: TimeInterval = 60
