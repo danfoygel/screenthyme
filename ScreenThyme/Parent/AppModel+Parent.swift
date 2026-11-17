@@ -149,8 +149,9 @@ extension AppModel {
     }
 
     func timeline(kid: UUID, day: DayKey) -> (input: DayInput, timeline: DayTimeline) {
-        let input = DayInput(fires: data.fires(kid: kid, day: day), samples: data.samples(kid: kid, day: day),
+        var input = DayInput(fires: data.fires(kid: kid, day: day), samples: data.samples(kid: kid, day: day),
                              dayStart: day.start())
+        input.websites = Set(data.items(for: kid).values.filter { $0.kind == .domain }.map(\.id))
         return (input, Reconstructor.build(input))
     }
 }

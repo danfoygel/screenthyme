@@ -2,12 +2,12 @@ import SwiftUI
 import ThymeCore
 
 /// The day as a calendar: hours top to bottom, each app's blocks drawn like events. Apps in use in the same stretch
-/// sit side by side for that stretch (`CalendarLayout`). The thin strip beside the hours is the phone's in-use minutes.
+/// sit side by side for that stretch (`CalendarLayout`). The line beside the hours says how well each stretch is
+/// placed (`Coverage`): use the check-ins don't place is drawn dashed, at a best guess.
 struct UsageCalendar: View {
     let timeline: DayTimeline
     let items: [UUID: TrackedItem]
     let dayStart: Date
-    var tint: Color = .accentColor
     var showWebsites = false
     /// Points per hour; pinching changes it.
     @Binding var scale: Double
@@ -34,7 +34,7 @@ struct UsageCalendar: View {
         ScrollView {
             ZStack(alignment: .topLeading) {
                 hours
-                inUseStrip
+                coverageLine
                 GeometryReader { geometry in
                     let width = geometry.size.width - gutter - 8
                     ForEach(placed) { piece in
@@ -61,7 +61,7 @@ struct UsageCalendar: View {
             position.scrollTo(y: max(0, middle - visible.height / 2))
         }
         .overlay {
-            if blocks.isEmpty && timeline.inUse.isEmpty {
+            if blocks.isEmpty && timeline.coverage.isEmpty {
                 ContentUnavailableView("No use recorded", systemImage: "calendar")
             }
         }
@@ -73,7 +73,7 @@ struct UsageCalendar: View {
 
     /// To an hour before the first use, or the current hour on a day with none yet.
     private func scrollToFirstUse() {
-        let first = (blocks.map(\.start) + timeline.inUse.map(\.start)).min()
+        let first = blocks.map(\.start).min() ?? timeline.coverage.first { $0.coverage != .quiet }?.start
             ?? (Date().timeIntervalSince(dayStart) < 86400 ? Date() : dayStart.addingTimeInterval(8 * 3600))
         let hour = max(0, Int(first.timeIntervalSince(dayStart) / 3600) - 1)
         position.scrollTo(y: CGFloat(hour) * hourHeight)
@@ -118,12 +118,21 @@ struct UsageCalendar: View {
         }
     }
 
-    private var inUseStrip: some View {
-        ForEach(Array(timeline.inUse.enumerated()), id: \.offset) { _, minute in
+    private var coverageLine: some View {
+        ForEach(Array(timeline.coverage.enumerated()), id: \.offset) { _, span in
             Rectangle()
-                .fill(tint.opacity(minute.inferred ? 0.35 : 0.8))
-                .frame(width: 3, height: max(1, y(minute.end) - y(minute.start)))
-                .offset(x: gutter - 1, y: y(minute.start))
+                .fill(Self.color(for: span.coverage))
+                .frame(width: 3, height: max(1, y(span.end) - y(span.start)))
+                .offset(x: gutter - 1, y: y(span.start))
+        }
+    }
+
+    static func color(for coverage: Coverage) -> Color {
+        switch coverage {
+        case .placed: .green
+        case .quiet: .gray.opacity(0.5)
+        case .blind: .red
+        case .burst: .yellow
         }
     }
 

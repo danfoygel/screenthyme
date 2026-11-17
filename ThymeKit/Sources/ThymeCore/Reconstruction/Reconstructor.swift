@@ -23,8 +23,8 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
     public var start: Date
     public var end: Date
     public var seconds: Double
-    /// Set when the phone's in-use minutes don't account for this use: it happened sometime in this window, and the
-    /// block is only drawn at its end.
+    /// Set when no on-time check-in places this use: it happened sometime in this window, and the block is drawn
+    /// at a best guess.
     public var somewhereIn: DateInterval?
 
     public var id: String { "\(itemID)-\(start.timeIntervalSince1970)" }
@@ -36,6 +36,8 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
 
 public struct DayTimeline: Sendable {
     public var inUse: [InUseMinute]
+    /// How well each stretch of the day can be placed in time, from the check-ins.
+    public var coverage: [CoverageSpan]
     /// Stretches of continuous use (gaps of at most `Reconstructor.runGap`).
     public var runs: [DateInterval]
     public var blocks: [UsageBlock]
@@ -65,9 +67,6 @@ public enum Reconstructor {
     static let catchUpWindow: TimeInterval = 900
     /// Samples this close together are one stretch on a lane.
     static let blockGap: TimeInterval = 5
-    /// Use beyond the phone's in-use minutes in a sample's window, by less than this, is the minute iOS hasn't
-    /// counted yet: it stays on the in-use minutes.
-    static let uncounted: TimeInterval = 60
 
     public static func build(_ input: DayInput) -> DayTimeline {
         let total = clean(input.total, dayStart: input.dayStart)
@@ -81,9 +80,11 @@ public enum Reconstructor {
             usage.lastAt = max(usage.lastAt, sample.end)
             items[sample.itemID] = usage
         }
+        let stretches = CheckIns.stretches(input)
         return DayTimeline(inUse: inUse,
+                           coverage: CheckIns.coverage(stretches),
                            runs: mergeRuns(inUse),
-                           blocks: blocks(input.samples, inUse: inUse),
+                           blocks: merge(CheckIns.pieces(stretches, websites: input.websites)),
                            items: items,
                            totalMinutes: total.points.last?.minute ?? 0,
                            preTrackingMinutes: preTracking,
@@ -91,14 +92,12 @@ public enum Reconstructor {
                            lastTotalFireAt: total.points.last?.at)
     }
 
-    /// Each item's samples placed in time, with back-to-back pieces merged into one stretch.
-    static func blocks(_ samples: [UsageSample], inUse: [InUseMinute] = []) -> [UsageBlock] {
-        let used = mergeRuns(inUse, gap: blockGap)
+    /// Each item's pieces, with back-to-back ones (both placed, or both guessed) merged into one stretch.
+    static func merge(_ pieces: [UsageBlock]) -> [UsageBlock] {
         var blocks: [UsageBlock] = []
-        let byItem = Dictionary(grouping: samples.filter { $0.seconds > 0 }, by: \.itemID)
-        for (item, itemSamples) in byItem {
+        for (_, itemPieces) in Dictionary(grouping: pieces, by: \.itemID) {
             var current: UsageBlock?
-            for piece in itemSamples.flatMap({ place($0, used: used) }).sorted(by: { $0.start < $1.start }) {
+            for piece in itemPieces.sorted(by: { $0.start < $1.start }) {
                 if var block = current, (block.somewhereIn == nil) == (piece.somewhereIn == nil),
                    piece.start.timeIntervalSince(block.end) <= blockGap {
                     block.end = max(block.end, piece.end)
@@ -115,30 +114,7 @@ public enum Reconstructor {
             }
             if let current { blocks.append(current) }
         }
-        return blocks.sorted { $0.start < $1.start }
-    }
-
-    /// Where a sample's use happened. A sample only says "this many seconds since the previous fetch" (clipped to the
-    /// hour), and after the phone sat idle that window is most of an hour; the in-use minutes say when, within it,
-    /// the phone was in use. The seconds are shared over those minutes. Use they don't account for (before tracking
-    /// started, or too short to reach a wake) is drawn at its real length just before them, or at the window's end.
-    static func place(_ sample: UsageSample, used: [DateInterval]) -> [UsageBlock] {
-        let window = DateInterval(start: min(sample.start, sample.end), end: sample.end)
-        let covered = used.compactMap { $0.intersection(with: window) }.filter { $0.duration > 0 }
-        let total = covered.reduce(0) { $0 + $1.duration }
-        let excess = total == 0 ? sample.seconds : sample.seconds > total + uncounted ? sample.seconds - total : 0
-        let onCovered = sample.seconds - excess
-        var pieces = covered.map { stretch in
-            UsageBlock(itemID: sample.itemID, start: stretch.start, end: stretch.end,
-                       seconds: onCovered * stretch.duration / total)
-        }
-        if excess > 0 {
-            let end = covered.first?.start ?? window.end
-            let start = max(window.start, end.addingTimeInterval(-excess))
-            pieces.insert(UsageBlock(itemID: sample.itemID, start: start, end: max(end, start.addingTimeInterval(1)),
-                                     seconds: excess, somewhereIn: window), at: 0)
-        }
-        return pieces
+        return blocks.sorted { ($0.start, $0.end, $0.seconds) < ($1.start, $1.end, $1.seconds) }
     }
 
     static func inCatchUp(_ date: Date, starts: [Date]) -> Bool {

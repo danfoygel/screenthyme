@@ -21,10 +21,13 @@ struct KidTimelineView: View {
                     .disabled(day >= DayKey(Date()))
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            legend
+                .padding(.horizontal)
+                .padding(.vertical, 6)
             Divider()
             UsageCalendar(timeline: timeline, items: model.data.items(for: kid.id), dayStart: day.start(),
-                          tint: kid.color, showWebsites: showWebsites, scale: $scale)
+                          showWebsites: showWebsites, scale: $scale)
         }
         .navigationTitle("Timeline")
         .navigationBarTitleDisplayMode(.inline)
@@ -40,6 +43,22 @@ struct KidTimelineView: View {
             }
         }
         .refreshable { await model.refresh() }
+    }
+
+    /// What the line beside the hours means.
+    private var legend: some View {
+        HStack(spacing: 12) {
+            ForEach([(Coverage.placed, "Placed"), (.quiet, "Idle"), (.blind, "No check-ins"), (.burst, "Burst")],
+                    id: \.1) { coverage, name in
+                HStack(spacing: 4) {
+                    Capsule().fill(UsageCalendar.color(for: coverage)).frame(width: 3, height: 12)
+                    Text(name)
+                }
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
     }
 
     private func zoom(by factor: Double) {

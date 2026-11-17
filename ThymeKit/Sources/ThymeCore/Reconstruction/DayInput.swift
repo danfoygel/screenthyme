@@ -20,6 +20,8 @@ public struct DayInput: Sendable {
     public var samples: [UsageSample]
     /// When monitoring was (re)registered. iOS then replays today's already-passed total thresholds as a burst.
     public var trackingStarts: [Date]
+    /// Websites, whose use Apple also counts as Safari's: left out when weighing how much use a stretch held.
+    public var websites: Set<UUID> = []
 
     public init(dayStart: Date, total: [FirePoint], samples: [UsageSample] = [], trackingStarts: [Date] = []) {
         self.dayStart = dayStart
