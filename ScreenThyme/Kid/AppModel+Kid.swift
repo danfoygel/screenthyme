@@ -70,12 +70,13 @@ extension AppModel {
     func ensureMonitoring() {
         guard let epoch = config.epoch else { return }
         let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
-        // Running without its state, the alarm never rolls or restarts at midnight.
-        guard !Set(epoch.activityNames).isSubset(of: active) || Roller.load() == nil else { return }
+        // Running without its state, the alarm never rolls or restarts at midnight. A state from an earlier day means
+        // the midnight restart didn't happen: the alarm is at yesterday's thresholds.
+        guard !Set(epoch.activityNames).isSubset(of: active) || Roller.load()?.day != DayKey(Date()) else { return }
         let key = "lastEnsureMonitoring"
         if let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 600 { return }
         UserDefaults.standard.set(Date(), forKey: key)
-        try? AppGroup.journal.append(.note("re-registering: alarm or its state missing"))
+        try? AppGroup.journal.append(.note("re-registering: alarm or its state missing, or from an earlier day"))
         startMonitoring()
     }
 
