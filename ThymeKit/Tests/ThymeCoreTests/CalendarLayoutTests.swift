@@ -76,3 +76,42 @@ struct CalendarLayoutTests {
         }
     }
 }
+
+struct CalendarJoinTests {
+    let youtube = UUID(), roblox = UUID(), messages = UUID()
+
+    func block(_ item: UUID, _ start: Date, _ end: Date, _ seconds: Double? = nil, guessed: Bool = false) -> UsageBlock {
+        UsageBlock(itemID: item, start: start, end: end, seconds: seconds ?? end.timeIntervalSince(start),
+                   somewhereIn: guessed ? DateInterval(start: at(9, 0), end: at(10, 0)) : nil)
+    }
+
+    @Test func aShortPauseJoins() {
+        let shown = CalendarLayout.visible([block(youtube, at(16, 0), at(16, 10)), block(youtube, at(16, 11), at(16, 20))])
+        #expect(shown.count == 1)
+        #expect(shown.first?.start == at(16, 0) && shown.first?.end == at(16, 20) && shown.first?.seconds == 1140)
+    }
+
+    @Test func aPauseOfTwoMinutesDoesNot() {
+        #expect(CalendarLayout.visible([block(youtube, at(16, 0), at(16, 10)), block(youtube, at(16, 12), at(16, 20))]).count == 2)
+    }
+
+    @Test func anotherAppShownInThePauseKeepsThemApart() {
+        let blocks = [block(youtube, at(16, 0), at(16, 10)), block(roblox, at(16, 10), at(16, 11), 50),
+                      block(youtube, at(16, 11), at(16, 20))]
+        // Everything shown: Roblox is in the pause.
+        #expect(CalendarLayout.visible(blocks).filter { $0.itemID == youtube }.count == 2)
+        // Under 2 minutes hidden: Roblox's 50 s isn't shown, so YouTube joins.
+        let shown = CalendarLayout.visible(blocks, minimum: 120)
+        #expect(shown.count == 1 && shown.first?.itemID == youtube)
+    }
+
+    @Test func placedAndGuessedStayApart() {
+        let blocks = [block(youtube, at(9, 40), at(9, 50), guessed: true), block(youtube, at(9, 50), at(9, 58))]
+        #expect(CalendarLayout.visible(blocks).count == 2)
+    }
+
+    @Test func shortBlocksJoinedPastTheMinimumAreShown() {
+        let blocks = [block(messages, at(16, 0), at(16, 2), 90), block(messages, at(16, 2, 30), at(16, 4), 80)]
+        #expect(CalendarLayout.visible(blocks, minimum: 120).first?.seconds == 170)
+    }
+}
