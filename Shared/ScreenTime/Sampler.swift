@@ -154,7 +154,8 @@ enum Sampler {
                 let end = min(hourEnd, now)
                 result.samples.append(UsageSample(id: Replay.stableUUID("sample", kid.id.uuidString, key, hour, "\(now.timeIntervalSince1970)"),
                                                   kidID: kid.id, itemID: id, day: day,
-                                                  start: start < end ? start : hourStart, end: end, seconds: delta))
+                                                  start: start < end ? start : hourStart, end: end, seconds: delta,
+                                                  reportedAt: now))
                 result.intervalSeconds[id, default: 0] += delta
             }
         }

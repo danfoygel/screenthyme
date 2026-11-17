@@ -56,7 +56,7 @@ public enum SyntheticTrace {
                     let hour = calendar.dateInterval(of: .hour, for: use.since)?.start ?? use.since
                     samples.append(UsageSample(id: Replay.stableUUID("sample", kid.uuidString, item.uuidString, "\(at.timeIntervalSince1970)"),
                                                kidID: kid, itemID: item, day: DayKey(at, calendar: calendar),
-                                               start: max(hour, lastWake ?? hour), end: at, seconds: use.seconds))
+                                               start: max(hour, lastWake ?? hour), end: at, seconds: use.seconds, reportedAt: at))
                 }
                 pending = [:]
                 lastWake = at
