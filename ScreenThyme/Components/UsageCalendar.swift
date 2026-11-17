@@ -9,12 +9,21 @@ struct UsageCalendar: View {
     let dayStart: Date
     var tint: Color = .accentColor
     var showWebsites = false
-    /// Points per hour.
-    var scale: CGFloat = 120
+    /// Points per hour; pinching changes it.
+    @Binding var scale: Double
+
+    static let scales: ClosedRange<Double> = 30...960
 
     @State private var selected: CalendarPiece?
     @State private var position = ScrollPosition(edge: .top)
     @State private var visible = CGRect.zero
+    /// While pinching: the scale so far, and the hour (from midnight) under the fingers with its height on screen.
+    @State private var pinch: (scale: Double, hour: CGFloat, screenY: CGFloat)?
+    /// The pinch already scrolled to keep its spot in place; the scale change it commits needn't.
+    @State private var pinched = false
+
+    /// Points per hour, as drawn.
+    private var hourHeight: CGFloat { CGFloat(pinch?.scale ?? scale) }
 
     private let gutter: CGFloat = 52
     /// The shortest a piece is drawn: shorter ones would vanish.
@@ -34,16 +43,21 @@ struct UsageCalendar: View {
                 }
                 nowLine
             }
-            .frame(height: scale * 24 + 16)
+            .frame(height: hourHeight * 24 + 16)
             .padding(.trailing, 8)
         }
         .scrollPosition($position)
+        .simultaneousGesture(magnify)
         .onScrollGeometryChange(for: CGRect.self, of: \.visibleRect) { _, rect in visible = rect }
         .onAppear(perform: scrollToFirstUse)
         .onChange(of: dayStart, scrollToFirstUse)
         // Zooming keeps the time in the middle of the screen where it was.
         .onChange(of: scale) { old, new in
-            let middle = (visible.midY - 8) / old * new + 8
+            if pinched {
+                pinched = false
+                return
+            }
+            let middle = (visible.midY - 8) / CGFloat(old) * CGFloat(new) + 8
             position.scrollTo(y: max(0, middle - visible.height / 2))
         }
         .overlay {
@@ -62,11 +76,30 @@ struct UsageCalendar: View {
         let first = (blocks.map(\.start) + timeline.inUse.map(\.start)).min()
             ?? (Date().timeIntervalSince(dayStart) < 86400 ? Date() : dayStart.addingTimeInterval(8 * 3600))
         let hour = max(0, Int(first.timeIntervalSince(dayStart) / 3600) - 1)
-        position.scrollTo(y: CGFloat(hour) * scale)
+        position.scrollTo(y: CGFloat(hour) * hourHeight)
+    }
+
+    /// Pinching stretches or squeezes the time axis around the fingers.
+    private var magnify: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let start = pinch ?? (scale, (visible.minY + value.startLocation.y - 8) / CGFloat(scale),
+                                      value.startLocation.y)
+                let new = min(max(scale * value.magnification, Self.scales.lowerBound), Self.scales.upperBound)
+                pinch = (new, start.hour, start.screenY)
+                position.scrollTo(y: max(0, start.hour * CGFloat(new) + 8 - start.screenY))
+            }
+            .onEnded { _ in
+                if let pinch, pinch.scale != scale {
+                    pinched = true
+                    scale = pinch.scale
+                }
+                pinch = nil
+            }
     }
 
     private func y(_ date: Date) -> CGFloat {
-        CGFloat(min(max(date.timeIntervalSince(dayStart), 0), 86400) / 3600) * scale + 8
+        CGFloat(min(max(date.timeIntervalSince(dayStart), 0), 86400) / 3600) * hourHeight + 8
     }
 
     private var hours: some View {
@@ -80,7 +113,7 @@ struct UsageCalendar: View {
                     Rectangle().fill(.separator).frame(height: 0.5)
                 }
                 .frame(height: 16)
-                .frame(height: hour == 24 ? 16 : scale, alignment: .top)
+                .frame(height: hour == 24 ? 16 : hourHeight, alignment: .top)
             }
         }
     }

@@ -9,8 +9,6 @@ struct KidTimelineView: View {
     @AppStorage("timelineScale") private var scale = 120.0
     @AppStorage("timelineWebsites") private var showWebsites = false
 
-    private static let scales: [Double] = [60, 120, 240, 480]
-
     var body: some View {
         let (_, timeline) = model.timeline(kid: kid.id, day: day)
         VStack(spacing: 0) {
@@ -26,16 +24,16 @@ struct KidTimelineView: View {
             .padding(.vertical, 8)
             Divider()
             UsageCalendar(timeline: timeline, items: model.data.items(for: kid.id), dayStart: day.start(),
-                          tint: kid.color, showWebsites: showWebsites, scale: scale)
+                          tint: kid.color, showWebsites: showWebsites, scale: $scale)
         }
         .navigationTitle("Timeline")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup {
-                Button("Zoom out", systemImage: "minus.magnifyingglass") { zoom(-1) }
-                    .disabled(scale <= Self.scales.first!)
-                Button("Zoom in", systemImage: "plus.magnifyingglass") { zoom(1) }
-                    .disabled(scale >= Self.scales.last!)
+                Button("Zoom out", systemImage: "minus.magnifyingglass") { zoom(by: 0.5) }
+                    .disabled(scale <= UsageCalendar.scales.lowerBound)
+                Button("Zoom in", systemImage: "plus.magnifyingglass") { zoom(by: 2) }
+                    .disabled(scale >= UsageCalendar.scales.upperBound)
                 Menu("Options", systemImage: "ellipsis") {
                     Toggle("Show websites", isOn: $showWebsites)
                 }
@@ -44,8 +42,7 @@ struct KidTimelineView: View {
         .refreshable { await model.refresh() }
     }
 
-    private func zoom(_ direction: Int) {
-        let index = Self.scales.firstIndex(of: scale) ?? 1
-        scale = Self.scales[min(max(index + direction, 0), Self.scales.count - 1)]
+    private func zoom(by factor: Double) {
+        scale = min(max(scale * factor, UsageCalendar.scales.lowerBound), UsageCalendar.scales.upperBound)
     }
 }
