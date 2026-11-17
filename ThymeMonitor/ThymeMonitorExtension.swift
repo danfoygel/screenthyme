@@ -14,6 +14,8 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
 
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
+        // Token-match and limit fires mean use too: if the alarm missed its midnight restart, restart it now.
+        Roller.startDayIfNeeded()
         if activity.rawValue.hasPrefix(Enforcer.limitPrefix) {
             try? AppGroup.journal.append(.note("limit reached: \(event.rawValue)"))
             Enforcer.limitFired(event.rawValue)
@@ -82,16 +84,15 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         let name = activity.rawValue
         if name == TokenMatcher.activity.rawValue {
             TokenMatcher.intervalStarted()
-            return
-        }
-        if Enforcer.owns(name) {
+        } else if Enforcer.owns(name) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalStart, activity: name, at: Date()))
-            Roller.intervalStarted()
         }
+        // Any of our intervals, not only the alarm's: a missed or failed midnight restart gets another chance.
+        Roller.startDayIfNeeded()
         // Downtime starting, or a new day for limits.
-        Enforcer.reconcile()
+        if name != TokenMatcher.activity.rawValue { Enforcer.reconcile() }
     }
 
     /// The extra-minute alarm is an end warning (schedules last at least 15 minutes).
