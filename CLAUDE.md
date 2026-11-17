@@ -99,6 +99,11 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   In device logs, `dmd` gives each app's verdict: "has policy OK", "Shielded" or "is unblockable".
 - Silent pushes are rationed: don't depend on one reaching the kid app. Rules reach the extension through the
   `RuleSet.<kid id>` and `Policy.<kid id>` records, fetched at every wake (`KidSync`, App Group `rules.json` and `policy.json`); parents must publish it after every rule change.
+- The wake alarm's state is `Rolling/activity.json`. Without it the alarm runs but never rolls or restarts at midnight:
+  no fires for the rest of the day. The app re-registers when it's missing, and the extension rebuilds it from the
+  epoch; the app holds a background task while registering, since a suspension mid-registration lost it once.
+- Several sessions install builds on the kid's phone. A build from a branch behind `main` silently undoes `main`'s
+  work there (it once dropped `tm`): install only from a branch that contains the latest `main`.
 - **`DeviceActivityCenter.stopMonitoring([])` stops every activity.** Only `Roller.registerAll` does that, on purpose.
 - Every registration replays today's already-passed thresholds (counted from midnight), in random order, sometimes ~2/s.
   A first registration late in the day becomes a chain of rolls for a few minutes, each journalled as an

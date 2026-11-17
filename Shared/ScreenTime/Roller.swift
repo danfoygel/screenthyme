@@ -52,7 +52,8 @@ enum Roller {
             !Enforcer.owns($0.rawValue) && $0.rawValue != TokenMatcher.activity.rawValue
         }
         if !old.isEmpty { center.stopMonitoring(old) }
-        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+        // The old state stays until the new registration replaces it: a registration that throws must not leave the
+        // alarm running with no state, which stops every roll and the midnight restart.
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let day = DayKey(now)
         let total = MonitorStateStore.load(day: day).totalMinute
@@ -118,7 +119,7 @@ enum Roller {
     /// After a fire of use (in our minutes): re-register with the next thresholds when running low.
     static func roll(after minute: Int, state: MonitorDayState) {
         AppGroup.withLock("roll") {
-            guard var activity = load() else { return }
+            guard var activity = load() ?? recovered() else { return }
             if activity.day != state.day { activity.calibration = nil }
             guard ladder.needsRefill(crossed: minute - activity.offset, registeredUpTo: activity.upTo) else { return }
             activity.day = state.day
@@ -140,7 +141,7 @@ enum Roller {
     static func intervalStarted(now: Date = Date()) {
         AppGroup.withLock("roll") {
             let today = DayKey(now)
-            guard var activity = load(), activity.day != today else { return }
+            guard var activity = load() ?? recovered(), activity.day != today else { return }
             activity.day = today
             activity.calibration = nil
             try? register(activity, after: 0, center: DeviceActivityCenter())
@@ -170,6 +171,14 @@ enum Roller {
 
     private static func save(_ activity: Activity) {
         try? JSONEncoder.thyme.encode(activity).write(to: url, options: .atomic)
+    }
+
+    /// The registered alarm when its state file is gone: as if registered on no day, so the next roll or interval
+    /// start registers it afresh.
+    private static func recovered() -> Activity? {
+        guard let name = SharedConfig.load().epoch?.activityNames.first else { return nil }
+        try? AppGroup.journal.append(.note("wake alarm: state missing, re-registering \(name)"))
+        return Activity(name: name, day: DayKey(Date.distantPast))
     }
 
     static func load() -> Activity? {
