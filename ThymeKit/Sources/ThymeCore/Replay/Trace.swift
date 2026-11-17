@@ -85,7 +85,7 @@ public enum Replay {
             UsageSample(id: stableUUID(kid.id.uuidString, day.description, sample.id.uuidString), kidID: kid.id,
                         itemID: itemMap[sample.itemID] ?? sample.itemID, day: day,
                         start: sample.start.addingTimeInterval(shift), end: sample.end.addingTimeInterval(shift),
-                        seconds: sample.seconds)
+                        seconds: sample.seconds, reportedAt: sample.reportedAt?.addingTimeInterval(shift))
         }
         return Trace(kid: kid, day: day, items: items, epoch: epoch, entries: entries, samples: samples)
     }

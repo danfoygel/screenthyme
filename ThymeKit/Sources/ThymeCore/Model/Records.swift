@@ -116,8 +116,12 @@ public struct UsageSample: Codable, Sendable, Hashable, Identifiable {
     public var start: Date
     public var end: Date
     public var seconds: Double
+    /// When the fetch that found this use ran. Nil on samples saved before it was recorded; `end` is then the fetch
+    /// time, unless the use fell in an earlier hour.
+    public var reportedAt: Date?
 
-    public init(id: UUID, kidID: UUID, itemID: UUID, day: DayKey, start: Date, end: Date, seconds: Double) {
+    public init(id: UUID, kidID: UUID, itemID: UUID, day: DayKey, start: Date, end: Date, seconds: Double,
+                reportedAt: Date? = nil) {
         self.id = id
         self.kidID = kidID
         self.itemID = itemID
@@ -125,6 +129,7 @@ public struct UsageSample: Codable, Sendable, Hashable, Identifiable {
         self.start = start
         self.end = end
         self.seconds = seconds
+        self.reportedAt = reportedAt
     }
 }
 
