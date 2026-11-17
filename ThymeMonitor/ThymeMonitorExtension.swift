@@ -14,7 +14,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
 
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
-        // Token-match and limit fires mean use too: if the alarm missed its midnight restart, restart it now.
+        // Limit fires mean use too: if the alarm missed its midnight restart, restart it now.
         Roller.startDayIfNeeded()
         if activity.rawValue.hasPrefix(Enforcer.limitPrefix) {
             try? AppGroup.journal.append(.note("limit reached: \(event.rawValue)"))
@@ -22,13 +22,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             return
         }
         // By the event's name too: the first `tm` fires on a phone went the wake alarm's way (cause unknown).
-        if event.rawValue.hasPrefix(TokenMatcher.eventPrefix) || activity.rawValue == TokenMatcher.activity.rawValue {
-            try? AppGroup.journal.append(.note("token match fired: \(event.rawValue)"))
-            let config = SharedConfig.load()
-            if let kid = config.kid { TokenMatcher.fired(event.rawValue, kid: kid) }
-            upload(config)
-            return
-        }
+        if RetiredTokenMatcher.owns(activity: activity.rawValue, event: event.rawValue) { return }
         let at = Date()
         let minute: Int
         switch Roller.observe(event.rawValue, at: at) {
@@ -75,16 +69,14 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         }
         Roller.roll(after: minute, state: state)
         Enforcer.reconcile(now: entry.at)
-        TokenMatcher.retryIfDue(now: entry.at, sampled: sampled != nil)
         upload(config)
     }
 
     override func intervalDidStart(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
         let name = activity.rawValue
-        if name == TokenMatcher.activity.rawValue {
-            TokenMatcher.intervalStarted()
-        } else if Enforcer.owns(name) {
+        if RetiredTokenMatcher.owns(activity: name) { return }
+        if Enforcer.owns(name) {
             try? AppGroup.journal.append(.note("interval start: \(name)"))
         } else {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalStart, activity: name, at: Date()))
@@ -92,7 +84,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         // Any of our intervals, not only the alarm's: a missed or failed midnight restart gets another chance.
         Roller.startDayIfNeeded()
         // Downtime starting, or a new day for limits.
-        if name != TokenMatcher.activity.rawValue { Enforcer.reconcile() }
+        Enforcer.reconcile()
     }
 
     /// The extra-minute alarm is an end warning (schedules last at least 15 minutes).
@@ -111,7 +103,7 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
         } else if name == Enforcer.extraMinuteActivity {
             Enforcer.endExtraMinutes()
-        } else if !Enforcer.owns(name), name != TokenMatcher.activity.rawValue {
+        } else if !Enforcer.owns(name), !RetiredTokenMatcher.owns(activity: name) {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
     }

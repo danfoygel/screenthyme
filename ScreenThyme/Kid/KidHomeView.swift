@@ -59,13 +59,20 @@ struct KidHomeView: View {
                 if model.hasDataAccess, let kid = model.config.kid {
                     Section {
                         Button("Scan apps (\(scan.all.applicationTokens.count) apps)") { pickingAll = true }
+                        NavigationLink {
+                            TokenPairingView()
+                        } label: {
+                            let count = TokenPairing.toMatch(AppGroup.loadItems(), lastImport: TokenPairingView.lastImport()).count
+                            LabeledContent("Match apps by screenshot", value: count == 0 ? "" : "\(count) new")
+                                .foregroundStyle(count == 0 ? Color.primary : .orange)
+                        }
                         Button(scan.screenThyme.applicationTokens.isEmpty ? "Choose ScreenThyme" : "ScreenThyme chosen") {
                             pickingSelf = true
                         }
                     } header: {
                         Text("Apps for Screen Time")
                     } footer: {
-                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it.")
+                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it. Match by screenshot after a scan, and when new apps have been used, so limits count them.")
                     }
                     .familyActivityPicker(headerText: "Select All Apps & Categories", isPresented: $pickingAll,
                                           selection: $scan.all)
@@ -102,13 +109,8 @@ struct KidHomeView: View {
         }
     }
 
-    /// A fresh sample first: token matching counts use from the numbers at registration.
     private func save(_ kid: Kid) {
-        let scan = scan
-        Task {
-            await model.sampleNow()
-            AppScan.save(scan, kid: kid)
-        }
+        AppScan.save(scan, kid: kid)
     }
 
     private var familyStatus: String {

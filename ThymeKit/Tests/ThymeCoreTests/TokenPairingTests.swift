@@ -1,0 +1,197 @@
+import Foundation
+import Testing
+@testable import ThymeCore
+
+struct TokenPairingTests {
+    let kid = UUID()
+
+    func scanned(_ hash: String, _ kind: ItemKind = .app) -> TrackedItem {
+        TrackedItem(kidID: kid, kind: kind, identifier: TrackedItem.scannedPrefix + hash, tokenData: Data([1]),
+                    firstSeen: Date())
+    }
+
+    func data(_ identifier: String, _ kind: ItemKind = .app) -> TrackedItem {
+        TrackedItem(kidID: kid, kind: kind, identifier: identifier, firstSeen: Date())
+    }
+
+    /// What the report extension would draw if `truth` maps scanned items to the identifiers their tokens are.
+    func codes(order: [TrackedItem], truth: [UUID: TrackedItem], names: Bool = false, maxBytes: Int? = nil)
+        -> [TokenPairing.Code] {
+        let fingerprint = TokenPairing.fingerprint(order)
+        return (TokenPairing.views(count: order.count) + (names ? [.names] : [])).flatMap { view in
+            let seen = TokenPairing.members(view, of: order).compactMap { truth[$0.id] }
+                .map { TokenPairing.Identifier(kind: $0.kind, identifier: $0.identifier) }
+            return TokenPairing.encode(fingerprint: fingerprint, view: view, lines: TokenPairing.lines(view, seen: seen),
+                                       maxBytes: maxBytes)
+        }
+        .compactMap(TokenPairing.decode)
+    }
+
+    @Test func viewsCoverEveryNumberAndAreNeverEmpty() {
+        #expect(TokenPairing.views(count: 0).isEmpty)
+        #expect(TokenPairing.views(count: 1).map(\.name) == ["p", "b0"])
+        #expect(TokenPairing.views(count: 169).map(\.name) == ["p", "b0", "b1", "b2", "b3", "b4", "b5", "b6", "b7"])
+        let order = (0..<169).map { scanned("h\($0)") }
+        for view in TokenPairing.views(count: order.count) {
+            #expect(!TokenPairing.members(view, of: order).isEmpty)
+        }
+    }
+
+    @Test func usedItemsResolveToTheirScannedItems() {
+        let apps = (0..<81).map { scanned("a\($0)") }
+        let sites = (0..<88).map { scanned("w\($0)", .domain) }
+        let order = TokenPairing.order(apps + sites + [scanned("cat", .category)])
+        #expect(order.count == 169)
+        // Every third app and every fifth site was used.
+        var truth: [UUID: TrackedItem] = [:]
+        for (index, app) in apps.enumerated() where index % 3 == 0 { truth[app.id] = data("com.example.app\(index)") }
+        for (index, site) in sites.enumerated() where index % 5 == 0 { truth[site.id] = data("site\(index).example.com", .domain) }
+
+        let resolution = TokenPairing.resolve(codes(order: order, truth: truth, maxBytes: 80), order: order,
+                                              known: Array(truth.values) + [data("com.unused")])
+
+        #expect(resolution.missing.isEmpty)
+        #expect(resolution.conflicts == 0)
+        #expect(resolution.unknown == 0)
+        #expect(Set(resolution.pairs) == Set(truth.map { TokenPairing.Pair(scanned: $0.key, kind: $0.value.kind,
+                                                                                 identifier: $0.value.identifier) }))
+    }
+
+    @Test func aMissingReportPairsNothing() {
+        let order = TokenPairing.order((0..<10).map { scanned("a\($0)") })
+        let truth = [order[3].id: data("com.three")]
+        let partial = codes(order: order, truth: truth).filter { $0.view != .bit(2) }
+        let resolution = TokenPairing.resolve(partial, order: order, known: Array(truth.values))
+        #expect(resolution.missing == ["b2"])
+        #expect(resolution.pairs.isEmpty)
+    }
+
+    @Test func codesFromAnotherScanAreSetAside() {
+        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") })
+        let old = TokenPairing.order((0..<5).map { scanned("a\($0)") })
+        let truth = [order[0].id: data("com.zero")]
+        let resolution = TokenPairing.resolve(codes(order: order, truth: truth) + codes(order: old, truth: truth),
+                                              order: order, known: Array(truth.values))
+        #expect(resolution.otherScan > 0)
+        #expect(resolution.pairs.map(\.identifier) == ["com.zero"])
+    }
+
+    @Test func identifiersThePhoneHasNotSeenAreUnknown() {
+        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") })
+        let resolution = TokenPairing.resolve(codes(order: order, truth: [order[1].id: data("com.new")]), order: order,
+                                              known: [])
+        #expect(resolution.unknown == 1)
+        #expect(resolution.pairs.isEmpty)
+    }
+
+    @Test func theNamesReportSpellsOutWhatThePhoneHasNotSeen() {
+        let order = TokenPairing.order((0..<20).map { scanned("a\($0)") } + [scanned("w", .domain)])
+        let site = order.first { $0.kind == .domain }!
+        let apps = order.filter { $0.kind == .app }
+        let truth = [apps[1].id: data("com.new"), apps[7].id: data("com.seen"), site.id: data("new.example.com", .domain)]
+
+        let resolution = TokenPairing.resolve(codes(order: order, truth: truth, names: true, maxBytes: 40), order: order,
+                                              known: [data("com.seen")])
+
+        #expect(resolution.unknown == 0)
+        #expect(Set(resolution.pairs) == [.init(scanned: apps[1].id, kind: .app, identifier: "com.new"),
+                                          .init(scanned: apps[7].id, kind: .app, identifier: "com.seen"),
+                                          .init(scanned: site.id, kind: .domain, identifier: "new.example.com")])
+    }
+
+    @Test func twoScannedTokensForOneAppFailTheCheck() {
+        // Items 1 and 2 (bits 01 and 10) are both com.dup: its hash lands in b0 and b1 but not in parity (3 is even).
+        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") })
+        let dup = data("com.dup")
+        let resolution = TokenPairing.resolve(codes(order: order, truth: [order[0].id: dup, order[1].id: dup]),
+                                              order: order, known: [dup])
+        #expect(resolution.conflicts == 1)
+        #expect(resolution.pairs.isEmpty)
+    }
+
+    @Test func otherCodesAreIgnored() {
+        #expect(TokenPairing.decode("https://example.com") == nil)
+        #expect(TokenPairing.decode("STPAIR2 1234abcd b12 1/1\nabcdef") == nil)
+        #expect(TokenPairing.decode("STPAIR2 1234abcd b3 2/1\nabcdef") == nil)
+        #expect(TokenPairing.decode("STPAIR2 1234abcd p 1/1\nabcdef")?.lines == ["abcdef"])
+        #expect(TokenPairing.decode("STPAIR2 1234abcd n 1/1\na com.x")?.view == .names)
+    }
+
+    @Test func applyMatchesCorrectsAndSkipsUnknown() {
+        let new = scanned("new")
+        var wrong = scanned("wrong")
+        wrong.match = TrackedItem.id(kid: kid, kind: .app, identifier: "com.other")
+        var right = scanned("right")
+        right.match = TrackedItem.id(kid: kid, kind: .app, identifier: "com.right")
+        var items = [new, wrong, right, data("com.new"), data("com.wrong"), data("com.right")]
+
+        let outcome = TokenPairing.apply([.init(scanned: new.id, kind: .app, identifier: "com.new"),
+                                          .init(scanned: wrong.id, kind: .app, identifier: "com.wrong"),
+                                          .init(scanned: right.id, kind: .app, identifier: "com.right"),
+                                          .init(scanned: UUID(), kind: .app, identifier: "com.x"),
+                                          .init(scanned: new.id, kind: .domain, identifier: "x.com")],
+                                         to: &items, kid: kid)
+
+        #expect(outcome.added == 1)
+        #expect(outcome.corrected == 1)
+        #expect(outcome.unchanged == 1)
+        #expect(outcome.unknown == 2)
+        #expect(outcome.changed.map(\.id) == [new.id, wrong.id])
+        #expect(items[0].match == TrackedItem.id(kid: kid, kind: .app, identifier: "com.new"))
+        #expect(items[1].match == TrackedItem.id(kid: kid, kind: .app, identifier: "com.wrong"))
+    }
+
+    @Test func appsThePhoneHasNotSeenAreCreated() {
+        let app = scanned("app")
+        var site = scanned("site", .domain)
+        site.match = TrackedItem.id(kid: kid, kind: .domain, identifier: "old.example.com")  // right, but never seen
+        let seen = data("com.seen")
+        var items = [app, site, seen]
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let outcome = TokenPairing.apply([.init(scanned: app.id, kind: .app, identifier: "com.seen"),
+                                          .init(scanned: site.id, kind: .domain, identifier: "old.example.com")],
+                                         to: &items, kid: kid, now: now)
+
+        #expect(outcome.created == 1)
+        #expect(outcome.unchanged == 1)
+        let created = try? #require(items.first { $0.identifier == "old.example.com" })
+        #expect(created?.id == site.match)
+        #expect(created?.kind == .domain)
+        #expect(created?.firstSeen == now)
+        #expect(created?.isScanned == false)
+        #expect(Set(outcome.changed.map(\.id)) == [app.id, site.match!])
+    }
+
+    @Test func newUnmatchedAppsAreToMatch() {
+        let lastImport = Date(timeIntervalSince1970: 1_800_000_000)
+        func seen(_ identifier: String, _ kind: ItemKind = .app, after: Bool) -> TrackedItem {
+            TrackedItem(kidID: kid, kind: kind, identifier: identifier, firstSeen: lastImport.addingTimeInterval(after ? 60 : -60))
+        }
+        let old = seen("com.old", after: false)
+        let new = seen("com.new", after: true)
+        let newMatched = seen("com.matched", after: true)
+        let site = seen("new.example.com", .domain, after: true)
+        var scannedApp = scanned("s")
+        scannedApp.match = newMatched.id
+        let items = [old, new, newMatched, site, scannedApp]
+
+        #expect(TokenPairing.toMatch(items, lastImport: lastImport).map(\.identifier) == ["com.new"])
+        #expect(TokenPairing.toMatch(items, lastImport: nil).map(\.identifier) == ["com.old", "com.new"])
+    }
+
+    @Test func anotherItemMatchedToThePairedAppLosesItsMatch() {
+        // Watching use matched `guess` to com.game; the reports show com.game is `game`'s token.
+        let game = scanned("game")
+        var guess = scanned("guess")
+        guess.match = TrackedItem.id(kid: kid, kind: .app, identifier: "com.game")
+        var items = [game, guess, data("com.game")]
+
+        let outcome = TokenPairing.apply([.init(scanned: game.id, kind: .app, identifier: "com.game")], to: &items, kid: kid)
+
+        #expect(outcome.added == 1)
+        #expect(outcome.cleared == 1)
+        #expect(items[1].match == nil)
+        #expect(Set(outcome.changed.map(\.id)) == [game.id, guess.id])
+    }
+}

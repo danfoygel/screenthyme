@@ -40,7 +40,7 @@ struct TokenMatchesView: View {
             } header: {
                 Text("Not matched yet · \(unmatched.count)")
             } footer: {
-                Text("\(kind == .app ? "An app" : "A website") is matched the first time it's used for about a minute on its own.")
+                Text("Matched by screenshot on \(kid.displayName)'s phone (Apps for Screen Time → Match apps by screenshot), once it has been used.")
             }
         }
         .navigationTitle(Self.title(kind))

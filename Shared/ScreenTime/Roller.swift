@@ -47,10 +47,9 @@ enum Roller {
     /// (iOS replays already-passed thresholds as a catch-up).
     static func registerAll(epochID: UUID, kid: Kid, now: Date = Date()) throws -> LadderEpoch {
         let center = DeviceActivityCenter()
-        // Every activity but the Enforcer's and the token matcher's. Never an empty list: that stops everything.
-        let old = center.activities.filter {
-            !Enforcer.owns($0.rawValue) && $0.rawValue != TokenMatcher.activity.rawValue
-        }
+        // Every activity but the Enforcer's (the retired token matcher's goes too). Never an empty list: that stops
+        // everything.
+        let old = center.activities.filter { !Enforcer.owns($0.rawValue) }
         // The old state stays until the new registration replaces it: a registration that throws must not leave the
         // alarm running with no state, which stops every roll and the midnight restart.
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -70,9 +69,8 @@ enum Roller {
         let active = center.activities.map(\.rawValue)
         let events = center.events(for: DeviceActivityName(activity.name)).count
         try? AppGroup.journal.append(.note("registered \(activity.name): \(events) events, iOS reports \(active.count) active"))
-        // A new authorization grant stopped the Enforcer's and the token matcher's activities too.
+        // A new authorization grant stopped the Enforcer's activities too.
         Enforcer.reconcile(now: now)
-        TokenMatcher.ensureRegistered()
         return LadderEpoch(id: epochID, kidID: kid.id, startedAt: now, activityNames: [activity.name])
     }
 

@@ -68,7 +68,7 @@ final class AppModel {
             await sampleNow()
             await Enforcer.offMain {
                 Enforcer.reconcile()
-                TokenMatcher.ensureRegistered()
+                RetiredTokenMatcher.stop()
             }
             await flush()
             await sendHeartbeat(.launch)

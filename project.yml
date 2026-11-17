@@ -165,15 +165,22 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Shield Action
 
   # Apple's own numbers, shown on the kid's phone only (sandboxed: no network, no export).
+  # It reads the app scan from the App Group (read-only) to pair scanned tokens with bundle IDs (PLAN.md §15.6).
   ThymeReport:
     type: extensionkit-extension
     platform: iOS
     sources:
       - ThymeReport
+      - Shared/Storage
+      - Shared/ScreenTime/TokenCoding.swift
+    dependencies:
+      - package: ThymeKit
+        product: ThymeCore
     entitlements:
       path: ThymeReport/ThymeReport.entitlements
       properties:
         com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.com.danfoygel.screenthyme]
     info:
       path: ThymeReport/Info.plist
       properties:
