@@ -49,6 +49,9 @@ struct KidDebugView: View {
             Section("Apple") {
                 NavigationLink("Data access test") { DataAccessView() }
                 NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day) }
+                NavigationLink("Raw usage (\(input.samples.count) samples)") {
+                    RawUsageView(items: items, samples: { day in AppGroup.samples.readAll().filter { $0.day == day } }, day: day)
+                }
             }
             Section("Upload") {
                 LabeledContent("Waiting", value: "\(Uploader.backlogCount())")

@@ -53,7 +53,7 @@ public enum SyntheticTrace {
                 for (item, use) in pending {
                     samples.append(UsageSample(id: Replay.stableUUID("sample", kid.uuidString, item.uuidString, "\(at.timeIntervalSince1970)"),
                                                kidID: kid, itemID: item, day: DayKey(at, calendar: calendar),
-                                               start: use.since, end: at, seconds: use.seconds))
+                                               start: use.since, end: at, seconds: use.seconds, reportedAt: at))
                 }
                 pending = [:]
             }
