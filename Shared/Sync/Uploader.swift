@@ -26,7 +26,7 @@ enum Uploader {
             try journal.markUploaded(entries.map(\.id), on: day)
         }
 
-        _ = try await Outbox.send(AppGroup.newItems, ledger: AppGroup.newItemsLedger, to: store)
+        _ = try await Outbox.send(AppGroup.newItems, ledger: AppGroup.newItemsLedger, versioned: true, to: store)
         let samples = try await Outbox.send(AppGroup.samples, ledger: AppGroup.samplesLedger, to: store)
         _ = try await Outbox.send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
         let alerts = try await Outbox.send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
