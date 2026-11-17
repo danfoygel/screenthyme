@@ -57,10 +57,7 @@ enum AppScan {
             try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"))
         }
         Task {
-            await Enforcer.offMain {
-                Enforcer.reconcile(now: now)
-                TokenMatcher.register(now: now)
-            }
+            await Enforcer.offMain { Enforcer.reconcile(now: now) }
         }
     }
 

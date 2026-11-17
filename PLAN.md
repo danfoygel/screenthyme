@@ -605,8 +605,11 @@ day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iO
 ### 15.6 Matching scanned tokens to Apple's data
 
 Tokens can't be decoded (only Apple's daemons can), and iOS shows a token beside its bundle ID only inside the report
-and shield extensions, which can't export anything. But the kid's phone holds both halves, so the match is learned
-from use (`TokenMatching`, `TokenMatcher`):
+and shield extensions, which can't export anything. Matches now come from screenshots (the "By screenshot" item
+below); the kid's home screen counts apps first used since the last import that nothing is matched to (apps only:
+browsing turns up new domains all the time). **Retired Nov 16:** learning the match from use (`TokenMatching`,
+`TokenMatcher`, history before this change); launch stops its `tm` activity on phones that still have it. It worked
+like this:
 - One activity, `tm`, with an event `m.<item id>` at 1 minute of use (`includesPastActivity: false`) for each scanned
   app and website not matched yet (81 apps and 88 websites on the kid's phone after the scan; 380 events ran fine
   there, §12). Registered after a scan, at app launch if missing or watching less than the build would
@@ -623,6 +626,26 @@ from use (`TokenMatching`, `TokenMatcher`):
 - The baseline is taken from a fresh fetch of Apple's data. A fire whose baseline came from stale data (the app's
   fetch failed, or nothing had fetched for hours) re-registers from the data the fire just fetched, instead of
   matching against it.
+- **By screenshot** (`TokenPairing`, Debug → "Match scanned apps by screenshot" on the kid's phone). Only the report
+  extension sees a token beside its bundle ID or domain, and on the kid's phone (`.child`, data access) its tokens are
+  encrypted under another key than the scan's: same 128-byte layout and 12 zero bytes, different from the first
+  encrypted byte, so they never compare equal (they did on the adult test phone in §11). But a report **filtered by
+  the scan's tokens** shows exactly those apps (tested Nov 16: the 7 matched apps gave exactly their 7 bundle IDs),
+  and several reports run on one screen. So iOS does the comparison: each scanned app and website gets a number (its
+  place in `TokenPairing.order`, from 1), and the app shows one report per bit, filtered to the items with that bit
+  set, plus a parity report (9 for 169 items; the extension declares 10 scenes, `pair.p`, `pair.b0`…`pair.b8`).
+  Each draws a QR code of 6-hex hashes of the identifiers it saw over the last 28 days, named by a fingerprint of
+  the order (the extension reads the App Group). Core Image draws nothing in the report extension (not even its
+  software renderer), so the codes come from our own encoder (`QRCode`) and a `Canvas`. An identifier's number is the sum of its reports' bits. The kid
+  takes 2 screenshots; the app reads them from the photo library with Vision and saves the matches. A pair
+  overrides a match from watching use, and another scanned item matched to the same app loses its match and is
+  watched again. Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
+  filtered to every scanned item, one large code) spells out; a failed parity check (two scanned tokens for one app)
+  is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the 28 days, before
+  tracking began) creates a bare item for it, so parents can name the match; it never counts as a new app. First run
+  (Nov 16, kid's phone): 24 new matches, the 7 earlier ones confirmed, no conflicts, and 42
+  identifiers unknown without the names report; with it, all 42 matched (73 of 169 in all). Apps unused in the 28 days
+  still wait for their minute.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's

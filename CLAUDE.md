@@ -18,7 +18,8 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
 Shared/              compiled into the app AND the monitor extension: App Group files, SharedConfig, CloudKit records, Uploader
 ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Nearby/ (local link), Kid/, Parent/, Components/, Debug/
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
-ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only
+ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only; also the
+                     token-pairing QR codes (reads the App Group, can't write it)
 ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
 ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme;
                      "One more minute" runs the Enforcer itself (PLAN.md §15.5)
@@ -114,14 +115,18 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
 - **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses the app scan's items
   (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing.
-- Scanned tokens are matched to Apple's bundle IDs by watching use (`TokenMatcher`, activity `tm`, events
-  `m.<item id>`; PLAN.md §15.6). `Roller.registerAll` leaves `tm` alone.
+- Scanned tokens are matched to Apple's bundle IDs by screenshot (`TokenPairing`, PLAN.md §15.6): the report
+  extension's tokens use another key than the scan's and never compare equal, but a report filtered by scanned tokens
+  honors them, so one filtered report per bit of each item's number draws a QR code (our own `QRCode`: Core Image
+  draws nothing in that extension) that the kid app reads back. The kid's home screen counts new apps to match. The
+  minute-of-use matcher (`tm`) is retired: launch stops it (`RetiredTokenMatcher`).
 - A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
   `AskForTimeView` (PLAN.md §15.4).
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).
-- The Enforcer's activities are `dt.<id8>`, `lim.<id8>` and `om.end` (`Enforcer.owns`), and the token matcher's is `tm`; everything else is the wake alarm's.
+- The Enforcer's activities are `dt.<id8>`, `lim.<id8>` and `om.end` (`Enforcer.owns`); everything else is the wake alarm's
+  (or the retired `tm`, stopped at launch).
 - Event names are `t.<minute>` (in iOS's count; journaled in ours) and probes `p.<minute>` (never journaled); the activity is `st.<epoch8>.tot`. Old journals also hold per-app `i.<itemUUID>.<minute>`
   fires, which are ignored.
 - The nearby link (PLAN.md §17) runs only while the app is open, over Wi-Fi (Bonjour) and Bluetooth (L2CAP) at once:

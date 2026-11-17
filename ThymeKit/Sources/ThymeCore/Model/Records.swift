@@ -51,7 +51,7 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     public var category: String?
     public var nickname: String?
     public var firstSeen: Date
-    /// For a scanned item: the item from Apple's data for the same app, learned by watching use (`TokenMatching`).
+    /// For a scanned item: the item from Apple's data for the same app, learned from screenshots (`TokenPairing`).
     public var match: UUID?
 
     public init(kidID: UUID, kind: ItemKind, identifier: String, name: String? = nil, tokenData: Data? = nil,
