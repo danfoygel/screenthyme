@@ -48,6 +48,10 @@ extension AppModel {
     /// Registers the wake alarm for a (new or current) epoch and publishes it.
     func startMonitoring() {
         guard let kid = config.kid else { return }
+        // iOS takes the registration before the Roller writes its state: a kid switching away mid-registration
+        // suspended the app in between, leaving the alarm with no state.
+        let background = UIApplication.shared.beginBackgroundTask(withName: "register wake alarm")
+        defer { UIApplication.shared.endBackgroundTask(background) }
         do {
             let epoch = try Roller.registerAll(epochID: config.epoch?.id ?? UUID(), kid: kid)
             update { $0.epoch = epoch }
@@ -56,6 +60,7 @@ extension AppModel {
                 data.ingest(IngestBatch(epochs: [epoch]))
             }
         } catch {
+            try? AppGroup.journal.append(.note("registration failed: \(error)"))
             show(error)
         }
     }
@@ -65,11 +70,12 @@ extension AppModel {
     func ensureMonitoring() {
         guard let epoch = config.epoch else { return }
         let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
-        guard !Set(epoch.activityNames).isSubset(of: active) else { return }
+        // Running without its state, the alarm never rolls or restarts at midnight.
+        guard !Set(epoch.activityNames).isSubset(of: active) || Roller.load() == nil else { return }
         let key = "lastEnsureMonitoring"
         if let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 600 { return }
         UserDefaults.standard.set(Date(), forKey: key)
-        try? AppGroup.journal.append(.note("re-registering: alarm missing"))
+        try? AppGroup.journal.append(.note("re-registering: alarm or its state missing"))
         startMonitoring()
     }
 
