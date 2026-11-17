@@ -14,11 +14,16 @@ enum TokenMatcher {
     struct State: Codable {
         var day: DayKey
         var baseline: [UUID: Double]
+        /// When the events were registered, and when Apple's data behind `baseline` was fetched: a baseline from
+        /// hours-old data counts that day's use as if it were the last minute's (nil in older files).
+        var registeredAt: Date?
+        var dataAt: Date?
     }
 
     static var url: URL { AppGroup.container.appending(path: "token-match.json") }
 
-    static func register(now: Date = Date()) {
+    /// - Parameter sampled: Apple's data was fetched just now, so the baseline needn't fetch it again.
+    static func register(now: Date = Date(), sampled: Bool = false) {
         guard let kid = SharedConfig.load().kid else { return }
         let center = DeviceActivityCenter()
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
@@ -32,7 +37,10 @@ enum TokenMatcher {
             center.stopMonitoring([activity])
             return
         }
-        AppGroup.save(State(day: DayKey(now), baseline: UsageSnapshot.todayUsage(kid: kid, now: now)), to: url)
+        if !sampled { _ = Sampler.sampleBlocking(kid: kid) }  // takes the sampler lock itself
+        let snapshot = UsageSnapshot.load()
+        AppGroup.save(State(day: DayKey(now), baseline: UsageSnapshot.todayUsage(kid: kid, now: now), registeredAt: now,
+                            dataAt: snapshot?.day == DayKey(now) ? snapshot?.at : nil), to: url)
         do {
             try center.startMonitoring(activity, during: Roller.schedule, events: events)
             try? AppGroup.journal.append(.note("token match: watching \(events.count) apps"))
@@ -59,6 +67,18 @@ enum TokenMatcher {
         let previous = UsageSnapshot.todayUsage(kid: kid, now: now)
         _ = Sampler.sampleBlocking(kid: kid)  // fresh numbers; takes the sampler lock itself
         let state = AppGroup.load(State.self, from: url)
+        if let state, state.day == DayKey(now),
+           !TokenMatching.isFresh(dataAt: state.dataAt, registeredAt: state.registeredAt) {
+            // The baseline can't tell which app this was. Start over from the data just fetched, if it is fresh.
+            let snapshot = UsageSnapshot.load()
+            guard TokenMatching.isFresh(dataAt: snapshot?.day == DayKey(now) ? snapshot?.at : nil, registeredAt: now) else {
+                try? AppGroup.journal.append(.note("token match: baseline stale and no fresh data"))
+                return
+            }
+            try? AppGroup.journal.append(.note("token match: baseline was stale, re-registering"))
+            register(now: now, sampled: true)
+            return
+        }
         let baseline = state.flatMap { $0.day == DayKey(now) ? $0.baseline : nil } ?? [:]
         let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
         AppGroup.withLock("sampler") {
