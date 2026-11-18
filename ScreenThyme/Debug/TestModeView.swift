@@ -1,7 +1,8 @@
 import SwiftUI
 import ThymeCore
 
-/// The switch into test mode, shown in parent Settings and the kid's Debug screen.
+/// The switch into test mode, shown in parent Settings, and on a kid's home screen only while test mode is on: a kid
+/// phone enters test mode only from the welcome screen.
 struct TestModeSection: View {
     @Environment(AppModel.self) private var model
 
