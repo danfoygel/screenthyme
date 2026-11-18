@@ -9,7 +9,8 @@ import ThymeCore
 /// filters it to the scanned items whose number has this report's bit set; it draws a QR code of hashes of the
 /// identifiers it sees (the names report: every scanned item, identifiers spelled out; category reports: the names of
 /// the categories it sees). This extension's own tokens are encrypted under another key than the scan's, so iOS does
-/// the comparison, through the filter.
+/// the comparison, through the filter. In the App Group's mode `unmatched`, the numbers go to unmatched scanned items
+/// only, and apps, websites and categories already matched are left out.
 struct PairingData: @unchecked Sendable {
     var view: TokenPairing.View
     var identifiers = 0
@@ -52,16 +53,18 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
                 }
             }
         }
-        report.identifiers = seen.count
         // The scan's order, as the app sees it, names the codes: codes from another scan can't be mixed in.
         let items = AppGroup.loadItems()
-        let order = view.isCategory ? TokenPairing.categoryOrder(items) : TokenPairing.order(items)
+        let mode = AppGroup.tokenPairingMode()
+        let order = view.isCategory ? TokenPairing.categoryOrder(items, mode: mode) : TokenPairing.order(items, mode: mode)
         guard !order.isEmpty else {
             report.problem = "Can't read the app scan"
             return report
         }
+        let drawn = TokenPairing.drawn(seen, items: items, mode: mode)
+        report.identifiers = drawn.count
         let texts = TokenPairing.encode(fingerprint: TokenPairing.fingerprint(order), view: view,
-                                         lines: TokenPairing.lines(view, seen: seen))
+                                         lines: TokenPairing.lines(view, seen: drawn))
         report.codes = texts.compactMap(Self.modules)
         if report.codes.count < texts.count { report.problem = "Couldn't draw the code" }
         return report

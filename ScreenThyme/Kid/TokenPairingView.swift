@@ -6,10 +6,12 @@ import Vision
 
 /// Matches scanned apps, websites and categories to Apple's data at once (PLAN.md §15.6, `TokenPairing`). One Apple
 /// report per bit of each scanned item's number, filtered to the items with that bit set, draws a QR code of what it
-/// saw, and a names report spells the identifiers out; categories have reports of their own. The kid takes screenshots of them, and this reads the codes back from the
-/// photo library.
+/// saw, and a names report spells the identifiers out; categories have reports of their own. The kid takes screenshots
+/// of them, and this reads the codes back from the photo library. By default only unmatched scanned items are paired,
+/// with new apps, so a few small codes do.
 struct TokenPairingView: View {
     @Environment(AppModel.self) private var model
+    @State private var mode = AppGroup.tokenPairingMode()
     @State private var photos: [PhotosPickerItem] = []
     @State private var result: String?
     @State private var working = false
@@ -18,14 +20,32 @@ struct TokenPairingView: View {
 
     var body: some View {
         let items = AppGroup.loadItems()
-        let order = TokenPairing.order(items)
-        let categories = TokenPairing.categoryOrder(items)
+        let order = TokenPairing.order(items, mode: mode)
+        let categories = TokenPairing.categoryOrder(items, mode: mode)
         let views = TokenPairing.views(count: order.count) + TokenPairing.categoryViews(count: categories.count)
         ScrollView {
             VStack(spacing: 8) {
-                Text("Take screenshots that together show all \(views.count + (order.isEmpty ? 0 : 1)) codes, then import them.")
+                // Saved before the reports redraw: the report extension reads it.
+                Picker("Match", selection: Binding(get: { mode }, set: { mode in
+                    AppGroup.save(mode, to: AppGroup.tokenPairingModeURL)
+                    self.mode = mode
+                    result = nil
+                })) {
+                    Text("New apps").tag(TokenPairing.Mode.unmatched)
+                    Text("Everything").tag(TokenPairing.Mode.all)
+                }
+                .pickerStyle(.segmented)
+                Text(mode == .unmatched
+                     ? "Matches apps, websites and categories not matched yet. Apps installed since the last scan need a new scan first."
+                     : "Checks every match again.")
                     .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                if !views.isEmpty {
+                    Text("Take screenshots that together show all \(views.count + (order.isEmpty ? 0 : 1)) codes, then import them.")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                }
                 PhotosPicker(selection: $photos, maxSelectionCount: 10, matching: .screenshots) {
                     Label(working ? "Reading…" : "Import screenshots", systemImage: "qrcode.viewfinder")
                 }
@@ -35,17 +55,23 @@ struct TokenPairingView: View {
                     Text(result).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 if views.isEmpty {
-                    Text("Scan the apps first.").foregroundStyle(.secondary)
+                    Text(mode == .unmatched && !(TokenPairing.order(items, mode: .all) + TokenPairing.categoryOrder(items, mode: .all)).isEmpty
+                         ? "Every scanned app and website is matched." : "Scan the apps first.")
+                        .foregroundStyle(.secondary)
                 }
                 if !order.isEmpty {  // an empty filter would mean every app
-                    let names = size(.names, members: order.count, columns: 1)
+                    let names = size(.names, lines: TokenPairing.estimatedLines(members: order, items: items, mode: mode),
+                                     columns: 1)
                     DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order))
                         .frame(height: names.height)
                 }
-                // Two columns while each code still gets its pixels a module (wider phones); one otherwise.
+                // As many columns (up to 3) as still give each code its pixels a module: small codes, wider phones.
                 let members = views.map { TokenPairing.members($0, of: $0.isCategory ? categories : order) }
-                let columns = zip(views, members).allSatisfy { size($0, members: $1.count, columns: 2).fits } ? 2 : 1
-                let height = zip(views, members).map { size($0, members: $1.count, columns: columns).height }.max() ?? 0
+                let lines = members.map { TokenPairing.estimatedLines(members: $0, items: items, mode: mode) }
+                let columns = (1...3).last { columns in
+                    zip(views, lines).allSatisfy { size($0, lines: $1, columns: columns).fits }
+                } ?? 1
+                let height = zip(views, lines).map { size($0, lines: $1, columns: columns).height }.max() ?? 0
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
                     ForEach(Array(zip(views, members)), id: \.0) { view, members in
                         DeviceActivityReport(.init("pair." + view.name), filter: Self.filter(members))
@@ -53,6 +79,7 @@ struct TokenPairingView: View {
                     }
                 }
             }
+            .id(mode)  // the reports draw again in the new mode, even with the same filters
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .padding(.horizontal)
         }
@@ -66,9 +93,9 @@ struct TokenPairingView: View {
 
     /// The height a report needs in a grid of `columns` for its codes to draw at `TokenPairing.pixelsPerModule`, laid
     /// out the way the report extension lays them out, and whether they fit the width at that size.
-    private func size(_ view: TokenPairing.View, members: Int, columns: Int) -> (height: CGFloat, fits: Bool) {
+    private func size(_ view: TokenPairing.View, lines: Int, columns: Int) -> (height: CGFloat, fits: Bool) {
         let cell = (width - CGFloat(columns - 1) * 8) / CGFloat(columns)
-        let codes = TokenPairing.estimatedCodes(view, members: members)
+        let codes = TokenPairing.estimatedCodes(view, lines: lines)
         let wanted = CGFloat(codes.modules * TokenPairing.pixelsPerModule + 1) / scale  // a pixel spare: rounding
         let side = min(wanted, cell)
         let across = max(1, Int(cell / side))
@@ -114,10 +141,10 @@ struct TokenPairingView: View {
             result = "No ScreenThyme codes found in \(picked.count) screenshot\(picked.count == 1 ? "" : "s")."
             return
         }
-        let (resolution, outcome) = Self.pair(codes, kid: kid)
+        let (resolution, outcome) = Self.pair(codes, kid: kid, mode: mode)
         guard resolution.missing.isEmpty else {
             result = "Missing codes \(resolution.missing.joined(separator: ", ")): include them in the screenshots."
-                + (resolution.otherScan > 0 ? " Some codes were from an earlier scan; take new screenshots." : "")
+                + (resolution.otherScan > 0 ? " Some codes were drawn before the scan or matches changed, or in the other mode; take new screenshots." : "")
             return
         }
         var parts = ["\(resolution.pairs.count) found: \(outcome.added) newly matched", "\(outcome.corrected) corrected",
@@ -133,11 +160,12 @@ struct TokenPairingView: View {
     }
 
     /// Saves the matches; changed items go to the outbox, so parents' phones see them.
-    private static func pair(_ codes: [TokenPairing.Code], kid: Kid) -> (TokenPairing.Resolution, TokenPairing.Outcome) {
+    private static func pair(_ codes: [TokenPairing.Code], kid: Kid, mode: TokenPairing.Mode)
+        -> (TokenPairing.Resolution, TokenPairing.Outcome) {
         AppGroup.withLock("sampler") {  // the sampler rewrites items.json too
             var items = AppGroup.loadItems()
-            let resolution = TokenPairing.resolve(codes, order: TokenPairing.order(items),
-                                                  categories: TokenPairing.categoryOrder(items), known: items)
+            let resolution = TokenPairing.resolve(codes, order: TokenPairing.order(items, mode: mode),
+                                                  categories: TokenPairing.categoryOrder(items, mode: mode), known: items)
             guard resolution.missing.isEmpty else { return (resolution, TokenPairing.Outcome()) }
             AppGroup.save(State(importedAt: Date()), to: stateURL)
             let outcome = TokenPairing.apply(resolution.pairs, to: &items, kid: kid.id)
@@ -146,7 +174,7 @@ struct TokenPairingView: View {
                 try? AppGroup.newItems.append(contentsOf: outcome.changed)
             }
             try? AppGroup.journal.append(.note(
-                "token pairing: \(outcome.added) added, \(outcome.corrected) corrected, \(outcome.cleared) cleared, "
+                "token pairing (\(mode.rawValue)): \(outcome.added) added, \(outcome.corrected) corrected, \(outcome.cleared) cleared, "
                     + "\(outcome.created) created, \(resolution.unknown) unknown, \(resolution.conflicts) conflicts"))
             return (resolution, outcome)
         }

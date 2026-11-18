@@ -665,6 +665,15 @@ like this:
   scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
   unused in the 28 days stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
   shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
+- **New apps only** (Nov 17, `TokenPairing.Mode`, the default): after a first round, a new app's match can't come
+  from one code (the token is what's unknown), but every code can be tiny. In `unmatched` mode the numbers go only
+  to scanned items with no match (a rescan keeps matches, so these are the new tokens and those still unused), and
+  the reports leave out apps, websites and categories already matched, so each bit report holds the hashes of the few new
+  identifiers: about 45 modules, three to a row, and all the codes in one screenshot. "Everything" (`all`) checks
+  every match again. The app saves the mode in the App Group (`token-pairing-mode.json`) before the reports draw,
+  since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
+  websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
+  has no token: scan again first.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
   A scanned category counts through its match's name (`EnforcementPlanner.categoryNames`): before, a limit on one
   counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps
