@@ -107,20 +107,21 @@ public enum TokenPairing {
         view == .names ? seen.map(\.line) : seen.map(\.hash)
     }
 
-    /// One code holds up to 2 KB (version 37 or so): a bit report's hashes of up to 280 identifiers, or the names of
-    /// about 70. One large code reads better than several small ones in the same space (each has its quiet zone).
-    public static let maxBytes = 2000
+    /// One code holds up to 1150 bytes and its header (version 28, 129 modules): a bit report's hashes of up to 160
+    /// identifiers, or the names of about 45. At `pixelsPerModule` with its quiet zone, that is as wide as a 2x phone's
+    /// screen (343 points).
+    public static let maxBytes = 1150
 
-    /// Vision reads nothing at 1 px per module and misses large codes at 1.5 px, so the app sizes the reports for 3
-    /// whole pixels, and the extension draws whole pixels.
-    public static let pixelsPerModule = 3
+    /// Whole pixels a module. In a whole screenshot (1179 × 2556), Vision read every code at 5 px and missed about
+    /// half at 4 px, and all of them at 3 (it scales the image down); it reads nothing at 1 px even in a small image.
+    public static let pixelsPerModule = 5
 
     /// About how many modules wide, quiet zone included, the largest of a report's codes is for `members` scanned
     /// items, and how many codes there are. The app sizes the reports from it before they draw.
     public static func estimatedCodes(_ view: View, members: Int) -> (count: Int, modules: Int) {
         let bytes = members * (view == .names ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
         let count = max(1, (bytes + maxBytes - 1) / maxBytes)
-        let size = QRCode([UInt8](repeating: 0, count: min(bytes, maxBytes) + 32))?.size ?? 177  // the first is fullest
+        let size = QRCode([UInt8](repeating: 0, count: min(bytes, maxBytes) + 32))?.size ?? 129  // the first is fullest
         return (count, size + 8)
     }
 

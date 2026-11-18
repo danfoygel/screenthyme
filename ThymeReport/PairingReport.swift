@@ -95,7 +95,7 @@ struct PairingView: View {
     }
 }
 
-/// Square modules of whole pixels (Vision misses codes drawn at 1.5 px a module), centered on white, with a quiet zone.
+/// Square modules of whole pixels (`TokenPairing.pixelsPerModule`), centered on white, with a quiet zone.
 struct QRCodeView: View {
     let modules: [[Bool]]
     @Environment(\.displayScale) private var scale

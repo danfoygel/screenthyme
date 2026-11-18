@@ -40,7 +40,7 @@ struct TokenPairingView: View {
                     DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order))
                         .frame(height: names.height)
                 }
-                // Two columns while each code still gets 3 px a module; one otherwise.
+                // Two columns while each code still gets its pixels a module (wider phones); one otherwise.
                 let members = views.map { TokenPairing.members($0, of: order).count }
                 let columns = zip(views, members).allSatisfy { size($0, members: $1, columns: 2).fits } ? 2 : 1
                 let height = zip(views, members).map { size($0, members: $1, columns: columns).height }.max() ?? 0
@@ -68,7 +68,7 @@ struct TokenPairingView: View {
     private func size(_ view: TokenPairing.View, members: Int, columns: Int) -> (height: CGFloat, fits: Bool) {
         let cell = (width - CGFloat(columns - 1) * 8) / CGFloat(columns)
         let codes = TokenPairing.estimatedCodes(view, members: members)
-        let wanted = CGFloat(codes.modules * TokenPairing.pixelsPerModule) / scale
+        let wanted = CGFloat(codes.modules * TokenPairing.pixelsPerModule + 1) / scale  // a pixel spare: rounding
         let side = min(wanted, cell)
         let across = max(1, Int(cell / side))
         let rows = (codes.count + across - 1) / across
