@@ -13,6 +13,8 @@ struct TokenPairingView: View {
     @State private var photos: [PhotosPickerItem] = []
     @State private var result: String?
     @State private var working = false
+    /// Once the reports know to draw for screenshots (`TokenPairing.Display`).
+    @State private var ready = false
     @State private var width: CGFloat = 340
     @Environment(\.displayScale) private var scale
 
@@ -37,7 +39,7 @@ struct TokenPairingView: View {
                 if views.isEmpty {
                     Text("Scan the apps first.").foregroundStyle(.secondary)
                 }
-                if !order.isEmpty {  // an empty filter would mean every app
+                if ready, !order.isEmpty {  // an empty filter would mean every app
                     let names = size(.names, members: order.count, columns: 1)
                     DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order))
                         .frame(height: names.height)
@@ -47,7 +49,7 @@ struct TokenPairingView: View {
                 let columns = zip(views, members).allSatisfy { size($0, members: $1.count, columns: 2).fits } ? 2 : 1
                 let height = zip(views, members).map { size($0, members: $1.count, columns: columns).height }.max() ?? 0
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
-                    ForEach(Array(zip(views, members)), id: \.0) { view, members in
+                    ForEach(Array(zip(views, members)).filter { _ in ready }, id: \.0) { view, members in
                         DeviceActivityReport(.init("pair." + view.name), filter: Self.filter(members))
                             .frame(height: height)
                     }
@@ -58,6 +60,10 @@ struct TokenPairingView: View {
         }
         .navigationTitle("Match by screenshot")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            AppGroup.save(TokenPairing.Display.screenshots, to: AppGroup.pairingDisplayURL)
+            ready = true
+        }
         .onChange(of: photos) { _, picked in
             guard !picked.isEmpty else { return }
             Task { await importPhotos(picked) }
@@ -87,8 +93,7 @@ struct TokenPairingView: View {
         AppGroup.load(State.self, from: stateURL)?.importedAt
     }
 
-    private static func filter(_ items: [TrackedItem]) -> DeviceActivityFilter {
-        let now = Date()
+    static func filter(_ items: [TrackedItem], now: Date = Date()) -> DeviceActivityFilter {
         let start = Calendar.current.date(byAdding: .day, value: -(TokenPairing.days - 1),
                                           to: Calendar.current.startOfDay(for: now))!
         return DeviceActivityFilter(
@@ -99,7 +104,6 @@ struct TokenPairingView: View {
     }
 
     private func importPhotos(_ picked: [PhotosPickerItem]) async {
-        guard let kid = model.config.kid else { return }
         working = true
         defer {
             working = false
@@ -114,11 +118,18 @@ struct TokenPairingView: View {
             result = "No ScreenThyme codes found in \(picked.count) screenshot\(picked.count == 1 ? "" : "s")."
             return
         }
-        let (resolution, outcome) = Self.pair(codes, kid: kid)
+        let saved = await Self.save(codes, model: model, source: "the screenshots")
+        result = saved.text + (saved.paired ? " You can delete the screenshots now." : "")
+    }
+
+    /// Pairs `codes` (from screenshots or a parent's camera) and saves the matches. Returns what happened, to show, and
+    /// whether it paired (no report was missing).
+    static func save(_ codes: [TokenPairing.Code], model: AppModel, source: String) async -> (text: String, paired: Bool) {
+        guard let kid = model.config.kid else { return ("This phone has no kid set up.", false) }
+        let (resolution, outcome) = pair(codes, kid: kid)
         guard resolution.missing.isEmpty else {
-            result = "Missing codes \(resolution.missing.joined(separator: ", ")): include them in the screenshots."
-                + (resolution.otherScan > 0 ? " Some codes were from an earlier scan; take new screenshots." : "")
-            return
+            return ("Missing codes \(resolution.missing.joined(separator: ", ")): include them in \(source)."
+                + (resolution.otherScan > 0 ? " Some codes were from an earlier scan; read them again." : ""), false)
         }
         var parts = ["\(resolution.pairs.count) found: \(outcome.added) newly matched", "\(outcome.corrected) corrected",
                      "\(outcome.unchanged) already right"]
@@ -126,10 +137,11 @@ struct TokenPairingView: View {
         if outcome.created > 0 { parts.append("\(outcome.created) not used since tracking began, added") }
         if resolution.unknown > 0 { parts.append("\(resolution.unknown) not seen in Apple's data on this phone yet") }
         if resolution.conflicts > 0 { parts.append("\(resolution.conflicts) inconsistent, skipped") }
-        result = parts.joined(separator: ", ") + ". You can delete the screenshots now."
-        guard !outcome.changed.isEmpty else { return }
-        await Enforcer.offMain { Enforcer.reconcile() }
-        await model.flush()
+        if !outcome.changed.isEmpty {
+            await Enforcer.offMain { Enforcer.reconcile() }
+            await model.flush()
+        }
+        return (parts.joined(separator: ", ") + ".", true)
     }
 
     /// Saves the matches; changed items go to the outbox, so parents' phones see them.

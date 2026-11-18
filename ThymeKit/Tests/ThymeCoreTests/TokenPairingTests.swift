@@ -295,6 +295,37 @@ struct TokenPairingTests {
         #expect(Double((code.size + 8) * TokenPairing.pixelsPerModule) / 2 <= 343)
     }
 
+    /// A camera's codes are small enough to read from arm's length, header and all.
+    @Test func aCameraCodeIsSmall() throws {
+        let lines = (0..<TokenPairing.Display.camera.maxBytes / 7).map { String(format: "%06x", $0) }
+        let texts = TokenPairing.encode(fingerprint: "ffffffff", view: .bit(8), lines: lines,
+                                        maxBytes: TokenPairing.Display.camera.maxBytes)
+        #expect(texts.count == 1)
+        let code = try #require(QRCode(Array(texts[0].utf8)))
+        #expect(code.version <= 19)
+    }
+
+    /// A report is complete once every one of its parts was read, whatever the order; other scans' codes stay apart.
+    @Test func completeReportsHaveEveryPart() {
+        let apps = (0..<60).map { scanned("a\($0)") }
+        let order = TokenPairing.order(apps)
+        var truth: [UUID: TrackedItem] = [:]
+        for (index, app) in apps.enumerated() { truth[app.id] = data("com.example.app\(index)") }
+        let all = codes(order: order, truth: truth, maxBytes: 80)
+        let fingerprint = TokenPairing.fingerprint(order)
+        let parity = all.filter { $0.view == .parity }
+        #expect(parity.count > 1)
+
+        let partial = all.filter { $0.view != .parity } + parity.dropFirst()
+        #expect(TokenPairing.complete(partial)[fingerprint] == Set(TokenPairing.views(count: order.count)).subtracting([.parity]))
+        #expect(TokenPairing.complete(all.reversed())[fingerprint] == Set(TokenPairing.views(count: order.count)))
+
+        var other = parity[0]
+        other.fingerprint = "00000000"
+        other.parts = 1
+        #expect(TokenPairing.complete([other] + parity.dropFirst()) == ["00000000": [.parity], fingerprint: []])
+    }
+
     @Test func columnsDrawCodesLargest() {
         #expect(TokenPairing.columns(count: 1, width: 100, height: 300) == 1)
         #expect(TokenPairing.columns(count: 2, width: 170, height: 170) == 1)

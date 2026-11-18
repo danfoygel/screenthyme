@@ -155,6 +155,29 @@ public enum TokenPairing {
     /// screen (343 points).
     public static let maxBytes = 1150
 
+    /// How the reports draw their codes. In screenshots, as few codes as possible, each as full as it gets; for a
+    /// parent's camera, one report fills the screen and cycles through smaller codes (version 19 at most, 93 modules),
+    /// which a camera reads from arm's length in a moment. The kid app saves it in the App Group before showing reports.
+    public enum Display: String, Codable, Sendable {
+        case screenshots, camera
+
+        public var maxBytes: Int {
+            switch self {
+            case .screenshots: TokenPairing.maxBytes
+            case .camera: 600
+            }
+        }
+    }
+
+    /// The reports all of whose parts are among `codes`, by fingerprint.
+    public static func complete(_ codes: some Sequence<Code>) -> [String: Set<View>] {
+        var parts: [String: [View: (seen: Set<Int>, count: Int)]] = [:]
+        for code in codes {
+            parts[code.fingerprint, default: [:]][code.view, default: ([], code.parts)].seen.insert(code.part)
+        }
+        return parts.mapValues { views in Set(views.filter { $0.value.seen.count >= $0.value.count }.keys) }
+    }
+
     /// Whole pixels a module. In a whole screenshot (1179 × 2556), Vision read every code at 5 px and missed about
     /// half at 4 px, and all of them at 3 (it scales the image down); it reads nothing at 1 px even in a small image.
     public static let pixelsPerModule = 5

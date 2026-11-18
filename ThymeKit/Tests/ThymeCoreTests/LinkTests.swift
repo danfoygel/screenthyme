@@ -124,6 +124,29 @@ struct LinkTests {
         #expect(filter.unsent(bundle).count == 2)
     }
 
+    @Test func pairingMessagesGoThroughAndAreNeverFiltered() throws {
+        var (kid, parent) = try connect()
+        var bundle = LinkBundle()
+        bundle.pairing = [.progress(showing: "b3", done: 4, total: 11)]
+        #expect(!bundle.isEmpty)
+        #expect(try parent.receive(kid.send(bundle)) == [.bundle(bundle)])
+
+        var filter = LinkSentFilter()
+        bundle.pairing = [.codes(["STPAIR2 ffffffff p 1/1"]), .result("3 found")]
+        #expect(filter.unsent(bundle) == bundle)
+        #expect(filter.unsent(bundle) == bundle)
+        #expect(bundle.only(kid: testKid.id).pairing == bundle.pairing)
+    }
+
+    /// A bundle from a build without pairing still decodes.
+    @Test func bundlesWithoutPairingDecode() throws {
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder.thyme.encode(grantBundle)) as! [String: Any]
+        #expect(json["pairing"] == nil)
+        json.removeValue(forKey: "pairing")
+        let decoded = try JSONDecoder.thyme.decode(LinkBundle.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded == grantBundle)
+    }
+
     @Test func onlyKeepsOneKid() {
         var bundle = grantBundle
         let other = TimeRequest(kidID: UUID(), itemID: nil, reason: .blocked, minutes: 5, at: at(9, 0))

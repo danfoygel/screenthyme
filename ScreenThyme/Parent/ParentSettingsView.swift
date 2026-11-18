@@ -127,6 +127,9 @@ struct KidSettingsView: View {
                     RawUsageView(items: model.data.items(for: kid.id), samples: { model.data.samples(kid: kid.id, day: $0) },
                                  day: DayKey(Date()))
                 }
+                if model.data.items(for: kid.id).values.contains(where: \.isScanned) {
+                    NavigationLink("Match apps with camera") { PairingScannerView(kid: kid) }
+                }
                 ForEach([ItemKind.app, .domain, .category], id: \.self) { kind in
                     let scanned = TokenMatchesView.scanned(kind, in: model.data.items(for: kid.id))
                     if !scanned.isEmpty {

@@ -15,6 +15,11 @@ final class AppModel {
     /// Family phones nearby, for when there's no internet (PLAN.md §17).
     let nearby = NearbyLink()
     @ObservationIgnored var nearbyTicker: Task<Void, Never>?
+    /// Matching by a parent's camera (PLAN.md §15.6, `AppModel+Nearby`). Kid: what the pairing screen shows, and the
+    /// codes parents' phones read. Parent: each kid's pairing screen.
+    @ObservationIgnored var pairingShown: LinkPairing?
+    var pairingCodes: Set<String> = []
+    var pairingPeers: [UUID: PairingPeer] = [:]
     var message: String?
     private(set) var isRefreshing = false
     @ObservationIgnored private var isLaunching = false

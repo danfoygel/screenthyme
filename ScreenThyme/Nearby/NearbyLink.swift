@@ -115,6 +115,15 @@ final class NearbyLink {
         bluetooth?.retry()
     }
 
+    /// Sends pairing messages now, on the connection that carries updates, to each phone `to` accepts.
+    func send(_ pairing: [LinkPairing], to accepts: (LinkHello) -> Bool) {
+        var bundle = LinkBundle()
+        bundle.pairing = pairing
+        for connection in connections.values where connection.session.isReady && isPreferred(connection) {
+            if let peer = connection.session.peer, accepts(peer) { send(bundle, on: connection) }
+        }
+    }
+
     /// A failed listener or browser stays failed: after a suspension iOS can drop its connection to the Bonjour daemon
     /// (`DefunctConnection`). Its state handler dropped it; make a new one.
     private func restartFailedWiFi() {
