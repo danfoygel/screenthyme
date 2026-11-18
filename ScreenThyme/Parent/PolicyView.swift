@@ -169,14 +169,23 @@ struct LimitEditor: View {
                         .swipeActions { Button("Same") { limit.weekdayMinutes[weekday] = nil } }
                     }
                 }
-                Section("Apps, websites and categories") {
-                    NavigationLink {
-                        ItemSelectionView(title: "Limit", items: items, selection: $limit.items)
-                    } label: {
-                        LabeledContent("Included", value: "\(limit.items.count)")
+                Section {
+                    Toggle("All apps and websites", isOn: $limit.allApps)
+                    if !limit.allApps {
+                        NavigationLink {
+                            ItemSelectionView(title: "Limit", items: items, selection: $limit.items)
+                        } label: {
+                            LabeledContent("Included", value: "\(limit.items.count)")
+                        }
+                        ForEach(limit.items.compactMap { items[$0] }.sorted { $0.displayName < $1.displayName }) { item in
+                            ItemName(item: item)
+                        }
                     }
-                    ForEach(limit.items.compactMap { items[$0] }.sorted { $0.displayName < $1.displayName }) { item in
-                        ItemName(item: item)
+                } header: {
+                    Text("Apps, websites and categories")
+                } footer: {
+                    if limit.allApps {
+                        Text("Everything but Always Allowed, ScreenThyme and Phone. Checked every 2 minutes of use.")
                     }
                 }
             }
@@ -189,13 +198,14 @@ struct LimitEditor: View {
                         onSave(limit)
                         dismiss()
                     }
-                    .disabled(limit.items.isEmpty)
+                    .disabled(!limit.allApps && limit.items.isEmpty)
                 }
             }
         }
     }
 
     private var suggestedName: String {
+        if limit.allApps { return "All apps" }
         let names = limit.items.compactMap { items[$0]?.displayName }.sorted()
         return names.count > 1 ? "\(names[0]) and \(names.count - 1) more" : names.first ?? "Limit"
     }

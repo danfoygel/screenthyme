@@ -511,7 +511,7 @@ again, or it takes the data back. The kid's phone reports that as a health issue
 |---|---|
 | Downtime windows | name, start/end minute (may wrap midnight), weekdays (of the day the window starts) |
 | Always allowed | apps, websites or categories (TrackedItem ids) exempt from Downtime and limits |
-| App limits | name, items (apps, websites, **categories**), minutes per day, optional per-weekday minutes |
+| App limits | name, items (apps, websites, **categories**) or **all apps**, minutes per day, optional per-weekday minutes |
 | Blocked | items never allowed |
 | Restrictions | App Store (install, delete, in-app purchases, password, max rating), media (explicit, movie/TV ratings, books, Apple Music), web filter (unrestricted / limit adult with allow+block lists / allowed sites only), Siri, Game Center (multiplayer, friends), account and passcode locks, cellular locks, automatic date and time |
 
@@ -535,6 +535,10 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   (split `.a`/`.b` when it wraps midnight); one per limit `lim.<id8>` with one event at its budget (limit plus grants)
   over the limit's tokens. Interval starts and ends and limit fires call the Enforcer. **Every 2-minute wake also
   reconciles**, so a missed callback corrects itself within one wake of use.
+- **All-apps limits** count Apple's per-app use, less Always Allowed, ScreenThyme and Phone (websites only to subtract
+  allowed ones: they also count toward Safari), and shield `.all(except: allowed)` in the `limits` store, like
+  Downtime. They get no `lim.` activity: an event over all activity can't leave out Always Allowed, so the 2-minute
+  wakes reconcile them. Their shield names only a category, so one more minute or a request is for the whole phone.
 - `Roller.registerAll` no longer stops every activity, only the wake alarm's.
 - Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
   "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" opens ScreenThyme (§15.4), or

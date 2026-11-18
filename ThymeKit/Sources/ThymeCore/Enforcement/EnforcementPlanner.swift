@@ -61,7 +61,8 @@ public struct EnforcementDayState: Codable, Sendable, Hashable {
         extraMinutes = try container.decodeIfPresent([ExtraMinute].self, forKey: .extraMinutes) ?? []
     }
 
-    /// One more minute is once a day per app, or with no app (a Downtime category shield) once per Downtime window.
+    /// One more minute is once a day per app, or with no app (a Downtime or all-apps limit shield, which names only a
+    /// category) once per Downtime window or limit.
     /// Never for apps that aren't allowed at all.
     public func canTakeExtraMinute(itemID: UUID?, reason: BlockReason) -> Bool {
         guard reason != .blocked else { return false }
@@ -89,6 +90,8 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
     public var exhaustedLimits: Set<UUID> = []
     /// Items of exhausted limits, minus Always Allowed (categories stay categories).
     public var limitedItems: Set<UUID> = []
+    /// An all-apps limit is exhausted: everything but Always Allowed is shielded.
+    public var allAppsLimited = false
     /// Always blocked items, minus blocked-item grants.
     public var blockedItems: Set<UUID> = []
     /// Always Allowed items, also exempt from exhausted limits.
@@ -97,14 +100,31 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
     public var extraMinuteEnds: Date?
 
     public init() {}
+
+    /// Plans saved before a field existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        downtime = try container.decodeIfPresent(Downtime.self, forKey: .downtime)
+        downtimeExceptions = try container.decodeIfPresent(Set<UUID>.self, forKey: .downtimeExceptions) ?? []
+        budgets = try container.decodeIfPresent([UUID: Int].self, forKey: .budgets) ?? [:]
+        used = try container.decodeIfPresent([UUID: Int].self, forKey: .used) ?? [:]
+        exhaustedLimits = try container.decodeIfPresent(Set<UUID>.self, forKey: .exhaustedLimits) ?? []
+        limitedItems = try container.decodeIfPresent(Set<UUID>.self, forKey: .limitedItems) ?? []
+        allAppsLimited = try container.decodeIfPresent(Bool.self, forKey: .allAppsLimited) ?? false
+        blockedItems = try container.decodeIfPresent(Set<UUID>.self, forKey: .blockedItems) ?? []
+        alwaysAllowed = try container.decodeIfPresent(Set<UUID>.self, forKey: .alwaysAllowed) ?? []
+        extraMinuteEnds = try container.decodeIfPresent(Date.self, forKey: .extraMinuteEnds)
+    }
 }
 
 public enum EnforcementPlanner {
     /// - Parameters:
     ///   - usage: seconds used today per app or website item (Apple's data).
     ///   - endingWindows: Downtime windows whose final interval just ended (DeviceActivity can call a moment early).
+    ///   - exempt: apps never blocked (ScreenThyme itself, Phone), whose use all-apps limits don't count.
     public static func plan(policy: Policy, items: [UUID: TrackedItem], usage: [UUID: Double], state: EnforcementDayState,
-                            now: Date, endingWindows: Set<UUID> = [], calendar: Calendar = .current) -> EnforcementPlan {
+                            now: Date, endingWindows: Set<UUID> = [], exempt: Set<UUID> = [],
+                            calendar: Calendar = .current) -> EnforcementPlan {
         var plan = EnforcementPlan()
         guard policy.enabled else { return plan }
         let today = DayKey(now, calendar: calendar)
@@ -144,20 +164,29 @@ public enum EnforcementPlanner {
         let weekday = calendar.component(.weekday, from: now)
         for limit in policy.limits where limit.enabled {
             let extra = grants.filter { $0.grant.reason == .limit(limit.id) }.map(\.grant.minutes)
-            let used = Int(seconds(of: limit.items, items: items, usage: usage, excluding: policy.alwaysAllowed) / 60)
+            let used = Int((limit.allApps
+                ? totalSeconds(items: items, usage: usage, excluding: policy.alwaysAllowed.union(exempt))
+                : seconds(of: limit.items, items: items, usage: usage, excluding: policy.alwaysAllowed)) / 60)
             plan.used[limit.id] = used
             guard !extra.contains(nil) else { continue }  // the rest of today
             let budget = limit.minutes(on: weekday) + extra.compactMap { $0 }.reduce(0, +)
             plan.budgets[limit.id] = budget
             if used >= budget || limitFires[limit.id] == budget {
                 plan.exhaustedLimits.insert(limit.id)
-                plan.limitedItems.formUnion(limit.items.subtracting(policy.alwaysAllowed))
+                if limit.allApps {
+                    plan.allAppsLimited = true
+                } else {
+                    plan.limitedItems.formUnion(limit.items.subtracting(policy.alwaysAllowed))
+                }
             }
         }
-        // One more minute lets the pressed item through every exhausted limit; the limit stays used up.
+        // One more minute lets the pressed item through every exhausted limit; the limit stays used up. An all-apps
+        // limit's shield names only a category, so its minute is for the whole phone.
         for minute in extraMinutes {
             guard case let .limit(limitID) = minute.reason, plan.exhaustedLimits.contains(limitID) else { continue }
-            if let item = minute.itemID {
+            if policy.limits.contains(where: { $0.id == limitID && $0.allApps }) {
+                plan.allAppsLimited = false
+            } else if let item = minute.itemID {
                 plan.limitedItems.remove(item)
             } else if let limit = policy.limits.first(where: { $0.id == limitID }) {
                 plan.limitedItems.subtract(limit.items)
@@ -183,6 +212,27 @@ public enum EnforcementPlanner {
             if targets.contains(id) || item.category.map(categories.contains) == true { counted.insert(id) }
         }
         return counted.reduce(0) { $0 + (usage[$1] ?? 0) }
+    }
+
+    /// Seconds of all use, for all-apps limits: Apple's per-app numbers except `excluded` apps (directly, through a
+    /// scanned item matched to them, or through their category), minus excluded websites, which also count toward
+    /// Safari. Scanned items only repeat their match's use, and websites aren't added, so nothing counts twice.
+    public static func totalSeconds(items: [UUID: TrackedItem], usage: [UUID: Double], excluding excluded: Set<UUID> = [])
+        -> Double {
+        let excludedIDs = excluded.union(excluded.compactMap { items[$0]?.match })
+        let excludedCategories = Set(excludedIDs.compactMap { items[$0] }.filter { $0.kind == .category }.map(\.identifier))
+        var apps = 0.0
+        var excludedSites = 0.0
+        for (id, seconds) in usage {
+            guard let item = items[id], !item.isScanned else { continue }
+            let isExcluded = excludedIDs.contains(id) || item.category.map(excludedCategories.contains) == true
+            switch item.kind {
+            case .app where !isExcluded: apps += seconds
+            case .domain where isExcluded: excludedSites += seconds
+            default: break
+            }
+        }
+        return max(0, apps - excludedSites)
     }
 
     /// A grant still has time left: minutes of the item's use, or of the clock for the whole phone or a scanned item,
