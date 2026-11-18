@@ -22,6 +22,8 @@ public struct DayInput: Sendable {
     public var trackingStarts: [Date]
     /// Websites, whose use Apple also counts as Safari's: left out when weighing how much use a stretch held.
     public var websites: Set<UUID> = []
+    /// Home Screen web apps (`com.apple.webapp`), whose blocks are matched to a website's use.
+    public var webApps: Set<UUID> = []
 
     public init(dayStart: Date, total: [FirePoint], samples: [UsageSample] = [], trackingStarts: [Date] = []) {
         self.dayStart = dayStart

@@ -34,5 +34,7 @@ public enum BuiltInApps {
         "com.apple.tv": "TV",
         "com.apple.VoiceMemos": "Voice Memos",
         "com.apple.weather": "Weather",
+        // Every Home Screen web app.
+        "com.apple.webapp": "Web app",
     ]
 }

@@ -84,4 +84,33 @@ struct CheckInsTests {
         input.websites = [roblox]
         #expect(coverage(Reconstructor.build(input), at: at(9, 30)) == .quiet)
     }
+
+    @Test func aWebAppTakesTheSiteWhoseTimeMatchesItsOwn() {
+        // A web app for 10 min, its site for about as long, and another site in a browser for 2.
+        let webApp = UUID(), site = UUID(), other = UUID(), browser = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(webApp, at(17, 0), at(18, 0), 600, reported: at(18, 30)),
+            sample(site, at(17, 0), at(18, 0), 580, reported: at(18, 30)),
+            sample(other, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
+            sample(browser, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
+        ])
+        input.websites = [site, other]
+        input.webApps = [webApp]
+        let blocks = Reconstructor.build(input).blocks
+        #expect(blocks.first { $0.itemID == webApp }?.site == site)
+        #expect(blocks.allSatisfy { $0.itemID == webApp || $0.site == nil })
+    }
+
+    @Test func aWebAppKeepsNoSiteWithoutAMatch() {
+        // The only site was used for a third as long, and another site's use was in another hour.
+        let webApp = UUID(), site = UUID(), later = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(webApp, at(17, 0), at(18, 0), 600, reported: at(18, 30)),
+            sample(site, at(17, 0), at(18, 0), 200, reported: at(18, 30)),
+            sample(later, at(18, 0), at(18, 30), 600, reported: at(18, 30)),
+        ])
+        input.websites = [site, later]
+        input.webApps = [webApp]
+        #expect(Reconstructor.build(input).blocks.first { $0.itemID == webApp }?.site == nil)
+    }
 }

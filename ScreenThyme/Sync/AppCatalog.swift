@@ -26,7 +26,7 @@ final class AppCatalog {
         case symbol(String)
     }
 
-    private static let symbols = ["com.apple.Preferences": "gearshape.fill"]
+    private static let symbols = ["com.apple.Preferences": "gearshape.fill", "com.apple.webapp": "globe"]
 
     /// By bundle ID.
     private(set) var entries: [String: Entry] = [:]
