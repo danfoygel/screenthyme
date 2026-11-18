@@ -17,22 +17,28 @@ public struct AppliedGrant: Codable, Sendable, Hashable {
     }
 }
 
-/// "One more minute" from a block page (PLAN.md §15.5): the kid lets a blocked app through for a minute of the clock,
-/// without asking. `itemID` is what the press named: the app, or for a category shield the category (a limit) or
-/// nothing (Downtime, which then pauses for the whole phone).
+/// "One more minute" from a block page (PLAN.md §15.5): the kid lets a blocked app through for a few minutes of the
+/// clock (1 by default, up to 5, set on the kid's phone), without asking. `itemID` is what the press named: the app, or
+/// for a category shield the category (a limit) or nothing (Downtime, which then pauses for the whole phone).
 public struct ExtraMinute: Codable, Sendable, Hashable {
     public var itemID: UUID?
     public var reason: BlockReason
     public var at: Date
     public var until: Date
 
-    public static let duration: TimeInterval = 60
+    /// How many minutes the kid may choose.
+    public static let allowedMinutes = 1...5
 
-    public init(itemID: UUID?, reason: BlockReason, at: Date) {
+    /// A stored setting brought into `allowedMinutes`; nil (never set) is 1.
+    public static func minutes(_ setting: Int?) -> Int {
+        min(max(setting ?? 1, allowedMinutes.lowerBound), allowedMinutes.upperBound)
+    }
+
+    public init(itemID: UUID?, reason: BlockReason, at: Date, minutes: Int = 1) {
         self.itemID = itemID
         self.reason = reason
         self.at = at
-        self.until = at.addingTimeInterval(Self.duration)
+        self.until = at.addingTimeInterval(Double(Self.minutes(minutes)) * 60)
     }
 
     public func isActive(at now: Date) -> Bool {
@@ -203,15 +209,29 @@ public enum EnforcementPlanner {
     }
 
     /// Seconds used by `targets`: apps and websites directly, categories through their apps and websites, each once.
+    /// `excluded` apps and categories don't count, directly or through a scanned item matched to them.
     public static func seconds(of targets: Set<UUID>, items: [UUID: TrackedItem], usage: [UUID: Double],
                                excluding excluded: Set<UUID> = []) -> Double {
-        let categories = Set(targets.compactMap { items[$0] }.filter { $0.kind == .category }.map(\.identifier))
+        let categories = categoryNames(targets, items: items)
+        let excludedIDs = excluded.union(excluded.compactMap { items[$0]?.match })
+        let excludedCategories = categoryNames(excluded, items: items)
         var counted = Set<UUID>()
-        for (id, _) in usage where !excluded.contains(id) {
-            guard let item = items[id] else { continue }
-            if targets.contains(id) || item.category.map(categories.contains) == true { counted.insert(id) }
+        for (id, _) in usage {
+            guard let item = items[id], !excludedIDs.contains(id),
+                  item.category.map(excludedCategories.contains) != true else { continue }
+            // A matched scanned item repeats its match's use: count it as the match, so it counts once.
+            let own = item.isScanned ? item.match ?? id : id
+            if targets.contains(id) || item.category.map(categories.contains) == true { counted.insert(own) }
         }
         return counted.reduce(0) { $0 + (usage[$1] ?? 0) }
+    }
+
+    /// The category names `ids` stand for, which apps and websites name in `TrackedItem.category`: a scanned category's
+    /// is its match's, from Apple's data (`TokenPairing`).
+    public static func categoryNames(_ ids: some Sequence<UUID>, items: [UUID: TrackedItem]) -> Set<String> {
+        Set(ids.compactMap { items[$0] }.filter { $0.kind == .category }.map { item in
+            item.match.flatMap { items[$0] }?.identifier ?? item.identifier
+        })
     }
 
     /// Seconds of all use, for all-apps limits: Apple's per-app numbers except `excluded` apps (directly, through a
@@ -220,7 +240,7 @@ public enum EnforcementPlanner {
     public static func totalSeconds(items: [UUID: TrackedItem], usage: [UUID: Double], excluding excluded: Set<UUID> = [])
         -> Double {
         let excludedIDs = excluded.union(excluded.compactMap { items[$0]?.match })
-        let excludedCategories = Set(excludedIDs.compactMap { items[$0] }.filter { $0.kind == .category }.map(\.identifier))
+        let excludedCategories = categoryNames(excluded, items: items)
         var apps = 0.0
         var excludedSites = 0.0
         for (id, seconds) in usage {

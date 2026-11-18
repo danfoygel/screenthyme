@@ -29,6 +29,17 @@ struct TokenPairingTests {
         .compactMap(TokenPairing.decode)
     }
 
+    /// What the category reports would draw if `truth` maps scanned categories to Apple's category names.
+    func categoryCodes(_ order: [TrackedItem], truth: [UUID: String]) -> [TokenPairing.Code] {
+        let fingerprint = TokenPairing.fingerprint(order)
+        return TokenPairing.categoryViews(count: order.count).flatMap { view in
+            let seen = TokenPairing.members(view, of: order).compactMap { truth[$0.id] }
+                .map { TokenPairing.Identifier(kind: .category, identifier: $0) }
+            return TokenPairing.encode(fingerprint: fingerprint, view: view, lines: TokenPairing.lines(view, seen: seen))
+        }
+        .compactMap(TokenPairing.decode)
+    }
+
     @Test func viewsCoverEveryNumberAndAreNeverEmpty() {
         #expect(TokenPairing.views(count: 0).isEmpty)
         #expect(TokenPairing.views(count: 1).map(\.name) == ["p", "b0"])
@@ -111,12 +122,73 @@ struct TokenPairingTests {
         #expect(resolution.pairs.isEmpty)
     }
 
+    @Test func categoriesPairThroughTheirOwnReports() {
+        let apps = (0..<5).map { scanned("a\($0)") }
+        let categories = (0..<13).map { scanned("c\($0)", .category) }
+        let items = apps + categories
+        let order = TokenPairing.order(items, mode: .all)
+        let categoryOrder = TokenPairing.categoryOrder(items, mode: .all)
+        #expect(order.count == 5)
+        #expect(TokenPairing.categoryViews(count: categoryOrder.count).map(\.name) == ["cp", "c0", "c1", "c2", "c3"])
+        let appTruth = [order[2].id: data("com.two")]
+        // Two categories unused in the reports' days don't show up.
+        let names = ["Social", "Games", "Entertainment", "Creativity", "Education", "Health & Fitness",
+                     "Information & Reading", "Productivity & Finance", "Shopping & Food", "Travel", "Utilities"]
+        let categoryTruth = Dictionary(uniqueKeysWithValues: zip(categoryOrder.map(\.id), names))
+
+        let resolution = TokenPairing.resolve(codes(order: order, truth: appTruth)
+                                                  + categoryCodes(categoryOrder, truth: categoryTruth),
+                                              order: order, categories: categoryOrder, known: Array(appTruth.values))
+
+        #expect(resolution.missing.isEmpty)
+        #expect(resolution.conflicts == 0)
+        #expect(resolution.unknown == 0)
+        #expect(Set(resolution.pairs) == Set(categoryTruth.map { .init(scanned: $0.key, kind: .category, identifier: $0.value) })
+            .union([.init(scanned: order[2].id, kind: .app, identifier: "com.two")]))
+    }
+
+    @Test func aMissingCategoryReportPairsNothing() {
+        let categories = TokenPairing.categoryOrder((0..<6).map { scanned("c\($0)", .category) }, mode: .all)
+        let partial = categoryCodes(categories, truth: [categories[0].id: "Social"]).filter { $0.view != .categoryBit(1) }
+        let resolution = TokenPairing.resolve(partial, order: [], categories: categories, known: [])
+        #expect(resolution.missing == ["c1"])
+        #expect(resolution.pairs.isEmpty)
+    }
+
+    /// If iOS ignored a category filter, every report would list every category: no number fits.
+    @Test func categoryReportsThatIgnoreTheirFilterPairNothing() {
+        let categories = TokenPairing.categoryOrder((0..<6).map { scanned("c\($0)", .category) }, mode: .all)
+        let fingerprint = TokenPairing.fingerprint(categories)
+        let everything = ["Social", "Games"].map { TokenPairing.Identifier(kind: .category, identifier: $0) }
+        let codes = TokenPairing.categoryViews(count: categories.count).flatMap {
+            TokenPairing.encode(fingerprint: fingerprint, view: $0, lines: TokenPairing.lines($0, seen: everything))
+        }
+        let resolution = TokenPairing.resolve(codes.compactMap(TokenPairing.decode), order: [], categories: categories,
+                                              known: [])
+        #expect(resolution.pairs.isEmpty)
+        #expect(resolution.conflicts == 2)
+    }
+
+    @Test func aCategoryPairMatchesApplesCategoryItem() {
+        let category = scanned("c", .category)
+        var items = [category]
+        let outcome = TokenPairing.apply([.init(scanned: category.id, kind: .category, identifier: "Games")], to: &items,
+                                         kid: kid)
+        #expect(outcome.created == 1)
+        // The id the sampler gives Apple's category, so its apps (`TrackedItem.category`) are found through the match.
+        #expect(items[0].match == TrackedItem.id(kid: kid, kind: .category, identifier: "Games"))
+        #expect(items.last?.displayName == "Games")
+    }
+
     @Test func otherCodesAreIgnored() {
         #expect(TokenPairing.decode("https://example.com") == nil)
         #expect(TokenPairing.decode("STPAIR2 1234abcd b12 1/1\nabcdef") == nil)
         #expect(TokenPairing.decode("STPAIR2 1234abcd b3 2/1\nabcdef") == nil)
         #expect(TokenPairing.decode("STPAIR2 1234abcd p 1/1\nabcdef")?.lines == ["abcdef"])
         #expect(TokenPairing.decode("STPAIR2 1234abcd n 1/1\na com.x")?.view == .names)
+        #expect(TokenPairing.decode("STPAIR2 1234abcd cp 1/1\nc Social")?.view == .categoryParity)
+        #expect(TokenPairing.decode("STPAIR2 1234abcd c4 1/1\nc Social")?.view == .categoryBit(4))
+        #expect(TokenPairing.decode("STPAIR2 1234abcd c5 1/1\nc Social") == nil)
     }
 
     @Test func applyMatchesCorrectsAndSkipsUnknown() {
@@ -236,6 +308,20 @@ struct TokenPairingTests {
         }
         #expect(TokenPairing.estimatedLines(members: order, items: items, mode: .all) == 50)
         #expect(TokenPairing.order(items, mode: .all).count == 200)
+    }
+
+    @Test func unmatchedModeLeavesMatchedCategoriesOut() {
+        let apple = data("Social", .category)
+        var social = scanned("c0", .category)
+        social.match = apple.id
+        let games = scanned("c1", .category)
+        let items = [social, games, apple, data("Games", .category)]
+
+        #expect(TokenPairing.categoryOrder(items, mode: .unmatched).map(\.id) == [games.id])
+        #expect(TokenPairing.categoryOrder(items, mode: .all).count == 2)
+        let seen: Set = [TokenPairing.Identifier(kind: .category, identifier: "Social"),
+                         .init(kind: .category, identifier: "Games")]
+        #expect(TokenPairing.drawn(seen, items: items, mode: .unmatched) == [.init(kind: .category, identifier: "Games")])
     }
 
     /// 207 identifiers: each bit report's hashes fit one code, and no code is wider than a 2x phone's screen.

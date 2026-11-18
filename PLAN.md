@@ -335,7 +335,7 @@ The goal is to develop and run most spikes on one iPhone plus the Simulator, wit
 
 - **Authorization mode:** a debug setting picks `.individual` instead of `.child`. Capture (ladders, monitor extension, journal, upload) is identical. `.child`-only behavior is out of scope here: the parent approval flow, the app being undeletable, and `.child` support for the S4 export option.
 - **Identity override:** "Upload as kid: Emma / Leo / Test 3 / …". This sets the `kidId` stamped on every `UsageFire`, `Heartbeat`, `TrackedItem` and `LadderEpoch`. Each fake kid gets its own `Kid` record.
-- **Role switch:** the same install can switch between the kid and parent roles without reinstalling, so the phone can capture and then view its own data after a CloudKit round trip.
+- **Role switch:** the same install can switch between the kid and parent roles without reinstalling, so the phone can capture and then view its own data after a CloudKit round trip. A phone set up as a kid's enters test mode only from the welcome screen: the switch on the kid's home screen once let a kid make their phone a parent's.
 - **Second parent:** the Simulator, signed into a second Apple ID, accepts the Family CKShare as Parent B. It covers sharing, `CKDatabaseSubscription` pushes and parent UI testing. It can't render `Label(token)` for the phone's tokens, so it shows "App #n · Category."
 - **Push trigger:** to test pushes arriving on the phone, write records from the Simulator, the CloudKit Dashboard or `cktool` on the Mac, not from the phone itself.
 - **Separate environment:** test mode writes only to the CloudKit **development** environment, plus an `isTest` flag on `Kid`, so test data never mixes with the real family's data.
@@ -587,7 +587,8 @@ category ids) for the app, which shows `AskForTimeView`:
 ### 15.5 One more minute
 
 Like Apple's: from a Downtime or limit block page, the kid can let the app through for a minute without asking, once a
-day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iOS 26.4): **One more minute** /
+day. The kid's phone sets how long (1–5 minutes, default 1; `SharedConfig.extraMinutes`, on the kid's home screen);
+past 1 the menu item reads "N more minutes". "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iOS 26.4): **One more minute** /
 **Ask a parent** (§15.4). Once the minute is used, the button asks straight away. Never for Blocked apps.
 - The press decides what is lifted, as a request would (`ShieldContext.requestScope`). An app shielded by itself (a
   per-app limit) lets that app through. A category shield (a category limit) names only the category, so that
@@ -595,11 +596,11 @@ day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iO
   whole phone for the minute. Once a day per app, or for a Downtime press, once per window
   (`EnforcementDayState.canTakeExtraMinute`). The block page computes the menu for what its press will name
   (`ShieldContext.pressed`), so the action extension maps the item pressed back to the same choice.
-- The ShieldAction extension records an `ExtraMinute` (60 s of the clock) in `enforcement-state.json`, runs the
+- The ShieldAction extension records an `ExtraMinute` (the chosen minutes of the clock) in `enforcement-state.json`, runs the
   `Enforcer`, which lifts it from the stores, and answers `.defer`, so iOS re-evaluates the shield and opens the app.
   The extension compiles the Enforcer and `UsageSnapshot` (today's use, without Apple's data or SwiftUI).
 - Shielded again by the activity `om.end`: schedules count whole minutes and last at least 15, so it is a ~16-minute
-  interval whose end warning falls at the first whole minute after the minute ends (60–120 s after the press). The
+  interval whose end warning falls at the first whole minute after the extra time ends. The
   monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
   reshields it.
 - No alert to parents; the journal notes each one.
@@ -657,19 +658,30 @@ like this:
   and a code holds up to 1150 bytes (version 28: as wide as a 2x phone's screen at 5 px). The app sizes each report
   from the scan (`TokenPairing.estimatedCodes`), in one column unless two fit; the extension lays several codes out in
   the grid that draws them largest. About 5 screenshots on a 3x phone with 200 identifiers.
+- **Categories** (Nov 17) pair the same way, in reports of their own: a report filtered by a category shows every app
+  in it, so categories can't share the apps' bits. The scan's categories (`TokenPairing.categoryOrder`, about a dozen)
+  get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which
+  spell out the names of the categories they see (`localizedDisplayName`, as the Sampler names category items). A
+  scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
+  unused in the 28 days stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
+  shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
 - **New apps only** (Nov 17, `TokenPairing.Mode`, the default): after a first round, a new app's match can't come
   from one code (the token is what's unknown), but every code can be tiny. In `unmatched` mode the numbers go only
   to scanned items with no match (a rescan keeps matches, so these are the new tokens and those still unused), and
-  the reports leave out apps and websites already matched, so each bit report holds the hashes of the few new
+  the reports leave out apps, websites and categories already matched, so each bit report holds the hashes of the few new
   identifiers: about 45 modules, three to a row, and all the codes in one screenshot. "Everything" (`all`) checks
   every match again. The app saves the mode in the App Group (`token-pairing-mode.json`) before the reports draw,
   since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
   websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
   has no token: scan again first.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
+  A scanned category counts through its match's name (`EnforcementPlanner.categoryNames`): before, a limit on one
+  counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps
+  limits nor let their apps through Downtime. `.all(except:)` takes apps only, so an allowed category lets through
+  the scanned apps matched to its apps; unmatched apps stay shielded.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
-  name. Unmatched ones are listed apart, by `Label` only.
+  name, and scanned categories by their match's. Unmatched ones are listed apart, by `Label` only.
 
 ### 15.7 Change history (Nov 17, 2026)
 

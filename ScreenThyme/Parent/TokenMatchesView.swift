@@ -1,7 +1,7 @@
 import SwiftUI
 import ThymeCore
 
-/// Which of a kid's scanned apps or websites have been matched to Apple's usage data, and to what (PLAN.md §15.6).
+/// Which of a kid's scanned apps, websites or categories have been matched to Apple's usage data, and to what (PLAN.md §15.6).
 /// Each row shows Apple's own label for the scanned token above the bundle ID or domain it was matched to, so a wrong
 /// match stands out.
 struct TokenMatchesView: View {
@@ -47,12 +47,22 @@ struct TokenMatchesView: View {
     }
 
     static func title(_ kind: ItemKind) -> String {
-        kind == .app ? "App matches" : "Website matches"
+        switch kind {
+        case .app: "App matches"
+        case .domain: "Website matches"
+        case .category: "Category matches"
+        }
     }
 
-    private var noun: String { kind == .app ? "app" : "website" }
+    private var noun: String {
+        switch kind {
+        case .app: "app"
+        case .domain: "website"
+        case .category: "category"
+        }
+    }
 
-    /// Scanned apps or websites still in the scan (they have a token), in the order the scan found them.
+    /// Scanned apps, websites or categories still in the scan (they have a token), in the order the scan found them.
     static func scanned(_ kind: ItemKind, in items: [UUID: TrackedItem]) -> [TrackedItem] {
         items.values.filter { $0.kind == kind && $0.isScanned && $0.tokenData != nil }
             .sorted { ($0.firstSeen, $0.identifier) < ($1.firstSeen, $1.identifier) }

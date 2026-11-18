@@ -78,17 +78,18 @@ enum Enforcer {
         }
     }
 
-    /// "One more minute" from a block page: lets `itemID` (or with none, what `reason` blocks) through for a minute,
-    /// once a day. False when it was already taken.
+    /// "One more minute" from a block page: lets `itemID` (or with none, what `reason` blocks) through for the kid
+    /// phone's chosen number of minutes, once a day. False when it was already taken.
     @discardableResult
     static func takeExtraMinute(itemID: UUID?, reason: BlockReason, now: Date = Date()) -> Bool {
+        let minutes = SharedConfig.load().extraMinuteLength
         var taken = false
         reconcile(now: now) { state in
             guard state.canTakeExtraMinute(itemID: itemID, reason: reason) else { return }
-            state.extraMinutes.append(ExtraMinute(itemID: itemID, reason: reason, at: now))
+            state.extraMinutes.append(ExtraMinute(itemID: itemID, reason: reason, at: now, minutes: minutes))
             taken = true
         }
-        try? AppGroup.journal.append(.note(taken ? "one more minute: \(reason)" : "one more minute already used: \(reason)"))
+        try? AppGroup.journal.append(.note(taken ? "one more minute (\(minutes) min): \(reason)" : "one more minute already used: \(reason)"))
         return taken
     }
 
@@ -245,12 +246,15 @@ enum Enforcer {
             return split
         }
 
-        /// Categories replaced by their known apps and websites (for "all except" lists, which take apps only).
+        /// Categories replaced by their known apps and websites (for "all except" lists, which take apps only). Apple's
+        /// data has no tokens, so those come from the scanned items matched to them; a scanned category finds its apps
+        /// through its own match (`TokenPairing`). Unmatched apps can't be let through.
         func expandingCategories(_ ids: Set<UUID>) -> Set<UUID> {
-            let categories = Set(ids.compactMap { items[$0] }.filter { $0.kind == .category }.map(\.identifier))
+            let categories = EnforcementPlanner.categoryNames(ids, items: items)
             guard !categories.isEmpty else { return ids }
-            let members = items.values.filter { $0.category.map(categories.contains) == true }.map(\.id)
-            return ids.union(members)
+            let members = Set(items.values.filter { $0.category.map(categories.contains) == true }.map(\.id))
+            let scanned = items.values.filter { $0.match.map(members.contains) == true }.map(\.id)
+            return ids.union(members).union(scanned)
         }
     }
 
@@ -321,7 +325,7 @@ enum Enforcer {
     }
 
     /// Schedules count whole minutes and last at least 15, so the alarm is an interval's end warning at the first whole
-    /// minute after `ends` (60–120 s after the press). Nil past 23:59: the new day's reconcile ends it.
+    /// minute after `ends` (up to a minute after the extra time runs out). Nil past 23:59: the new day's reconcile ends it.
     private static func extraMinuteSchedule(ending ends: Date, now: Date) -> (schedule: DeviceActivitySchedule, fire: Date)? {
         let calendar = Calendar.current
         func wholeMinute(_ date: Date, up: Bool) -> Date {

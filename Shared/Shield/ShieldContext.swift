@@ -46,7 +46,15 @@ struct ShieldContext {
     /// A press on a category shield (Downtime, category limits) names only the category.
     func target(categoryToken: ActivityCategoryToken) -> Target {
         let category = items.first { $0.kind == .category && TokenCoding.category($0.tokenData) == categoryToken }
-        return Target(item: nil, category: category, name: category?.displayName ?? "These apps")
+        return Target(item: nil, category: category, name: category.map(name(of:)) ?? "These apps")
+    }
+
+    /// A scanned category goes by its match's name, from Apple's data (`TokenPairing`).
+    func name(of category: TrackedItem) -> String {
+        if category.nickname == nil, let match = category.match, let named = items.first(where: { $0.id == match }) {
+            return named.displayName
+        }
+        return category.displayName
     }
 
     func target(domainToken: WebDomainToken) -> Target {
@@ -57,7 +65,7 @@ struct ShieldContext {
     /// action extension, not the app.
     func pressed(_ target: Target, inCategory: Bool) -> Target {
         guard inCategory else { return target }
-        return Target(item: nil, category: target.category, name: target.category?.displayName ?? "These apps")
+        return Target(item: nil, category: target.category, name: target.category.map(name(of:)) ?? "These apps")
     }
 
     private func categoryItem(_ category: ActivityCategory?, name: String?) -> TrackedItem? {
@@ -122,9 +130,10 @@ struct ShieldContext {
         case oneMoreMinute
         case ask
 
-        var title: String {
+        /// `minutes`: the kid phone's choice for one more minute (`SharedConfig.extraMinuteLength`).
+        func title(minutes: Int) -> String {
             switch self {
-            case .oneMoreMinute: "One more minute"
+            case .oneMoreMinute: minutes == 1 ? "One more minute" : "\(minutes) more minutes"
             case .ask: "Ask a parent"
             }
         }
@@ -223,7 +232,7 @@ struct ShieldContext {
     func target(_ ask: Ask) -> Target {
         let item = items.first { $0.id == ask.itemID }
         let category = items.first { $0.id == ask.categoryID }
-        return Target(item: item, category: category, name: (item ?? category)?.displayName ?? "This app")
+        return Target(item: item, category: category, name: item?.displayName ?? category.map(name(of:)) ?? "This app")
     }
 
     func target(item: TrackedItem) -> Target {

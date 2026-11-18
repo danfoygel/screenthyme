@@ -166,9 +166,14 @@ struct SharedConfig: Codable, Sendable {
     var family: FamilyLocation?
     /// What this parent's kids call them ("Dad"), shown on the kid's phone with their answers and pings.
     var parentName: String?
+    /// Kid phones: how many minutes the block page's "One more minute" lets through (1–5, PLAN.md §15.5).
+    /// Optional so configs written before it still load; nil is 1.
+    var extraMinutes: Int?
     var epoch: LadderEpoch?
     /// Superseded by `AppGroup.loadRules()`; read only until a phone has written rules.json.
     var rules: [Rule] = []
+
+    var extraMinuteLength: Int { ExtraMinute.minutes(extraMinutes) }
 
     /// The rules to evaluate on this kid phone.
     var currentRules: [Rule] { AppGroup.loadRules()?.rules ?? rules }

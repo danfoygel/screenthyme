@@ -4,7 +4,7 @@ import ThymeCore
 
 /// The block page's buttons (PLAN.md §15.4, §15.5). "Ask for more time" notes what was blocked and opens ScreenThyme
 /// (`openParentalControlsApp`, iOS 26.5), which asks the parents; its menu's "One more minute" lifts the shield
-/// for a minute, once a day, without asking.
+/// for the kid phone's chosen minutes (1–5), once a day, without asking.
 final class ShieldActionExtension: ShieldActionDelegate {
     override func handle(action: ShieldAction, for application: ApplicationToken,
                          completionHandler: @escaping (ShieldActionResponse) -> Void) {
