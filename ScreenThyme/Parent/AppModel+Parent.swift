@@ -32,14 +32,23 @@ extension AppModel {
         }
     }
 
-    /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`) or gets it nearby.
+    /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`) or gets it nearby. Notes the
+    /// change, with who made it, in the kid's change history.
     func save(_ policy: Policy) async {
         var policy = policy
         policy.updatedAt = Date()
-        data.ingest(IngestBatch(policies: [policy]))
+        let before = data.storedPolicy(for: policy.kidID)
+        let change = PolicyChange(kidID: policy.kidID, at: policy.updatedAt, by: senderName, before: before, after: policy)
+        let changes = change.edits.isEmpty ? [] : [change]
+        data.ingest(IngestBatch(policies: [policy], policyChanges: changes))
         nearby.sendUpdates()
         guard let store else { return }
-        do { try await PendingSaves.save([policy], to: store) } catch { show(error) }
+        do {
+            try await PendingSaves.save([policy.record(in: store.zoneID)] + changes.map { try $0.record(in: store.zoneID) },
+                                        to: store)
+        } catch {
+            show(error)
+        }
     }
 
     /// Answers a kid's request for more time; the kid's phone fetches the grant by name or gets it nearby. Offline,

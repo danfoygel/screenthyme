@@ -117,6 +117,13 @@ extension Policy: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+/// The change history (`PolicyChange`); only parents' phones read it.
+extension PolicyChange: CloudRecordable {
+    static let recordType = "PolicyChange"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+}
+
 extension TimeRequest: CloudRecordable {
     static let recordType = "TimeRequest"
     var recordUUID: UUID { id }

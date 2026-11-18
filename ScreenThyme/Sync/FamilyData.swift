@@ -16,6 +16,7 @@ struct IngestBatch: Sendable {
     var pings: [Ping] = []
     var energy: [EnergyReport] = []
     var policies: [Policy] = []
+    var policyChanges: [PolicyChange] = []
     var requests: [TimeRequest] = []
     var grants: [TimeGrant] = []
     var linkKeys: [LinkKey] = []
@@ -34,6 +35,7 @@ struct IngestBatch: Sendable {
         case Ping.recordType: Ping.decode(record).map { pings.append($0) }
         case EnergyReport.recordType: EnergyReport.decode(record).map { energy.append($0) }
         case Policy.recordType: Policy.decode(record).map { policies.append($0) }
+        case PolicyChange.recordType: PolicyChange.decode(record).map { policyChanges.append($0) }
         case TimeRequest.recordType: TimeRequest.decode(record).map { requests.append($0) }
         case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
         case LinkKey.recordType: LinkKey.decode(record).map { linkKeys.append($0) }
@@ -44,7 +46,7 @@ struct IngestBatch: Sendable {
     var isEmpty: Bool {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
-            && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && requests.isEmpty && grants.isEmpty
+            && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
             && linkKeys.isEmpty && deletedRecordNames.isEmpty
     }
 }
@@ -55,7 +57,7 @@ struct IngestBatch: Sendable {
 final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: an older (or unreadable) snapshot triggers a full re-fetch.
-        static let currentVersion = 3
+        static let currentVersion = 4
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -67,6 +69,7 @@ final class FamilyData {
         var pings: [UUID: Ping] = [:]
         var energy: [UUID: EnergyReport] = [:]
         var policies: [UUID: Policy] = [:]
+        var policyChanges: [UUID: PolicyChange] = [:]
         var requests: [UUID: TimeRequest] = [:]
         var grants: [UUID: TimeGrant] = [:]
         /// Where builds before link-key.json kept the nearby link's secret; read once, to move it.
@@ -103,6 +106,13 @@ final class FamilyData {
 
     func storedPolicy(for kid: UUID) -> Policy? {
         snapshot.policies[kid]
+    }
+
+    /// Saved policies and answered requests for more time, oldest first.
+    func policyHistory(for kid: UUID) -> [PolicyHistoryEntry] {
+        let changes = snapshot.policyChanges.values.filter { $0.kidID == kid }.map(PolicyHistoryEntry.change)
+        let grants = snapshot.grants.values.filter { $0.kidID == kid }.map(PolicyHistoryEntry.grant)
+        return (changes + grants).sorted { ($0.at, $0.id.uuidString) < ($1.at, $1.id.uuidString) }
     }
 
     /// Requests no parent has answered yet, newest first.
@@ -154,6 +164,7 @@ final class FamilyData {
         for policy in batch.policies where policy.updatedAt >= (snapshot.policies[policy.kidID]?.updatedAt ?? .distantPast) {
             snapshot.policies[policy.kidID] = policy
         }
+        for change in batch.policyChanges { snapshot.policyChanges[change.id] = change }
         for request in batch.requests { snapshot.requests[request.id] = request }
         for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
         if let key = batch.linkKeys.last, key != linkKey { saveLinkKey(key) }
@@ -215,6 +226,7 @@ final class FamilyData {
         snapshot.heartbeats[kid] = nil
         snapshot.energy = snapshot.energy.filter { $0.value.kidID != kid }
         snapshot.policies[kid] = nil
+        snapshot.policyChanges = snapshot.policyChanges.filter { $0.value.kidID != kid }
         snapshot.requests = snapshot.requests.filter { $0.value.kidID != kid }
         snapshot.grants = snapshot.grants.filter { $0.value.kidID != kid }
         snapshot.lastFireAt[kid] = nil
@@ -235,6 +247,33 @@ final class FamilyData {
     private func saveSnapshot() {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? JSONEncoder.thyme.encode(snapshot).write(to: directory.appending(path: "snapshot.json"), options: .atomic)
+    }
+}
+
+/// One line of a kid's change history: a parent's save of the policy, or their answer to a request for more time.
+enum PolicyHistoryEntry: Identifiable {
+    case change(PolicyChange)
+    case grant(TimeGrant)
+
+    var id: UUID {
+        switch self {
+        case let .change(change): change.id
+        case let .grant(grant): grant.requestID
+        }
+    }
+
+    var at: Date {
+        switch self {
+        case let .change(change): change.at
+        case let .grant(grant): grant.at
+        }
+    }
+
+    var by: String {
+        switch self {
+        case let .change(change): change.by
+        case let .grant(grant): grant.by
+        }
     }
 }
 

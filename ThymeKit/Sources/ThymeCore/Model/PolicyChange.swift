@@ -1,0 +1,213 @@
+import Foundation
+
+/// One parent's save of a kid's policy, for the change history (PLAN.md §15.7): who, when, and the policy before and
+/// after, so the history can say what changed in names as they are now. Saved as `PolicyChange.<id>`; only parents'
+/// phones read them.
+public struct PolicyChange: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var kidID: UUID
+    public var at: Date
+    /// The parent's name, as on their grants (`AppModel.senderName`).
+    public var by: String
+    /// `nil` for the kid's first policy, which was edited from an empty one.
+    public var before: Policy?
+    public var after: Policy
+
+    public init(id: UUID = UUID(), kidID: UUID, at: Date, by: String, before: Policy?, after: Policy) {
+        self.id = id
+        self.kidID = kidID
+        self.at = at
+        self.by = by
+        self.before = before
+        self.after = after
+    }
+
+    public var edits: [PolicyEdit] {
+        PolicyEdit.between(before ?? Policy(kidID: kidID), after)
+    }
+}
+
+/// One difference between two policies. Items stay ids, named when shown.
+public enum PolicyEdit: Sendable, Hashable {
+    case enforcement(on: Bool)
+    case downtimeAdded(DowntimeWindow)
+    case downtimeRemoved(DowntimeWindow)
+    case downtimeChanged(from: DowntimeWindow, to: DowntimeWindow)
+    case limitAdded(AppLimit)
+    case limitRemoved(AppLimit)
+    case limitChanged(from: AppLimit, to: AppLimit)
+    case alwaysAllowed(added: Set<UUID>, removed: Set<UUID>)
+    case blocked(added: Set<UUID>, removed: Set<UUID>)
+    /// A Content & Privacy setting, with its values as shown ("On", "12+").
+    case restriction(name: String, from: String, to: String)
+    case websites(list: String, added: [String], removed: [String])
+
+    /// In the order the policy screen shows them.
+    public static func between(_ old: Policy, _ new: Policy) -> [PolicyEdit] {
+        var edits: [PolicyEdit] = []
+        if old.enabled != new.enabled { edits.append(.enforcement(on: new.enabled)) }
+        edits += changes(old.downtime, new.downtime, added: PolicyEdit.downtimeAdded, removed: PolicyEdit.downtimeRemoved,
+                         changed: PolicyEdit.downtimeChanged)
+        edits += changes(old.limits, new.limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
+                         changed: PolicyEdit.limitChanged)
+        if old.alwaysAllowed != new.alwaysAllowed {
+            edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
+                                        removed: old.alwaysAllowed.subtracting(new.alwaysAllowed)))
+        }
+        if old.blocked != new.blocked {
+            edits.append(.blocked(added: new.blocked.subtracting(old.blocked), removed: old.blocked.subtracting(new.blocked)))
+        }
+        for setting in Restrictions.settings {
+            let (from, to) = (setting.value(old.restrictions), setting.value(new.restrictions))
+            if from != to { edits.append(.restriction(name: setting.name, from: from, to: to)) }
+        }
+        let (oldLists, newLists) = (old.restrictions.webFilter.lists, new.restrictions.webFilter.lists)
+        for list in WebFilter.listNames {
+            let (from, to) = (oldLists[list] ?? [], newLists[list] ?? [])
+            let added = to.filter { !from.contains($0) }, removed = from.filter { !to.contains($0) }
+            if !added.isEmpty || !removed.isEmpty { edits.append(.websites(list: list, added: added, removed: removed)) }
+        }
+        return edits
+    }
+
+    private static func changes<T: Identifiable & Equatable>(
+        _ old: [T], _ new: [T], added: (T) -> PolicyEdit, removed: (T) -> PolicyEdit, changed: (T, T) -> PolicyEdit
+    ) -> [PolicyEdit] {
+        let oldByID = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let newIDs = Set(new.map(\.id))
+        return old.filter { !newIDs.contains($0.id) }.map(removed) + new.compactMap { value in
+            guard let previous = oldByID[value.id] else { return added(value) }
+            return previous == value ? nil : changed(previous, value)
+        }
+    }
+
+    /// One line for the history, then lines of detail. `name` names an item (app, website or category).
+    public func describe(calendar: Calendar = .current, name: (UUID) -> String) -> (title: String, details: [String]) {
+        func names(_ ids: Set<UUID>) -> String { ids.map(name).sorted().joined(separator: ", ") }
+        func listChange(_ added: Set<UUID>, _ removed: Set<UUID>) -> [String] {
+            (added.isEmpty ? [] : ["Added \(names(added))"]) + (removed.isEmpty ? [] : ["Removed \(names(removed))"])
+        }
+        switch self {
+        case let .enforcement(on):
+            return (on ? "Turned enforcement on" : "Turned enforcement off", [])
+        case let .downtimeAdded(window):
+            return ("Added Downtime \u{201C}\(window.name)\u{201D}", [window.schedule(calendar: calendar)])
+        case let .downtimeRemoved(window):
+            return ("Removed Downtime \u{201C}\(window.name)\u{201D}", [window.schedule(calendar: calendar)])
+        case let .downtimeChanged(old, new):
+            var details: [String] = []
+            if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
+            let (from, to) = (old.schedule(calendar: calendar), new.schedule(calendar: calendar))
+            if from != to { details.append("\(from) → \(to)") }
+            return ("Changed Downtime \u{201C}\(new.name)\u{201D}", details)
+        case let .limitAdded(limit):
+            var details = ["\(Self.minutes(limit.minutes)) a day" + (limit.enabled ? "" : ", off")]
+            details += limit.weekdayMinutes.sorted { $0.key < $1.key }.map {
+                "\(calendar.weekdaySymbols[$0.key - 1]): \(Self.minutes($0.value))"
+            }
+            details.append(names(limit.items))
+            return ("Added limit \u{201C}\(limit.name)\u{201D}", details)
+        case let .limitRemoved(limit):
+            return ("Removed limit \u{201C}\(limit.name)\u{201D}", ["\(Self.minutes(limit.minutes)) a day, \(names(limit.items))"])
+        case let .limitChanged(old, new):
+            var details: [String] = []
+            if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
+            if old.enabled != new.enabled { details.append(new.enabled ? "Turned on" : "Turned off") }
+            if old.minutes != new.minutes { details.append("\(Self.minutes(old.minutes)) → \(Self.minutes(new.minutes)) a day") }
+            for weekday in 1...7 where old.weekdayMinutes[weekday] != new.weekdayMinutes[weekday] {
+                let (from, to) = (old.weekdayMinutes[weekday].map(Self.minutes) ?? "same",
+                                  new.weekdayMinutes[weekday].map(Self.minutes) ?? "same")
+                details.append("\(calendar.weekdaySymbols[weekday - 1]): \(from) → \(to)")
+            }
+            details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
+            return ("Changed limit \u{201C}\(new.name)\u{201D}", details)
+        case let .alwaysAllowed(added, removed):
+            return ("Changed Always Allowed", listChange(added, removed))
+        case let .blocked(added, removed):
+            return ("Changed Blocked", listChange(added, removed))
+        case let .restriction(name, from, to):
+            return ("\(name): \(to)", ["Was \(from)"])
+        case let .websites(list, added, removed):
+            return ("Changed \(list)", (added.isEmpty ? [] : ["Added \(added.joined(separator: ", "))"])
+                + (removed.isEmpty ? [] : ["Removed \(removed.joined(separator: ", "))"]))
+        }
+    }
+
+    static func minutes(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
+    }
+}
+
+extension DowntimeWindow {
+    /// "21:30–7:00, every day" or "8:00–15:00, Mon Tue Wed".
+    public func schedule(calendar: Calendar = .current) -> String {
+        let days = weekdays.isEmpty || weekdays.count == 7 ? "every day"
+            : weekdays.sorted().map { calendar.shortWeekdaySymbols[$0 - 1] }.joined(separator: " ")
+        return "\(RuleCondition.clock(startMinute))–\(RuleCondition.clock(endMinute)), \(days)"
+    }
+}
+
+extension Restrictions {
+    /// Apple's rating values (see `Restrictions`) and their names.
+    public static let appRatings = [(100, "4+"), (200, "9+"), (300, "12+"), (600, "17+")]
+    public static let movieRatings = [(100, "G"), (200, "PG"), (300, "PG-13"), (400, "R")]
+    public static let tvRatings = [(100, "TV-Y"), (200, "TV-Y7"), (300, "TV-G"), (400, "TV-PG"), (500, "TV-14")]
+
+    /// Each setting as the Content & Privacy screen names it, with its value as shown. The web filter's lists are
+    /// compared apart (`WebFilter.lists`).
+    static var settings: [(name: String, value: (Restrictions) -> String)] {
+        func toggle(_ name: String, _ keyPath: KeyPath<Restrictions, Bool>) -> (name: String, value: (Restrictions) -> String) {
+            (name, { $0[keyPath: keyPath] ? "On" : "Off" })
+        }
+        func rating(_ name: String, _ keyPath: KeyPath<Restrictions, Int?>, _ names: [(Int, String)])
+            -> (name: String, value: (Restrictions) -> String) {
+            (name, { restrictions in
+                restrictions[keyPath: keyPath].map { value in names.first { $0.0 == value }?.1 ?? "\(value)" } ?? "All"
+            })
+        }
+        return [
+            toggle("Block installing apps", \.denyAppInstallation),
+            toggle("Block deleting apps", \.denyAppRemoval),
+            toggle("Block in-app purchases", \.denyInAppPurchases),
+            toggle("Always require password", \.requirePasswordForPurchases),
+            rating("Apps up to", \.maximumAppRating, appRatings),
+            toggle("Block explicit music, podcasts and books", \.denyExplicitContent),
+            rating("Movies up to", \.maximumMovieRating, movieRatings),
+            rating("TV shows up to", \.maximumTVShowRating, tvRatings),
+            toggle("Block sexual content in books", \.denyBookstoreErotica),
+            toggle("Block Apple Music", \.denyMusicService),
+            ("Websites", { $0.webFilter.modeTitle }),
+            toggle("Block Safari AutoFill", \.denySafariAutoFill),
+            toggle("Block Siri", \.denySiri),
+            toggle("Block multiplayer games", \.denyMultiplayerGaming),
+            toggle("Block adding Game Center friends", \.denyAddingFriends),
+            toggle("Lock accounts", \.lockAccounts),
+            toggle("Lock passcode", \.lockPasscode),
+            toggle("Lock cellular data per app", \.lockAppCellularData),
+            toggle("Lock cellular plan", \.lockCellularPlan),
+            toggle("Lock eSIM", \.lockESIM),
+            toggle("Require automatic date and time", \.requireAutomaticDateAndTime),
+        ]
+    }
+}
+
+extension WebFilter {
+    public var modeTitle: String {
+        switch self {
+        case .unrestricted: "Unrestricted"
+        case .limitAdult: "Limit adult websites"
+        case .allowedOnly: "Allowed websites only"
+        }
+    }
+
+    static let listNames = ["websites always allowed", "websites never allowed", "allowed websites"]
+
+    /// Domain lists by name, in `listNames`.
+    var lists: [String: [String]] {
+        switch self {
+        case .unrestricted: [:]
+        case let .limitAdult(allowed, blocked): [Self.listNames[0]: allowed, Self.listNames[1]: blocked]
+        case let .allowedOnly(allowed): [Self.listNames[2]: allowed]
+        }
+    }
+}
