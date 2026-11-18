@@ -42,12 +42,15 @@ struct PolicyView: View {
             }
             Section {
                 NavigationLink {
-                    ItemSelectionView(title: "Always Allowed", items: items, selection: binding(policy, \.alwaysAllowed))
+                    SelectedItemsView(title: "Always Allowed", items: items,
+                                      footer: "These work during Downtime and don't count toward limits. ScreenThyme and Phone are always allowed too.",
+                                      selection: binding(policy, \.alwaysAllowed))
                 } label: {
                     LabeledContent("Always Allowed", value: "\(policy.alwaysAllowed.count)")
                 }
                 NavigationLink {
-                    ItemSelectionView(title: "Blocked", items: items, selection: binding(policy, \.blocked))
+                    SelectedItemsView(title: "Blocked", items: items, footer: "These never open.",
+                                      selection: binding(policy, \.blocked))
                 } label: {
                     LabeledContent("Blocked", value: "\(policy.blocked.count)")
                 }

@@ -25,6 +25,9 @@ struct KidScreenTimeSection: View {
                 if plan.downtime == nil && policy.limits.isEmpty {
                     Text("No Downtime now and no limits.").foregroundStyle(.secondary)
                 }
+                itemList("Always Allowed", ids: policy.alwaysAllowed, items: items,
+                         footer: "These work during Downtime and don't count toward limits. ScreenThyme and Phone are always allowed too.")
+                itemList("Blocked", ids: policy.blocked, items: items, footer: "These never open.")
             } else {
                 Text("No limits on this phone.").foregroundStyle(.secondary)
             }
@@ -58,9 +61,23 @@ struct KidScreenTimeSection: View {
         }
     }
 
+    @ViewBuilder
+    private func itemList(_ title: String, ids: Set<UUID>, items: [UUID: TrackedItem], footer: String) -> some View {
+        if ids.isEmpty {
+            LabeledContent(title, value: "none")
+        } else {
+            NavigationLink {
+                SelectedItemsView(title: title, ids: ids, items: items, footer: footer)
+            } label: {
+                LabeledContent(title, value: "\(ids.count)")
+            }
+        }
+    }
+
     private func reload() {
         applied = Enforcer.loadApplied()
         requests = KidSync.openRequests()
         answers = Enforcer.loadState().grants
     }
 }
+
