@@ -122,9 +122,10 @@ struct ShieldContext {
         case oneMoreMinute
         case ask
 
-        var title: String {
+        /// `minutes`: the kid phone's choice for one more minute (`SharedConfig.extraMinuteLength`).
+        func title(minutes: Int) -> String {
             switch self {
-            case .oneMoreMinute: "One more minute"
+            case .oneMoreMinute: minutes == 1 ? "One more minute" : "\(minutes) more minutes"
             case .ask: "Ask a parent"
             }
         }

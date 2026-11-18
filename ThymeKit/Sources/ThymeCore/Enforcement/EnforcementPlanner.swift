@@ -17,22 +17,28 @@ public struct AppliedGrant: Codable, Sendable, Hashable {
     }
 }
 
-/// "One more minute" from a block page (PLAN.md §15.5): the kid lets a blocked app through for a minute of the clock,
-/// without asking. `itemID` is what the press named: the app, or for a category shield the category (a limit) or
-/// nothing (Downtime, which then pauses for the whole phone).
+/// "One more minute" from a block page (PLAN.md §15.5): the kid lets a blocked app through for a few minutes of the
+/// clock (1 by default, up to 5, set on the kid's phone), without asking. `itemID` is what the press named: the app, or
+/// for a category shield the category (a limit) or nothing (Downtime, which then pauses for the whole phone).
 public struct ExtraMinute: Codable, Sendable, Hashable {
     public var itemID: UUID?
     public var reason: BlockReason
     public var at: Date
     public var until: Date
 
-    public static let duration: TimeInterval = 60
+    /// How many minutes the kid may choose.
+    public static let allowedMinutes = 1...5
 
-    public init(itemID: UUID?, reason: BlockReason, at: Date) {
+    /// A stored setting brought into `allowedMinutes`; nil (never set) is 1.
+    public static func minutes(_ setting: Int?) -> Int {
+        min(max(setting ?? 1, allowedMinutes.lowerBound), allowedMinutes.upperBound)
+    }
+
+    public init(itemID: UUID?, reason: BlockReason, at: Date, minutes: Int = 1) {
         self.itemID = itemID
         self.reason = reason
         self.at = at
-        self.until = at.addingTimeInterval(Self.duration)
+        self.until = at.addingTimeInterval(Double(Self.minutes(minutes)) * 60)
     }
 
     public func isActive(at now: Date) -> Bool {

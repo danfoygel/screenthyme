@@ -44,6 +44,6 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             primaryButtonLabel: .init(text: "OK", color: .black),
             primaryButtonBackgroundColor: green,
             secondaryButtonLabel: canAsk ? .init(text: "Ask for more time", color: .systemGreen) : nil,
-            secondaryButtonSubmenuItems: canAsk && !menu.isEmpty ? menu.map(\.title) : nil)
+            secondaryButtonSubmenuItems: canAsk && !menu.isEmpty ? menu.map { $0.title(minutes: context.config.extraMinuteLength) } : nil)
     }
 }

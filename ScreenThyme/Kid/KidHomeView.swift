@@ -34,6 +34,15 @@ struct KidHomeView: View {
                     }
                 }
                 Section {
+                    Stepper(value: extraMinutes, in: ExtraMinute.allowedMinutes) {
+                        LabeledContent("One more minute", value: "\(model.config.extraMinuteLength) min")
+                    }
+                } header: {
+                    Text("Block page")
+                } footer: {
+                    Text("How long \"One more minute\" on a block page lets an app through, without asking. Once a day for each app.")
+                }
+                Section {
                     if !model.hasDataAccess {
                         Button(model.isAuthorized ? "Allow usage data access" : "Allow Screen Time access") {
                             Task { await model.requestAuthorization() }
@@ -107,6 +116,10 @@ struct KidHomeView: View {
                 await model.refresh()
             }
         }
+    }
+
+    private var extraMinutes: Binding<Int> {
+        Binding { model.config.extraMinuteLength } set: { minutes in model.update { $0.extraMinutes = minutes } }
     }
 
     private func save(_ kid: Kid) {
