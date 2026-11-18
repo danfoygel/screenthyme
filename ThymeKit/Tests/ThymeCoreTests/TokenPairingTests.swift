@@ -15,8 +15,8 @@ struct TokenPairingTests {
     }
 
     /// What the report extension would draw if `truth` maps scanned items to the identifiers their tokens are.
-    func codes(order: [TrackedItem], truth: [UUID: TrackedItem], names: Bool = false, maxBytes: Int? = nil)
-        -> [TokenPairing.Code] {
+    func codes(order: [TrackedItem], truth: [UUID: TrackedItem], names: Bool = false,
+               maxBytes: Int = TokenPairing.maxBytes) -> [TokenPairing.Code] {
         let fingerprint = TokenPairing.fingerprint(order)
         return (TokenPairing.views(count: order.count) + (names ? [.names] : [])).flatMap { view in
             let seen = TokenPairing.members(view, of: order).compactMap { truth[$0.id] }
@@ -193,5 +193,41 @@ struct TokenPairingTests {
         #expect(outcome.cleared == 1)
         #expect(items[1].match == nil)
         #expect(Set(outcome.changed.map(\.id)) == [game.id, guess.id])
+    }
+
+    /// 207 identifiers: each bit report's hashes fit one code, and no code is wider than a 2x phone's screen.
+    @Test func estimatesCoverWhatIsDrawn() throws {
+        let order = (0..<207).map { scanned("h\($0)") }
+        let truth = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1.id, data("com.example.app\($0)")) })
+        let drawn = Dictionary(grouping: codes(order: order, truth: truth, names: true), by: \.view)
+        for (view, codes) in drawn {
+            let estimate = TokenPairing.estimatedCodes(view, members: TokenPairing.members(view, of: order).count)
+            #expect(estimate.count >= codes.count, "\(view.name)")
+            let text = TokenPairing.encode(fingerprint: TokenPairing.fingerprint(order), view: view,
+                                           lines: codes.flatMap(\.lines))
+            let largest = try #require(text.compactMap { QRCode(Array($0.utf8)) }.map(\.size).max())
+            #expect(largest <= 129, "\(view.name)")
+            #expect(estimate.modules >= largest + 8, "\(view.name)")
+            #expect(estimate.modules <= largest + 8 + 12, "\(view.name)")
+        }
+        #expect(drawn[.bit(0)]?.count == 1)
+        #expect((drawn[.names]?.count ?? 0) > 1)
+    }
+
+    /// A full code, header and all, is version 28 at most: 137 modules with the quiet zone, 5 px each at 2x.
+    @Test func aFullCodeFitsA2xScreen() throws {
+        let lines = (0..<TokenPairing.maxBytes / 7).map { String(format: "%06x", $0) }
+        let text = try #require(TokenPairing.encode(fingerprint: "ffffffff", view: .bit(8), lines: lines).first)
+        let code = try #require(QRCode(Array(text.utf8)))
+        #expect(code.version <= 28)
+        #expect(Double((code.size + 8) * TokenPairing.pixelsPerModule) / 2 <= 343)
+    }
+
+    @Test func columnsDrawCodesLargest() {
+        #expect(TokenPairing.columns(count: 1, width: 100, height: 300) == 1)
+        #expect(TokenPairing.columns(count: 2, width: 170, height: 170) == 1)
+        #expect(TokenPairing.columns(count: 2, width: 360, height: 170) == 2)
+        #expect(TokenPairing.columns(count: 3, width: 360, height: 360) == 2)
+        #expect(TokenPairing.columns(count: 3, width: 360, height: 540) == 1)
     }
 }

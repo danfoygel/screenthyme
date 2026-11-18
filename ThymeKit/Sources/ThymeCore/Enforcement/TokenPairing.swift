@@ -107,12 +107,35 @@ public enum TokenPairing {
         view == .names ? seen.map(\.line) : seen.map(\.hash)
     }
 
-    /// The names report needs about 1.6 KB for 60 identifiers: one large code, drawn wide.
-    public static func maxBytes(_ view: View) -> Int { view == .names ? 2000 : 600 }
+    /// One code holds up to 1150 bytes and its header (version 28, 129 modules): a bit report's hashes of up to 160
+    /// identifiers, or the names of about 45. At `pixelsPerModule` with its quiet zone, that is as wide as a 2x phone's
+    /// screen (343 points).
+    public static let maxBytes = 1150
+
+    /// Whole pixels a module. In a whole screenshot (1179 × 2556), Vision read every code at 5 px and missed about
+    /// half at 4 px, and all of them at 3 (it scales the image down); it reads nothing at 1 px even in a small image.
+    public static let pixelsPerModule = 5
+
+    /// About how many modules wide, quiet zone included, the largest of a report's codes is for `members` scanned
+    /// items, and how many codes there are. The app sizes the reports from it before they draw.
+    public static func estimatedCodes(_ view: View, members: Int) -> (count: Int, modules: Int) {
+        let bytes = members * (view == .names ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
+        let count = max(1, (bytes + maxBytes - 1) / maxBytes)
+        let size = QRCode([UInt8](repeating: 0, count: min(bytes, maxBytes) + 32))?.size ?? 129  // the first is fullest
+        return (count, size + 8)
+    }
+
+    /// How many columns to lay `count` square codes out in, to draw them as large as `size` allows.
+    public static func columns(count: Int, width: Double, height: Double) -> Int {
+        guard count > 1 else { return 1 }
+        return (1...count).max { a, b in
+            min(width / Double(a), height / Double((count + a - 1) / a))
+                < min(width / Double(b), height / Double((count + b - 1) / b))
+        } ?? 1
+    }
 
     /// One report's codes: "STPAIR2 <fingerprint> <view> <part>/<parts>", then its lines.
-    public static func encode(fingerprint: String, view: View, lines: [String], maxBytes: Int? = nil) -> [String] {
-        let maxBytes = maxBytes ?? self.maxBytes(view)
+    public static func encode(fingerprint: String, view: View, lines: [String], maxBytes: Int = maxBytes) -> [String] {
         var chunks: [[String]] = [[]]
         var size = 0
         for line in Set(lines).sorted() {
