@@ -11,6 +11,21 @@ struct PolicyChangeTests {
         edit.describe(calendar: utc) { names[$0] ?? "?" }
     }
 
+    @Test func groupsAndScopedDowntimeAreDescribed() {
+        let group = ItemGroup(name: "Fun", items: [roblox])
+        let window = DowntimeWindow(name: "Homework", startMinute: 16 * 60, endMinute: 18 * 60)
+        let old = Policy(kidID: kid, downtime: [window], groups: [group])
+        var new = old
+        new.groups[0].items.insert(youtube)
+        new.downtime[0].items = [games]
+        new.groups.append(ItemGroup(name: "School", items: []))
+        let edits = PolicyEdit.between(old, new)
+        #expect(edits.map { describe($0).title } == ["Changed Downtime \u{201C}Homework\u{201D}",
+                                                     "Changed group \u{201C}Fun\u{201D}", "Added group \u{201C}School\u{201D}"])
+        #expect(describe(edits[0]).details == ["Now only Games"])
+        #expect(describe(edits[1]).details == ["Added YouTube"])
+    }
+
     @Test func unchangedPolicyHasNoEdits() {
         let policy = Policy(kidID: kid, downtime: [DowntimeWindow(name: "Bedtime", startMinute: 1290, endMinute: 420)],
                             blocked: [roblox])

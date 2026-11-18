@@ -61,7 +61,7 @@ struct AskForTimeView: View {
                             Button("Send") { send(target, context) }
                                 .disabled(context.requestScope(for: target) == nil)
                         } footer: {
-                            if item == nil, case .downtime = reason {
+                            if context.requestScope(for: target)?.itemID == nil, case .downtime = reason {
                                 Text("Choose the app, or this asks for Downtime off on the whole phone.")
                             }
                         }

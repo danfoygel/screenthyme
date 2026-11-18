@@ -696,6 +696,26 @@ nothing adds none. The history keeps whole policies, not text, so it names apps 
 answers to requests for more time (`TimeGrant`s), oldest first, by day, opening on the latest. Only parents' phones
 read it; kids' phones never fetch it. Changes made before this build aren't in it.
 
+### 15.8 Groups and Downtime for some apps (Nov 18, 2026)
+
+- **Groups** (`ItemGroup`, in `Policy.groups`) are the parents' own categories: a name and apps, websites and Apple's
+  categories. An app may be in several; groups don't nest. Limits, Always Allowed, Blocked and Downtime windows name
+  groups by id beside items, so a change to a group changes everything that uses it. `Policy.resolved` replaces group
+  ids with their items; the planner, Enforcer and block page work on it. Deleting a group removes its uses.
+- **Downtime for some apps:** a window with `items` blocks only those (and its groups' items), not the whole phone;
+  none means the whole phone, as before. Whole-phone Downtime is still the first window that's on; every window for
+  some apps that's on is applied at once (`EnforcementPlan.scopedDowntime`), in its own store `downtime.some`
+  (`.2` … for more than 50 apps): app and website tokens one by one, categories as `.specific(except:)` Always
+  Allowed and granted apps. A window of an emptied group blocks nothing (`Policy.downtimeItems`), never the whole
+  phone.
+- Its shields name the app (or the category), so a request or one more minute lets just that through until the
+  window ends; only a press that names nothing pauses the window. Grants and minutes are per window occurrence
+  (`AppliedGrant.windowStart`, now taken from the policy, so it's right even while Downtime is paused).
+- Excepted apps are shared across the windows that are on: an app granted in one window passes another window's
+  categories too (not its own token shield). Rare, and accepted.
+- Old builds ignore both fields: a kid phone on an old build enforces a window for some apps as whole-phone Downtime,
+  and an old parent build drops groups when it saves. Update every phone.
+
 ## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
 
 A parent's Always Allowed change didn't reach the kid's phone for over an hour: the monitor extension hadn't woken

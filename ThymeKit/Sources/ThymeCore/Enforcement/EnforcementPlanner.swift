@@ -86,9 +86,24 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
         public var interval: DateInterval
     }
 
+    /// A Downtime window for some apps that's on now (PLAN.md §15.8).
+    public struct ScopedDowntime: Codable, Sendable, Hashable {
+        public var windowID: UUID
+        public var name: String
+        public var interval: DateInterval
+        /// Shielded: the window's apps, websites and categories, minus Always Allowed and what grants and one more
+        /// minute let through (categories stay categories).
+        public var items: Set<UUID>
+        /// Let through the window's categories: Always Allowed plus grants and one more minute.
+        public var exceptions: Set<UUID>
+    }
+
+    /// The whole-phone Downtime window that's on.
     public var downtime: Downtime?
     /// Items usable during Downtime: Always Allowed plus Downtime grants.
     public var downtimeExceptions: Set<UUID> = []
+    /// Every Downtime window for some apps that's on, unless paused or all let through.
+    public var scopedDowntime: [ScopedDowntime] = []
     /// Limit id → today's budget in minutes (limit plus grants); nil budget means unlimited today.
     public var budgets: [UUID: Int] = [:]
     /// Limit id → minutes used today.
@@ -112,6 +127,7 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         downtime = try container.decodeIfPresent(Downtime.self, forKey: .downtime)
         downtimeExceptions = try container.decodeIfPresent(Set<UUID>.self, forKey: .downtimeExceptions) ?? []
+        scopedDowntime = try container.decodeIfPresent([ScopedDowntime].self, forKey: .scopedDowntime) ?? []
         budgets = try container.decodeIfPresent([UUID: Int].self, forKey: .budgets) ?? [:]
         used = try container.decodeIfPresent([UUID: Int].self, forKey: .used) ?? [:]
         exhaustedLimits = try container.decodeIfPresent(Set<UUID>.self, forKey: .exhaustedLimits) ?? []
@@ -121,6 +137,15 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
         alwaysAllowed = try container.decodeIfPresent(Set<UUID>.self, forKey: .alwaysAllowed) ?? []
         extraMinuteEnds = try container.decodeIfPresent(Date.self, forKey: .extraMinuteEnds)
     }
+
+    /// The name and occurrence of Downtime window `id`, if it's on.
+    public func downtime(_ id: UUID) -> (name: String, interval: DateInterval)? {
+        if let downtime, downtime.windowID == id { return (downtime.name, downtime.interval) }
+        return scopedDowntime.first { $0.windowID == id }.map { ($0.name, $0.interval) }
+    }
+
+    /// Something is blocked by Downtime now.
+    public var hasDowntime: Bool { downtime != nil || !scopedDowntime.isEmpty }
 }
 
 public enum EnforcementPlanner {
@@ -133,6 +158,7 @@ public enum EnforcementPlanner {
                             calendar: Calendar = .current) -> EnforcementPlan {
         var plan = EnforcementPlan()
         guard policy.enabled else { return plan }
+        let policy = policy.resolved
         let today = DayKey(now, calendar: calendar)
         let grants = state.day == today ? state.grants.filter(\.grant.approved) : []
         let limitFires = state.day == today ? state.limitFires : [:]
@@ -140,8 +166,8 @@ public enum EnforcementPlanner {
         plan.extraMinuteEnds = extraMinutes.map(\.until).min()
         plan.alwaysAllowed = policy.alwaysAllowed
 
-        // Downtime.
-        for window in policy.downtime where !endingWindows.contains(window.id) {
+        // Downtime for the whole phone: the first window that's on.
+        for window in policy.downtime where window.isWholePhone && !endingWindows.contains(window.id) {
             guard let interval = window.daily.occurrence(containing: now, calendar: calendar) else { continue }
             plan.downtime = .init(windowID: window.id, name: window.name, interval: interval)
             break
@@ -164,6 +190,26 @@ public enum EnforcementPlanner {
             for minute in extraMinutes where minute.reason == .downtime(downtime.windowID) {
                 if let item = minute.itemID { plan.downtimeExceptions.insert(item) } else { plan.downtime = nil }
             }
+        }
+
+        // Downtime for some apps: every window that's on. Its shields name the app (or the category), so a grant or one
+        // more minute lets that through; one with no item pauses the window.
+        for window in policy.downtime where !endingWindows.contains(window.id) {
+            guard let targets = policy.downtimeItems(window),
+                  let interval = window.daily.occurrence(containing: now, calendar: calendar) else { continue }
+            let reason = BlockReason.downtime(window.id)
+            var scoped = EnforcementPlan.ScopedDowntime(windowID: window.id, name: window.name, interval: interval,
+                                                        items: targets.subtracting(policy.alwaysAllowed),
+                                                        exceptions: policy.alwaysAllowed)
+            let passes = grants.filter { $0.grant.reason == reason && $0.windowStart == interval.start
+                && isLeft($0, usage: usage, now: now) }.map(\.grant.itemID)
+                + extraMinutes.filter { $0.reason == reason }.map(\.itemID)
+            guard !passes.contains(nil) else { continue }
+            for case let item? in passes {
+                scoped.items.remove(item)
+                scoped.exceptions.insert(item)
+            }
+            if !scoped.items.isEmpty { plan.scopedDowntime.append(scoped) }
         }
 
         // Limits.

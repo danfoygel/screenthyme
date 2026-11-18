@@ -285,6 +285,101 @@ struct EnforcementTests {
         #expect(plan(Policy(kidID: kid, limits: [limit]), state: state, at: at(9, 0)).exhaustedLimits.isEmpty)
     }
 
+    // MARK: - Groups and Downtime for some apps (PLAN.md §15.8)
+
+    @Test func groupsStandForTheirItemsInLimitsAllowedAndBlocked() {
+        let group = ItemGroup(name: "Chat", items: [instagram.id, snapchat.id])
+        let limit = AppLimit(name: "Chat", items: [group.id], minutes: 30)
+        let policy = Policy(kidID: kid, alwaysAllowed: [group.id], limits: [limit], blocked: [group.id], groups: [group])
+        #expect(policy.resolved.limits[0].items == [instagram.id, snapchat.id])
+        #expect(policy.resolved.resolved == policy.resolved)
+        let result = plan(Policy(kidID: kid, limits: [limit], groups: [group]),
+                          usage: [instagram.id: 20 * 60.0, snapchat.id: 11 * 60.0, messages.id: 60 * 60.0], at: at(12, 0))
+        #expect(result.used[limit.id] == 31)
+        #expect(result.limitedItems == [instagram.id, snapchat.id])
+        let blocking = plan(policy, at: at(12, 0))
+        #expect(blocking.alwaysAllowed == [instagram.id, snapchat.id])
+        #expect(blocking.blockedItems == [instagram.id, snapchat.id])
+    }
+
+    @Test func removingAGroupRemovesItsUses() {
+        let group = ItemGroup(name: "Chat", items: [instagram.id])
+        var policy = Policy(kidID: kid, downtime: [DowntimeWindow(name: "Homework", startMinute: 0, endMinute: 60,
+                                                                  items: [group.id, snapchat.id])],
+                            alwaysAllowed: [group.id], limits: [AppLimit(name: "Chat", items: [group.id], minutes: 30)],
+                            groups: [group])
+        policy.removeGroup(group.id)
+        #expect(policy.groups.isEmpty && policy.alwaysAllowed.isEmpty && policy.limits[0].items.isEmpty)
+        #expect(policy.downtime[0].items == [snapchat.id])
+    }
+
+    @Test func scopedDowntimeBlocksOnlyItsItems() {
+        let group = ItemGroup(name: "Chat", items: [instagram.id, social.id])
+        let homework = DowntimeWindow(name: "Homework", startMinute: 16 * 60, endMinute: 18 * 60, items: [group.id])
+        let policy = Policy(kidID: kid, downtime: [homework], alwaysAllowed: [messages.id], groups: [group])
+        let result = plan(policy, at: at(17, 0))
+        #expect(result.downtime == nil)
+        #expect(result.scopedDowntime.map(\.windowID) == [homework.id])
+        #expect(result.scopedDowntime[0].items == [instagram.id, social.id])
+        // Always Allowed apps pass the window's categories.
+        #expect(result.scopedDowntime[0].exceptions == [messages.id])
+        #expect(result.downtime(homework.id)?.interval.end == at(18, 0))
+        #expect(plan(policy, at: at(18, 30)).scopedDowntime.isEmpty)
+    }
+
+    @Test func scopedAndWholePhoneDowntimeRunTogether() {
+        let games = DowntimeWindow(name: "No games", startMinute: 15 * 60, endMinute: 23 * 60, items: [instagram.id])
+        let bedtime = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60, endMinute: 7 * 60)
+        let result = plan(Policy(kidID: kid, downtime: [games, bedtime]), at: at(22, 0))
+        #expect(result.downtime?.windowID == bedtime.id)
+        #expect(result.scopedDowntime.map(\.windowID) == [games.id])
+        #expect(plan(Policy(kidID: kid, downtime: [games, bedtime]), at: at(16, 0)).downtime == nil)
+    }
+
+    /// A window for an emptied group blocks nothing, not the whole phone.
+    @Test func scopedDowntimeOfAnEmptyGroupBlocksNothing() {
+        let group = ItemGroup(name: "Games")
+        let window = DowntimeWindow(name: "No games", startMinute: 0, endMinute: 23 * 60, items: [group.id])
+        let result = plan(Policy(kidID: kid, downtime: [window], groups: [group]), at: at(12, 0))
+        #expect(result.downtime == nil && result.scopedDowntime.isEmpty && !result.hasDowntime)
+    }
+
+    @Test func scopedDowntimeGrantsLetTheirItemThrough() {
+        let window = DowntimeWindow(name: "Homework", startMinute: 16 * 60, endMinute: 18 * 60,
+                                    items: [social.id, snapchat.id])
+        let policy = Policy(kidID: kid, downtime: [window])
+        let request = TimeRequest(kidID: kid, itemID: instagram.id, reason: .downtime(window.id), minutes: 15, at: at(16, 30))
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [AppliedGrant(grant: TimeGrant(request: request, approved: true, minutes: 15, at: at(16, 31), by: "Parent"),
+                                     appliedAt: at(16, 31), windowStart: at(16, 0))]
+        let during = plan(policy, usage: [instagram.id: 5 * 60.0], state: state, at: at(16, 40))
+        // Social stays shielded; Instagram passes it.
+        #expect(during.scopedDowntime[0].items == [social.id, snapchat.id])
+        #expect(during.scopedDowntime[0].exceptions == [instagram.id])
+        // One more minute on Snapchat's own shield.
+        state.extraMinutes = [ExtraMinute(itemID: snapchat.id, reason: .downtime(window.id), at: at(16, 40))]
+        #expect(plan(policy, state: state, at: at(16, 40, 30)).scopedDowntime[0].items == [social.id])
+        // With no item, the window pauses.
+        state.extraMinutes = [ExtraMinute(itemID: nil, reason: .downtime(window.id), at: at(16, 40))]
+        #expect(plan(policy, state: state, at: at(16, 40, 30)).scopedDowntime.isEmpty)
+        // A grant from yesterday's (or another) occurrence doesn't count.
+        state.extraMinutes = []
+        state.grants[0].windowStart = at(-8, 0)
+        #expect(plan(policy, state: state, at: at(16, 40)).scopedDowntime[0].exceptions.isEmpty)
+    }
+
+    @Test func policiesSavedBeforeGroupsStillLoad() throws {
+        let window = #"{"id":"\#(UUID())","name":"Bedtime","startMinute":1290,"endMinute":420,"weekdays":[]}"#
+        let decoded = try JSONDecoder().decode(DowntimeWindow.self, from: Data(window.utf8))
+        #expect(decoded.isWholePhone)
+        var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Policy(kidID: kid))) as! [String: Any]
+        old["groups"] = nil
+        let policy = try JSONDecoder().decode(Policy.self, from: JSONSerialization.data(withJSONObject: old))
+        #expect(policy.groups.isEmpty)
+        let plan = try JSONDecoder().decode(EnforcementPlan.self, from: Data("{}".utf8))
+        #expect(plan.scopedDowntime.isEmpty)
+    }
+
     @Test func disabledPolicyBlocksNothing() {
         let policy = Policy(kidID: kid, enabled: false, downtime: [DowntimeWindow(name: "All day", startMinute: 0, endMinute: 1439)],
                             blocked: [instagram.id])
