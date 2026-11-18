@@ -158,6 +158,56 @@ struct EnforcementTests {
         #expect(result.limitedItems.isEmpty)
     }
 
+    @Test func allAppsLimitCountsEverythingButAllowedAndExempt() {
+        let safari = TrackedItem(kidID: kid, kind: .app, identifier: "com.apple.mobilesafari", firstSeen: dayStart)
+        let khan = TrackedItem(kidID: kid, kind: .domain, identifier: "www.khanacademy.org", firstSeen: dayStart)
+        let screenThyme = TrackedItem(kidID: kid, kind: .app, identifier: "com.danfoygel.screenthyme", firstSeen: dayStart)
+        var scanned = TrackedItem(kidID: kid, kind: .app, identifier: TrackedItem.scannedPrefix + "abc", firstSeen: dayStart)
+        scanned.match = snapchat.id
+        var all = items
+        for item in [safari, khan, screenThyme, scanned] { all[item.id] = item }
+        let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 60)
+        let policy = Policy(kidID: kid, alwaysAllowed: [messages.id, khan.id], limits: [limit])
+        // Instagram 20 + Snapchat 15 (its scanned copy not again) + Safari 30 less the allowed site's 10; not Messages
+        // (always allowed) or ScreenThyme (exempt).
+        let minutes: [UUID: Double] = [instagram.id: 20, snapchat.id: 15, scanned.id: 15, messages.id: 50, safari.id: 30,
+                                       khan.id: 10, screenThyme.id: 30]
+        let usage = minutes.mapValues { $0 * 60 }
+        func result(_ usage: [UUID: Double], state: EnforcementDayState = EnforcementDayState(day: testDay),
+                    at date: Date = at(12, 0)) -> EnforcementPlan {
+            EnforcementPlanner.plan(policy: policy, items: all, usage: usage, state: state, now: date,
+                                    exempt: [screenThyme.id], calendar: utc)
+        }
+        let noon = result(usage)
+        #expect(noon.used[limit.id] == 55)
+        #expect(!noon.allAppsLimited)
+
+        var more = usage
+        more[instagram.id] = 25 * 60.0
+        let over = result(more)
+        #expect(over.exhaustedLimits == [limit.id])
+        #expect(over.allAppsLimited)
+        #expect(over.limitedItems.isEmpty)
+
+        // One more minute, pressed on the shield (a category), is for the whole phone.
+        var state = EnforcementDayState(day: testDay)
+        state.extraMinutes = [ExtraMinute(itemID: nil, reason: .limit(limit.id), at: at(12, 0))]
+        #expect(!result(more, state: state, at: at(12, 0, 30)).allAppsLimited)
+        #expect(result(more, state: state, at: at(12, 1)).allAppsLimited)
+        #expect(!state.canTakeExtraMinute(itemID: nil, reason: .limit(limit.id)))
+    }
+
+    @Test func limitsAndPlansSavedBeforeAllAppsStillLoad() throws {
+        let id = UUID()
+        let json = #"{"id":"\#(id)","name":"Social","items":[],"minutes":30,"weekdayMinutes":{},"enabled":true}"#
+        let limit = try JSONDecoder().decode(AppLimit.self, from: Data(json.utf8))
+        #expect(limit.id == id)
+        #expect(!limit.allApps)
+        let plan = try JSONDecoder().decode(EnforcementPlan.self, from: Data(#"{"exhaustedLimits":["\#(id)"]}"#.utf8))
+        #expect(plan.exhaustedLimits == [id])
+        #expect(!plan.allAppsLimited)
+    }
+
     @Test func oneMoreMinuteIsOnceADayPerApp() {
         let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
         let limit = AppLimit(name: "Social", items: [social.id], minutes: 30)

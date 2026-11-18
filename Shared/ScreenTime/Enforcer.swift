@@ -37,7 +37,7 @@ enum Enforcer {
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                               endingWindows: endingWindows)
+                                               endingWindows: endingWindows, exempt: exemptItems(items))
             apply(plan, policy: policy, items: items)
             AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: Dictionary(policy.limits.map { ($0.id, $0.name) },
                                                                                   uniquingKeysWith: { a, _ in a })),
@@ -107,9 +107,13 @@ enum Enforcer {
     /// time and see the answer) and Phone.
     static let exemptBundleIDs: Set<String> = ["com.danfoygel.screenthyme", "com.apple.mobilephone"]
 
+    static func exemptItems(_ items: [UUID: TrackedItem]) -> Set<UUID> {
+        Set(items.values.filter { $0.kind == .app && exemptBundleIDs.contains($0.identifier) }.map(\.id))
+    }
+
     private static func apply(_ plan: EnforcementPlan, policy: Policy, items: [UUID: TrackedItem]) {
         let tokens = Tokens(items: items)
-        let exempt = Set(items.values.filter { $0.kind == .app && exemptBundleIDs.contains($0.identifier) }.map(\.id))
+        let exempt = exemptItems(items)
         // ScreenThyme's own token, from the app scan.
         let exemptApps = Set((AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []).compactMap(TokenCoding.application))
         var allowed = tokens.split(tokens.expandingCategories(plan.alwaysAllowed).union(exempt))
@@ -143,12 +147,18 @@ enum Enforcer {
         var limited = tokens.split(plan.limitedItems)
         limited.apps.subtract(allowed.apps)
         limited.domains.subtract(allowed.domains)
-        if plan.limitedItems.isEmpty { limits.clearAllSettings() }
+        if plan.limitedItems.isEmpty && !plan.allAppsLimited { limits.clearAllSettings() }
         shieldOneByOne(limited, over: "limits")
-        limits.shield.applicationCategories = limited.categories.isEmpty ? nil
-            : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.apps))
-        limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
-            : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.domains))
+        if plan.allAppsLimited {
+            // Like Downtime: every category but what's allowed.
+            limits.shield.applicationCategories = .all(except: Tokens.capped(allowed.apps))
+            limits.shield.webDomainCategories = .all(except: Tokens.capped(allowed.domains))
+        } else {
+            limits.shield.applicationCategories = limited.categories.isEmpty ? nil
+                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.apps))
+            limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
+                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.domains))
+        }
     }
 
     /// Stores per shield list: `name`, `name.2`, … up to this many.
@@ -246,7 +256,7 @@ enum Enforcer {
 
     // MARK: - Activities
 
-    /// One activity per Downtime interval (`dt.<id8>`, split `.a`/`.b` across midnight) and per limit
+    /// One activity per Downtime interval (`dt.<id8>`, split `.a`/`.b` across midnight) and per limit but all-apps ones
     /// (`lim.<id8>`, one event `lim.<id8>.<budget>`). Re-registers only what changed: every registration replays
     /// passed thresholds.
     private static func registerActivities(policy: Policy, plan: EnforcementPlan, items: [UUID: TrackedItem], now: Date) {
@@ -261,7 +271,9 @@ enum Enforcer {
                 }
             }
             let tokens = Tokens(items: items)
-            for limit in policy.limits where limit.enabled {
+            // An all-apps limit has no event: one over all activity would count Always Allowed and exempt apps too.
+            // The wake alarm's 2-minute wakes reconcile it instead.
+            for limit in policy.limits where limit.enabled && !limit.allApps {
                 guard let budget = plan.budgets[limit.id] else { continue }
                 let name = limitPrefix + short(limit.id)
                 let targets = tokens.split(limit.items.subtracting(policy.alwaysAllowed))

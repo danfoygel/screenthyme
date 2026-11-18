@@ -51,19 +51,34 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
     public var items: Set<UUID>
+    /// Every app and website but Always Allowed ones, like Apple's All Apps & Categories; `items` is then ignored.
+    public var allApps: Bool
     public var minutes: Int
     /// Per-weekday budgets (Calendar numbering) that replace `minutes` on those days.
     public var weekdayMinutes: [Int: Int]
     public var enabled: Bool
 
-    public init(id: UUID = UUID(), name: String, items: Set<UUID>, minutes: Int, weekdayMinutes: [Int: Int] = [:],
-                enabled: Bool = true) {
+    public init(id: UUID = UUID(), name: String, items: Set<UUID>, allApps: Bool = false, minutes: Int,
+                weekdayMinutes: [Int: Int] = [:], enabled: Bool = true) {
         self.id = id
         self.name = name
         self.items = items
+        self.allApps = allApps
         self.minutes = minutes
         self.weekdayMinutes = weekdayMinutes
         self.enabled = enabled
+    }
+
+    /// Policies saved before a field existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        items = try container.decode(Set<UUID>.self, forKey: .items)
+        allApps = try container.decodeIfPresent(Bool.self, forKey: .allApps) ?? false
+        minutes = try container.decode(Int.self, forKey: .minutes)
+        weekdayMinutes = try container.decodeIfPresent([Int: Int].self, forKey: .weekdayMinutes) ?? [:]
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
     }
 
     public func minutes(on weekday: Int) -> Int {

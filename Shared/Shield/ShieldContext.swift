@@ -73,9 +73,11 @@ struct ShieldContext {
         guard let plan = applied?.plan else { return nil }
         let ids = Set([target.item?.id, target.category?.id].compactMap { $0 })
         if let downtime = plan.downtime, ids.isDisjoint(with: plan.downtimeExceptions) { return .downtime(downtime.windowID) }
-        for limitID in plan.exhaustedLimits.sorted(by: { $0.uuidString < $1.uuidString }) {
-            guard let limit = policy?.limits.first(where: { $0.id == limitID }) else { continue }
-            if !limit.items.isDisjoint(with: ids) { return .limit(limitID) }
+        // A limit on the app itself first, then all-apps limits.
+        let exhausted = (policy?.limits ?? []).filter { plan.exhaustedLimits.contains($0.id) }
+            .sorted { ($0.allApps ? 1 : 0, $0.id.uuidString) < ($1.allApps ? 1 : 0, $1.id.uuidString) }
+        for limit in exhausted where limit.allApps ? plan.allAppsLimited : !limit.items.isDisjoint(with: ids) {
+            return .limit(limit.id)
         }
         if !plan.blockedItems.isDisjoint(with: ids) { return .blocked }
         // Shielded but unexplained (the plan changed since): most likely Downtime or a limit just ended.
@@ -145,10 +147,12 @@ struct ShieldContext {
     // MARK: - Requests
 
     /// What a request for `target` asks for: Downtime off for that app (or the whole phone, with no app), more time on
-    /// a limit, or an exception for a blocked app or category. Nil: nothing to ask for.
+    /// a limit, or an exception for a blocked app or category. Nil: nothing to ask for. An all-apps limit's shield
+    /// names only a category, which says nothing: like Downtime, its press is for the whole phone.
     func requestScope(for target: Target) -> (itemID: UUID?, reason: BlockReason)? {
         switch reason(for: target) {
         case let .downtime(id)?: (target.item?.id, .downtime(id))
+        case let .limit(id)? where policy?.limits.first(where: { $0.id == id })?.allApps == true: (target.item?.id, .limit(id))
         case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
         case .blocked?: (target.item?.id ?? target.category?.id).map { ($0, .blocked) }
         case nil: nil
