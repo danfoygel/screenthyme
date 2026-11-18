@@ -70,8 +70,22 @@ struct PairingView: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            ForEach(report.codes.indices, id: \.self) { index in
-                QRCodeView(modules: report.codes[index])
+            GeometryReader { proxy in
+                let columns = TokenPairing.columns(count: report.codes.count, width: proxy.size.width,
+                                                   height: proxy.size.height)
+                let rows = (report.codes.count + columns - 1) / columns
+                let side = min(proxy.size.width / CGFloat(columns), proxy.size.height / CGFloat(max(rows, 1)))
+                VStack(spacing: 0) {
+                    ForEach(0..<rows, id: \.self) { row in
+                        HStack(spacing: 0) {
+                            let end = min(row * columns + columns, report.codes.count)
+                            ForEach(row * columns..<end, id: \.self) { index in
+                                QRCodeView(modules: report.codes[index]).frame(width: side, height: side)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Text(report.problem ?? "\(report.view.name) · \(report.identifiers)")
                 .font(.caption2)
@@ -81,19 +95,23 @@ struct PairingView: View {
     }
 }
 
-/// Square modules on white, with a quiet zone.
+/// Square modules of whole pixels (Vision misses codes drawn at 1.5 px a module), centered on white, with a quiet zone.
 struct QRCodeView: View {
     let modules: [[Bool]]
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         Canvas { context, size in
             let count = CGFloat(modules.count + 8)
-            let side = (min(size.width, size.height) / count * 2).rounded(.down) / 2  // whole pixels at 2x: crisp edges
+            let side = max(1, (min(size.width, size.height) * scale / count).rounded(.down)) / scale
+            let origin = CGPoint(x: ((size.width - side * count) / 2 * scale).rounded(.down) / scale,
+                                 y: ((size.height - side * count) / 2 * scale).rounded(.down) / scale)
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white))
             var dark = Path()
             for (y, row) in modules.enumerated() {
                 for (x, isDark) in row.enumerated() where isDark {
-                    dark.addRect(CGRect(x: (CGFloat(x) + 4) * side, y: (CGFloat(y) + 4) * side, width: side, height: side))
+                    dark.addRect(CGRect(x: origin.x + (CGFloat(x) + 4) * side, y: origin.y + (CGFloat(y) + 4) * side,
+                                        width: side, height: side))
                 }
             }
             context.fill(dark, with: .color(.black))

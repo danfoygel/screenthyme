@@ -13,6 +13,8 @@ struct TokenPairingView: View {
     @State private var photos: [PhotosPickerItem] = []
     @State private var result: String?
     @State private var working = false
+    @State private var width: CGFloat = 340
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         let order = TokenPairing.order(AppGroup.loadItems())
@@ -34,17 +36,23 @@ struct TokenPairingView: View {
                     Text("Scan the apps first.").foregroundStyle(.secondary)
                 }
                 if !views.isEmpty {
+                    let names = size(.names, members: order.count, columns: 1)
                     DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order))
-                        .frame(height: 360)
+                        .frame(height: names.height)
                 }
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                // Two columns while each code still gets 3 px a module; one otherwise.
+                let members = views.map { TokenPairing.members($0, of: order).count }
+                let columns = zip(views, members).allSatisfy { size($0, members: $1, columns: 2).fits } ? 2 : 1
+                let height = zip(views, members).map { size($0, members: $1, columns: columns).height }.max() ?? 0
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
                     ForEach(views, id: \.self) { view in
                         DeviceActivityReport(.init("pair." + view.name),
                                              filter: Self.filter(TokenPairing.members(view, of: order)))
-                            .frame(height: 190)
+                            .frame(height: height)
                     }
                 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .padding(.horizontal)
         }
         .navigationTitle("Match by screenshot")
@@ -53,6 +61,18 @@ struct TokenPairingView: View {
             guard !picked.isEmpty else { return }
             Task { await importPhotos(picked) }
         }
+    }
+
+    /// The height a report needs in a grid of `columns` for its codes to draw at `TokenPairing.pixelsPerModule`, laid
+    /// out the way the report extension lays them out, and whether they fit the width at that size.
+    private func size(_ view: TokenPairing.View, members: Int, columns: Int) -> (height: CGFloat, fits: Bool) {
+        let cell = (width - CGFloat(columns - 1) * 8) / CGFloat(columns)
+        let codes = TokenPairing.estimatedCodes(view, members: members)
+        let wanted = CGFloat(codes.modules * TokenPairing.pixelsPerModule) / scale
+        let side = min(wanted, cell)
+        let across = max(1, Int(cell / side))
+        let rows = (codes.count + across - 1) / across
+        return (CGFloat(rows) * side + 20, wanted <= cell)  // and the caption
     }
 
     /// When codes were last imported: apps first used after it are counted on the home screen (`TokenPairing.toMatch`).

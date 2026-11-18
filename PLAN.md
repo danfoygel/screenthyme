@@ -646,6 +646,12 @@ like this:
   (Nov 16, kid's phone): 24 new matches, the 7 earlier ones confirmed, no conflicts, and 42
   identifiers unknown without the names report; with it, all 42 matched (73 of 169 in all). Apps unused in the 28 days
   still wait for their minute.
+- **Codes too small to read** (Nov 17, a kid's phone with over 200 identifiers): every bit report needed two 600-byte codes,
+  stacked in a 190-point cell, and modules were rounded to half points: 1.5 px on a 3x screen, 1 px on a 2x one.
+  Vision reads nothing at 1 px and misses large codes at 1.5 px. Now a code holds up to 2 KB (one per bit report up to
+  about 280 identifiers), the extension draws whole pixels, centered, and lays several codes out in the grid that draws
+  them largest, and the app sizes each report from the scan for 3 px a module (`TokenPairing.estimatedCodes`), in one
+  column when two would be too narrow.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
