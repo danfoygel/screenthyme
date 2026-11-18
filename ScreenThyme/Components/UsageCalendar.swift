@@ -269,7 +269,8 @@ struct UsageCalendar: View {
             Rectangle().fill(color).frame(width: 3)
             if height >= 14 {
                 VStack(alignment: .leading, spacing: 1) {
-                    ItemName(item: items[block.itemID], showIcon: height >= 36 && piece.columns <= 2)
+                    // The icon when it leaves room for a short name beside it.
+                    ItemName(item: items[block.itemID], showIcon: height >= 36 && column >= 100)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     if height >= 32 {
