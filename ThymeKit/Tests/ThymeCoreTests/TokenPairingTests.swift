@@ -352,6 +352,14 @@ struct TokenPairingTests {
         #expect(Double((code.size + 8) * TokenPairing.pixelsPerModule) / 2 <= 343)
     }
 
+    @Test func sizesWithoutDrawingMatchTheCodes() throws {
+        for bytes in [0, 1, 13, 14, 60, 300, 1150, 2331] {
+            let code = try #require(QRCode([UInt8](repeating: 0x61, count: bytes)))
+            #expect(QRCode.size(bytes: bytes) == code.size, "\(bytes)")
+        }
+        #expect(QRCode.size(bytes: 3000) == nil)
+    }
+
     @Test func columnsDrawCodesLargest() {
         #expect(TokenPairing.columns(count: 1, width: 100, height: 300) == 1)
         #expect(TokenPairing.columns(count: 2, width: 170, height: 170) == 1)

@@ -639,17 +639,17 @@ like this:
   and several reports run on one screen. So iOS does the comparison: each scanned app and website gets a number (its
   place in `TokenPairing.order`, from 1), and the app shows one report per bit, filtered to the items with that bit
   set, plus a parity report (9 for 169 items; the extension declares 10 scenes, `pair.p`, `pair.b0`…`pair.b8`).
-  Each draws a QR code of 6-hex hashes of the identifiers it saw over the last 28 days, named by a fingerprint of
+  Each draws a QR code of 6-hex hashes of the identifiers it saw over the last 7 days (28 until Nov 18), named by a fingerprint of
   the order (the extension reads the App Group). Core Image draws nothing in the report extension (not even its
   software renderer), so the codes come from our own encoder (`QRCode`) and a `Canvas`. An identifier's number is the sum of its reports' bits. The kid
   takes 2 screenshots; the app reads them from the photo library with Vision and saves the matches. A pair
   overrides a match from watching use, and another scanned item matched to the same app loses its match and is
   watched again. Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
   filtered to every scanned item, one large code) spells out; a failed parity check (two scanned tokens for one app)
-  is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the 28 days, before
+  is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the window, before
   tracking began) creates a bare item for it, so parents can name the match; it never counts as a new app. First run
   (Nov 16, kid's phone): 24 new matches, the 7 earlier ones confirmed, no conflicts, and 42
-  identifiers unknown without the names report; with it, all 42 matched (73 of 169 in all). Apps unused in the 28 days
+  identifiers unknown without the names report; with it, all 42 matched (73 of 169 in all). Apps unused in the window
   still wait for their minute.
 - **Codes too small to read** (Nov 17, a kid's phone with over 200 identifiers): every bit report needed two 600-byte
   codes, stacked in a 190-point cell, with modules rounded to half points (1.5 px on a 3x screen). Codes at 3 whole
@@ -663,7 +663,7 @@ like this:
   get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which
   spell out the names of the categories they see (`localizedDisplayName`, as the Sampler names category items). A
   scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
-  unused in the 28 days stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
+  unused in the window stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
   shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
 - **New apps only** (Nov 17, `TokenPairing.Mode`, the default): after a first round, a new app's match can't come
   from one code (the token is what's unknown), but every code can be tiny. In `unmatched` mode the numbers go only
@@ -674,6 +674,12 @@ like this:
   since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
   websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
   has no token: scan again first.
+- **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
+  debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
+  was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment
+  (`TokenPairing.days`; iOS may still split it at a week boundary), its end is fixed while the screen is open, sizes
+  are computed without drawing a code (`QRCode.size(bytes:)`), and each mask's penalty is computed once. Each
+  report's caption shows its segments and the seconds spent fetching and drawing.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
   A scanned category counts through its match's name (`EnforcementPlanner.categoryNames`): before, a limit on one
   counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps

@@ -11,8 +11,9 @@ import Foundation
 /// Apple's data yet. Scanned categories are numbered apart, in reports of their own that spell the category names out.
 /// The extension can't send anything, so the kid takes screenshots, and the app reads the codes back.
 public enum TokenPairing {
-    /// How far back the reports look.
-    public static let days = 28
+    /// How far back the reports look: a week, in one weekly segment, which fetches far faster than 28 daily ones.
+    /// Apps unused in it wait for another round.
+    public static let days = 7
     static let header = "STPAIR2"
 
     /// Which scanned items a round of screenshots pairs. The app saves it in the App Group, for the report extension.
@@ -200,7 +201,7 @@ public enum TokenPairing {
     public static func estimatedCodes(_ view: View, lines: Int) -> (count: Int, modules: Int) {
         let bytes = lines * (view == .names || view.isCategory ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
         let count = max(1, (bytes + maxBytes - 1) / maxBytes)
-        let size = QRCode([UInt8](repeating: 0, count: min(bytes, maxBytes) + 32))?.size ?? 129  // the first is fullest
+        let size = QRCode.size(bytes: min(bytes, maxBytes) + 32) ?? 129  // the first is fullest
         return (count, size + 8)
     }
 

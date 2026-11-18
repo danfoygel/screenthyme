@@ -10,10 +10,19 @@ public struct QRCode: Sendable {
     public private(set) var modules: [[Bool]]
     private var isFunction: [[Bool]]
 
+    /// The smallest version that holds `bytes`; nil when they don't fit version 40.
+    static func version(bytes: Int) -> Int? {
+        guard let version = (1...40).first(where: { Self.dataCapacityBits($0) >= 4 + Self.countBits($0) + bytes * 8 }),
+              bytes < 1 << Self.countBits(version) else { return nil }
+        return version
+    }
+
+    /// Modules on a side for `bytes`, without drawing the code.
+    public static func size(bytes: Int) -> Int? { version(bytes: bytes).map { $0 * 4 + 17 } }
+
     /// Nil when the data doesn't fit version 40.
     public init?(_ data: [UInt8]) {
-        guard let version = (1...40).first(where: { Self.dataCapacityBits($0) >= 4 + Self.countBits($0) + data.count * 8 }),
-              data.count < 1 << Self.countBits(version) else { return nil }
+        guard let version = Self.version(bytes: data.count) else { return nil }
         self.version = version
         size = version * 4 + 17
         modules = Array(repeating: Array(repeating: false, count: size), count: size)
@@ -38,7 +47,8 @@ public struct QRCode: Sendable {
 
         drawFunctionPatterns()
         drawCodewords(interleaved(codewords))
-        let mask = (0..<8).min { penalty(masked: $0) < penalty(masked: $1) }!
+        let penalties = (0..<8).map { penalty(masked: $0) }
+        let mask = penalties.indices.min { penalties[$0] < penalties[$1] }!
         applyMask(mask)
         drawFormatBits(mask)
     }
