@@ -8,6 +8,8 @@ struct SelectedItemsView: View {
     var ids: Set<UUID> = []
     let items: [UUID: TrackedItem]
     let footer: String
+    /// The parents' groups, which a selection may name (parents' phones only).
+    var groups: [ItemGroup] = []
     var selection: Binding<Set<UUID>>?
     @State private var editing = false
 
@@ -15,7 +17,13 @@ struct SelectedItemsView: View {
         let ids = selection?.wrappedValue ?? ids
         let catalog = AppCatalog.shared
         let listed = ids.compactMap { items[$0] }.map { ($0, catalog.name(of: $0, in: items) ?? "") }
+        let chosenGroups = groups.filter { ids.contains($0.id) }.sorted { $0.name < $1.name }
         List {
+            if !chosenGroups.isEmpty {
+                Section("Groups") {
+                    ForEach(chosenGroups) { GroupName(group: $0) }
+                }
+            }
             ForEach([ItemKind.category, .app, .domain], id: \.self) { kind in
                 let group = listed.filter { $0.0.kind == kind }
                     .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
@@ -26,7 +34,7 @@ struct SelectedItemsView: View {
                 }
             }
             // Removed from this phone's items since the parent chose it.
-            let missing = ids.count - listed.count
+            let missing = ids.count - listed.count - chosenGroups.count
             Section {
                 if ids.isEmpty {
                     Text("None").foregroundStyle(.secondary)
@@ -43,7 +51,7 @@ struct SelectedItemsView: View {
             if selection != nil { Button("Edit") { editing = true } }
         }
         .navigationDestination(isPresented: $editing) {
-            if let selection { ItemSelectionView(title: title, items: items, selection: selection) }
+            if let selection { ItemSelectionView(title: title, items: items, groups: groups, selection: selection) }
         }
     }
 }

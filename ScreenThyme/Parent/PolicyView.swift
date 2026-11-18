@@ -9,6 +9,7 @@ struct PolicyView: View {
     @State private var draft: Policy?
     @State private var editingWindow: DowntimeWindow?
     @State private var editingLimit: AppLimit?
+    @State private var editingGroup: ItemGroup?
 
     var body: some View {
         let stored = model.data.policy(for: kid.id)
@@ -23,7 +24,12 @@ struct PolicyView: View {
             Section("Downtime") {
                 ForEach(policy.downtime) { window in
                     Button { editingWindow = window } label: {
-                        LabeledContent(window.name, value: window.schedule())
+                        LabeledContent {
+                            Text(window.schedule())
+                        } label: {
+                            Text(window.name)
+                            if !window.isWholePhone { Text(Self.names(window.items, items: items, groups: policy.groups)) }
+                        }
                     }
                     .swipeActions { Button("Delete", role: .destructive) { update(policy) { $0.downtime.removeAll { $0.id == window.id } } } }
                 }
@@ -41,16 +47,29 @@ struct PolicyView: View {
                 Button("Add limit") { editingLimit = AppLimit(name: "", items: [], minutes: 60) }
             }
             Section {
+                ForEach(policy.groups) { group in
+                    Button { editingGroup = group } label: {
+                        LabeledContent { Text("\(group.items.count)") } label: { GroupName(group: group) }
+                    }
+                    .swipeActions { Button("Delete", role: .destructive) { update(policy) { $0.removeGroup(group.id) } } }
+                }
+                Button("Add group") { editingGroup = ItemGroup(name: "") }
+            } header: {
+                Text("Groups")
+            } footer: {
+                Text("Your own categories of apps, websites and Apple's categories, for Downtime, limits, Always Allowed and Blocked. A change to a group changes everything that uses it.")
+            }
+            Section {
                 NavigationLink {
                     SelectedItemsView(title: "Always Allowed", items: items,
                                       footer: "These work during Downtime and don't count toward limits. ScreenThyme and Phone are always allowed too.",
-                                      selection: binding(policy, \.alwaysAllowed))
+                                      groups: policy.groups, selection: binding(policy, \.alwaysAllowed))
                 } label: {
                     LabeledContent("Always Allowed", value: "\(policy.alwaysAllowed.count)")
                 }
                 NavigationLink {
                     SelectedItemsView(title: "Blocked", items: items, footer: "These never open.",
-                                      selection: binding(policy, \.blocked))
+                                      groups: policy.groups, selection: binding(policy, \.blocked))
                 } label: {
                     LabeledContent("Blocked", value: "\(policy.blocked.count)")
                 }
@@ -81,7 +100,7 @@ struct PolicyView: View {
             }
         }
         .sheet(item: $editingWindow) { window in
-            DowntimeEditor(window: window) { saved in
+            DowntimeEditor(window: window, items: items, groups: policy.groups) { saved in
                 update(policy) { policy in
                     if let index = policy.downtime.firstIndex(where: { $0.id == saved.id }) {
                         policy.downtime[index] = saved
@@ -92,7 +111,7 @@ struct PolicyView: View {
             }
         }
         .sheet(item: $editingLimit) { limit in
-            LimitEditor(limit: limit, items: items) { saved in
+            LimitEditor(limit: limit, items: items, groups: policy.groups) { saved in
                 update(policy) { policy in
                     if let index = policy.limits.firstIndex(where: { $0.id == saved.id }) {
                         policy.limits[index] = saved
@@ -102,6 +121,33 @@ struct PolicyView: View {
                 }
             }
         }
+        .sheet(item: $editingGroup) { group in
+            GroupEditor(group: group, items: items, usedBy: Self.uses(of: group.id, in: policy)) { saved in
+                update(policy) { policy in
+                    if let index = policy.groups.firstIndex(where: { $0.id == saved.id }) {
+                        policy.groups[index] = saved
+                    } else {
+                        policy.groups.append(saved)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Games, YouTube and 2 more": groups first, then items.
+    static func names(_ ids: Set<UUID>, items: [UUID: TrackedItem], groups: [ItemGroup]) -> String {
+        let names = groups.filter { ids.contains($0.id) }.map(\.name).sorted()
+            + ids.compactMap { items[$0].map { AppCatalog.shared.name(of: $0, in: items) ?? $0.displayName } }.sorted()
+        guard names.count > 2 else { return names.joined(separator: ", ") }
+        return "\(names[0]), \(names[1]) and \(names.count - 2) more"
+    }
+
+    /// What uses group `id`: Downtime windows, limits, Always Allowed and Blocked.
+    static func uses(of id: UUID, in policy: Policy) -> [String] {
+        policy.downtime.filter { $0.items.contains(id) }.map { "Downtime \u{201C}\($0.name)\u{201D}" }
+            + policy.limits.filter { !$0.allApps && $0.items.contains(id) }.map { "Limit \u{201C}\($0.name)\u{201D}" }
+            + (policy.alwaysAllowed.contains(id) ? ["Always Allowed"] : [])
+            + (policy.blocked.contains(id) ? ["Blocked"] : [])
     }
 
     private func update(_ policy: Policy, _ change: (inout Policy) -> Void) {
@@ -117,8 +163,20 @@ struct PolicyView: View {
 
 struct DowntimeEditor: View {
     @Environment(\.dismiss) private var dismiss
-    @State var window: DowntimeWindow
+    @State private var window: DowntimeWindow
+    /// Blocks only `window.items`, not the whole phone.
+    @State private var onlySome: Bool
+    let items: [UUID: TrackedItem]
+    let groups: [ItemGroup]
     let onSave: (DowntimeWindow) -> Void
+
+    init(window: DowntimeWindow, items: [UUID: TrackedItem], groups: [ItemGroup], onSave: @escaping (DowntimeWindow) -> Void) {
+        _window = State(initialValue: window)
+        _onlySome = State(initialValue: !window.isWholePhone)
+        self.items = items
+        self.groups = groups
+        self.onSave = onSave
+    }
 
     var body: some View {
         NavigationStack {
@@ -126,6 +184,26 @@ struct DowntimeEditor: View {
                 TextField("Name", text: $window.name)
                 MinutePicker(title: "From", minute: $window.startMinute)
                 MinutePicker(title: "Until", minute: $window.endMinute)
+                Section {
+                    Picker("Blocks", selection: $onlySome) {
+                        Text("Whole phone").tag(false)
+                        Text("Some apps").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    if onlySome {
+                        NavigationLink {
+                            ItemSelectionView(title: "Downtime", items: items, groups: groups, selection: $window.items)
+                        } label: {
+                            LabeledContent("Included", value: "\(window.items.count)")
+                        }
+                        SelectionRows(ids: window.items, items: items, groups: groups)
+                    }
+                } header: {
+                    Text("Blocks")
+                } footer: {
+                    Text(onlySome ? "Only these, so other apps keep working. Always Allowed apps work too."
+                         : "Everything but Always Allowed, ScreenThyme and Phone.")
+                }
                 Section {
                     WeekdayToggles(weekdays: $window.weekdays)
                 } header: {
@@ -139,10 +217,11 @@ struct DowntimeEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
+                        if !onlySome { window.items = [] }
                         onSave(window)
                         dismiss()
                     }
-                    .disabled(window.name.isEmpty || window.startMinute == window.endMinute)
+                    .disabled(window.name.isEmpty || window.startMinute == window.endMinute || onlySome && window.items.isEmpty)
                 }
             }
         }
@@ -153,6 +232,7 @@ struct LimitEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var limit: AppLimit
     let items: [UUID: TrackedItem]
+    var groups: [ItemGroup] = []
     let onSave: (AppLimit) -> Void
 
     var body: some View {
@@ -176,16 +256,14 @@ struct LimitEditor: View {
                     Toggle("All apps and websites", isOn: $limit.allApps)
                     if !limit.allApps {
                         NavigationLink {
-                            ItemSelectionView(title: "Limit", items: items, selection: $limit.items)
+                            ItemSelectionView(title: "Limit", items: items, groups: groups, selection: $limit.items)
                         } label: {
                             LabeledContent("Included", value: "\(limit.items.count)")
                         }
-                        ForEach(limit.items.compactMap { items[$0] }.sorted { $0.displayName < $1.displayName }) { item in
-                            ItemName(item: item)
-                        }
+                        SelectionRows(ids: limit.items, items: items, groups: groups)
                     }
                 } header: {
-                    Text("Apps, websites and categories")
+                    Text("Apps, websites, categories and groups")
                 } footer: {
                     if limit.allApps {
                         Text("Everything but Always Allowed, ScreenThyme and Phone. Checked every 2 minutes of use.")
@@ -209,15 +287,72 @@ struct LimitEditor: View {
 
     private var suggestedName: String {
         if limit.allApps { return "All apps" }
-        let names = limit.items.compactMap { items[$0]?.displayName }.sorted()
+        let names = groups.filter { limit.items.contains($0.id) }.map(\.name).sorted()
+            + limit.items.compactMap { items[$0]?.displayName }.sorted()
         return names.count > 1 ? "\(names[0]) and \(names.count - 1) more" : names.first ?? "Limit"
     }
 }
 
-/// Multi-select over the kid's categories, apps and websites, as found in Apple's data.
+/// The groups and items of a selection, groups first.
+struct SelectionRows: View {
+    let ids: Set<UUID>
+    let items: [UUID: TrackedItem]
+    let groups: [ItemGroup]
+
+    var body: some View {
+        ForEach(groups.filter { ids.contains($0.id) }.sorted { $0.name < $1.name }) { GroupName(group: $0) }
+        ForEach(ids.compactMap { items[$0] }.sorted { $0.displayName < $1.displayName }) { ItemName(item: $0) }
+    }
+}
+
+/// A group: a name and apps, websites and Apple's categories (PLAN.md §15.8).
+struct GroupEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var group: ItemGroup
+    let items: [UUID: TrackedItem]
+    /// Downtime windows, limits and lists that use the group.
+    let usedBy: [String]
+    let onSave: (ItemGroup) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $group.name, prompt: Text("Games"))
+                Section {
+                    NavigationLink {
+                        ItemSelectionView(title: group.name.isEmpty ? "Group" : group.name, items: items, selection: $group.items)
+                    } label: {
+                        LabeledContent("Included", value: "\(group.items.count)")
+                    }
+                    SelectionRows(ids: group.items, items: items, groups: [])
+                } header: {
+                    Text("Apps, websites and categories")
+                } footer: {
+                    Text(usedBy.isEmpty ? "Use the group in Downtime, limits, Always Allowed or Blocked."
+                         : "Used by \(usedBy.joined(separator: ", ")).")
+                }
+            }
+            .navigationTitle("Group")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        group.name = group.name.trimmingCharacters(in: .whitespaces)
+                        onSave(group)
+                        dismiss()
+                    }
+                    .disabled(group.name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+/// Multi-select over the kid's categories, apps and websites, as found in Apple's data, and the parents' groups.
 struct ItemSelectionView: View {
     let title: String
     let items: [UUID: TrackedItem]
+    var groups: [ItemGroup] = []
     @Binding var selection: Set<UUID>
     @State private var search = ""
 
@@ -230,6 +365,25 @@ struct ItemSelectionView: View {
             if named.isEmpty {
                 Text("On the kid's phone, open ScreenThyme and scan apps under Apps for Screen Time.")
                     .foregroundStyle(.secondary)
+            }
+            let shownGroups = groups.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            if !shownGroups.isEmpty {
+                Section("Groups") {
+                    ForEach(shownGroups) { group in
+                        Button {
+                            if selection.contains(group.id) { selection.remove(group.id) } else { selection.insert(group.id) }
+                        } label: {
+                            HStack {
+                                GroupName(group: group)
+                                Spacer()
+                                Text("\(group.items.count)").foregroundStyle(.secondary)
+                                if selection.contains(group.id) { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                            }
+                        }
+                        .tint(.primary)
+                    }
+                }
             }
             ForEach([ItemKind.category, .app, .domain], id: \.self) { kind in
                 let group = named.filter { $0.0.kind == kind && $0.1 != nil

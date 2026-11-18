@@ -36,6 +36,9 @@ public enum PolicyEdit: Sendable, Hashable {
     case limitAdded(AppLimit)
     case limitRemoved(AppLimit)
     case limitChanged(from: AppLimit, to: AppLimit)
+    case groupAdded(ItemGroup)
+    case groupRemoved(ItemGroup)
+    case groupChanged(from: ItemGroup, to: ItemGroup)
     case alwaysAllowed(added: Set<UUID>, removed: Set<UUID>)
     case blocked(added: Set<UUID>, removed: Set<UUID>)
     /// A Content & Privacy setting, with its values as shown ("On", "12+").
@@ -50,6 +53,8 @@ public enum PolicyEdit: Sendable, Hashable {
                          changed: PolicyEdit.downtimeChanged)
         edits += changes(old.limits, new.limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
                          changed: PolicyEdit.limitChanged)
+        edits += changes(old.groups, new.groups, added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved,
+                         changed: PolicyEdit.groupChanged)
         if old.alwaysAllowed != new.alwaysAllowed {
             edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
                                         removed: old.alwaysAllowed.subtracting(new.alwaysAllowed)))
@@ -81,7 +86,7 @@ public enum PolicyEdit: Sendable, Hashable {
         }
     }
 
-    /// One line for the history, then lines of detail. `name` names an item (app, website or category).
+    /// One line for the history, then lines of detail. `name` names an item (app, website or category) or a group.
     public func describe(calendar: Calendar = .current, name: (UUID) -> String) -> (title: String, details: [String]) {
         func names(_ ids: Set<UUID>) -> String { ids.map(name).sorted().joined(separator: ", ") }
         func listChange(_ added: Set<UUID>, _ removed: Set<UUID>) -> [String] {
@@ -91,7 +96,8 @@ public enum PolicyEdit: Sendable, Hashable {
         case let .enforcement(on):
             return (on ? "Turned enforcement on" : "Turned enforcement off", [])
         case let .downtimeAdded(window):
-            return ("Added Downtime \u{201C}\(window.name)\u{201D}", [window.schedule(calendar: calendar)])
+            return ("Added Downtime \u{201C}\(window.name)\u{201D}",
+                    [window.schedule(calendar: calendar)] + (window.isWholePhone ? [] : ["Only \(names(window.items))"]))
         case let .downtimeRemoved(window):
             return ("Removed Downtime \u{201C}\(window.name)\u{201D}", [window.schedule(calendar: calendar)])
         case let .downtimeChanged(old, new):
@@ -99,6 +105,11 @@ public enum PolicyEdit: Sendable, Hashable {
             if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
             let (from, to) = (old.schedule(calendar: calendar), new.schedule(calendar: calendar))
             if from != to { details.append("\(from) → \(to)") }
+            if old.isWholePhone != new.isWholePhone {
+                details.append(new.isWholePhone ? "Now the whole phone" : "Now only \(names(new.items))")
+            } else {
+                details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
+            }
             return ("Changed Downtime \u{201C}\(new.name)\u{201D}", details)
         case let .limitAdded(limit):
             var details = ["\(Self.minutes(limit.minutes)) a day" + (limit.enabled ? "" : ", off")]
@@ -121,6 +132,15 @@ public enum PolicyEdit: Sendable, Hashable {
             }
             details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
             return ("Changed limit \u{201C}\(new.name)\u{201D}", details)
+        case let .groupAdded(group):
+            return ("Added group \u{201C}\(group.name)\u{201D}", group.items.isEmpty ? [] : [names(group.items)])
+        case let .groupRemoved(group):
+            return ("Removed group \u{201C}\(group.name)\u{201D}", group.items.isEmpty ? [] : [names(group.items)])
+        case let .groupChanged(old, new):
+            var details: [String] = []
+            if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
+            details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
+            return ("Changed group \u{201C}\(new.name)\u{201D}", details)
         case let .alwaysAllowed(added, removed):
             return ("Changed Always Allowed", listChange(added, removed))
         case let .blocked(added, removed):

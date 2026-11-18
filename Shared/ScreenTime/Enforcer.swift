@@ -33,7 +33,7 @@ enum Enforcer {
             var state = loadState(now: now)
             change?(&state)
             AppGroup.save(state, to: AppGroup.enforcementStateURL)
-            let policy = AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)
+            let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
@@ -69,7 +69,11 @@ enum Enforcer {
         let config = SharedConfig.load()
         guard let kid = config.kid else { return }
         let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
-        let windowStart = loadApplied()?.plan.downtime?.interval.start
+        // The occurrence of the window it answers, even while Downtime is paused.
+        var windowStart: Date?
+        if case let .downtime(windowID) = grant.reason, let window = AppGroup.loadPolicy()?.downtime.first(where: { $0.id == windowID }) {
+            windowStart = window.daily.occurrence(containing: now)?.start
+        }
         reconcile(now: now) { state in
             guard !state.grants.contains(where: { $0.grant.requestID == grant.requestID }) else { return }
             let baseline = grant.itemID.flatMap { usage[$0] } ?? 0
@@ -143,6 +147,22 @@ enum Enforcer {
         } else {
             downtime.clearAllSettings()
         }
+
+        // Downtime for some apps (PLAN.md §15.8): their tokens, so the shield names the app; categories let through
+        // what's allowed or granted in any window that's on.
+        let someDowntime = ManagedSettingsStore(named: .init("downtime.some"))
+        var some = tokens.split(Set(plan.scopedDowntime.flatMap(\.items)))
+        some.apps.subtract(allowed.apps)
+        some.domains.subtract(allowed.domains)
+        if plan.scopedDowntime.isEmpty { someDowntime.clearAllSettings() }
+        shieldOneByOne(some, over: "downtime.some")
+        var someExceptions = tokens.split(tokens.expandingCategories(Set(plan.scopedDowntime.flatMap(\.exceptions))))
+        someExceptions.apps.formUnion(allowed.apps)
+        someExceptions.domains.formUnion(allowed.domains)
+        someDowntime.shield.applicationCategories = some.categories.isEmpty ? nil
+            : .specific(Tokens.capped(some.categories), except: Tokens.capped(someExceptions.apps))
+        someDowntime.shield.webDomainCategories = some.categories.isEmpty ? nil
+            : .specific(Tokens.capped(some.categories), except: Tokens.capped(someExceptions.domains))
 
         let limits = ManagedSettingsStore(named: .init("limits"))
         var limited = tokens.split(plan.limitedItems)
@@ -281,6 +301,8 @@ enum Enforcer {
                 guard let budget = plan.budgets[limit.id] else { continue }
                 let name = limitPrefix + short(limit.id)
                 let targets = tokens.split(limit.items.subtracting(policy.alwaysAllowed))
+                // An event with no tokens would count all activity.
+                guard !targets.apps.isEmpty || !targets.categories.isEmpty || !targets.domains.isEmpty else { continue }
                 let event = DeviceActivityEvent(applications: targets.apps, categories: targets.categories,
                                                 webDomains: targets.domains, threshold: DateComponents(minute: budget),
                                                 includesPastActivity: true)

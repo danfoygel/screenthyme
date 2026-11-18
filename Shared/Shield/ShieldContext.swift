@@ -7,7 +7,8 @@ import ThymeCore
 struct ShieldContext {
     let config = SharedConfig.load()
     let applied = AppGroup.load(AppliedPlan.self, from: AppGroup.enforcementURL)
-    let policy = AppGroup.loadPolicy()
+    /// Groups resolved to their items (`Policy.resolved`).
+    let policy = AppGroup.loadPolicy()?.resolved
     let items = AppGroup.loadItems()
     let state = AppGroup.load(EnforcementDayState.self, from: AppGroup.enforcementStateURL)
 
@@ -81,6 +82,9 @@ struct ShieldContext {
         guard let plan = applied?.plan else { return nil }
         let ids = Set([target.item?.id, target.category?.id].compactMap { $0 })
         if let downtime = plan.downtime, ids.isDisjoint(with: plan.downtimeExceptions) { return .downtime(downtime.windowID) }
+        for downtime in plan.scopedDowntime where !downtime.items.isDisjoint(with: ids) && downtime.exceptions.isDisjoint(with: ids) {
+            return .downtime(downtime.windowID)
+        }
         // A limit on the app itself first, then all-apps limits.
         let exhausted = (policy?.limits ?? []).filter { plan.exhaustedLimits.contains($0.id) }
             .sorted { ($0.allApps ? 1 : 0, $0.id.uuidString) < ($1.allApps ? 1 : 0, $1.id.uuidString) }
@@ -110,7 +114,7 @@ struct ShieldContext {
         }
         switch reason {
         case let .downtime(windowID):
-            guard let downtime = applied?.plan.downtime, downtime.windowID == windowID else { return "\(target.name) is off during Downtime." }
+            guard let downtime = applied?.plan.downtime(windowID) else { return "\(target.name) is off during Downtime." }
             return "\(target.name) is off until \(downtime.interval.end.formatted(date: .omitted, time: .shortened))."
         case let .limit(limitID):
             let name = applied?.limitNames[limitID] ?? target.name
@@ -157,9 +161,11 @@ struct ShieldContext {
 
     /// What a request for `target` asks for: Downtime off for that app (or the whole phone, with no app), more time on
     /// a limit, or an exception for a blocked app or category. Nil: nothing to ask for. An all-apps limit's shield
-    /// names only a category, which says nothing: like Downtime, its press is for the whole phone.
+    /// names only a category, which says nothing: like Downtime, its press is for the whole phone. Downtime for some
+    /// apps shields their categories by name, so its press is for the category.
     func requestScope(for target: Target) -> (itemID: UUID?, reason: BlockReason)? {
         switch reason(for: target) {
+        case let .downtime(id)? where applied?.plan.downtime?.windowID != id: (target.item?.id ?? target.category?.id, .downtime(id))
         case let .downtime(id)?: (target.item?.id, .downtime(id))
         case let .limit(id)? where policy?.limits.first(where: { $0.id == id })?.allApps == true: (target.item?.id, .limit(id))
         case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
