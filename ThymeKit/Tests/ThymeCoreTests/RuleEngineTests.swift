@@ -113,6 +113,24 @@ struct HealthEvaluatorTests {
                                        calendar: utc) == [.dataAccessLost])
     }
 
+    @Test func settingsSwitches() {
+        var latest = heartbeat(at: at(10, 0))
+        // Older builds don't report them.
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc).isEmpty)
+        latest.backgroundRefresh = .denied
+        latest.cellularData = .denied
+        latest.bluetooth = .allowed
+        latest.lowPowerMode = false
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc)
+            == [.permissionDenied(.backgroundRefresh), .permissionDenied(.cellularData)])
+        latest.bluetooth = .notAsked
+        latest.lowPowerMode = true
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc)
+            == [.permissionDenied(.cellularData), .lowPowerMode])
+        #expect(HealthIssue.permissionDenied(.cellularData).isUrgent)
+        #expect(!HealthIssue.lowPowerMode.isUrgent)
+    }
+
     @Test func accessLossAlertsOncePerLoss() {
         let engine = RuleEngine(kidID: testKid.id, kidName: "Emma", items: [:], calendar: utc)
         var state = MonitorDayState(day: testDay)

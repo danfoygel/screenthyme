@@ -175,6 +175,8 @@ extension HealthIssue {
         case .activitiesMissing: "activities"
         case .stale: "stale"
         case .backlog: "backlog"
+        case let .permissionDenied(permission): "permission.\(permission.rawValue)"
+        case .lowPowerMode: "low-power"
         }
     }
 }

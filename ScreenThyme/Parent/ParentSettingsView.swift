@@ -120,6 +120,14 @@ struct KidSettingsView: View {
                     if let level = heartbeat.batteryLevel {
                         LabeledContent("Phone battery", value: level.formatted(.percent.precision(.fractionLength(0))))
                     }
+                    ForEach(DevicePermission.allCases, id: \.self) { permission in
+                        if let state = permission.state(in: heartbeat) {
+                            LabeledContent(permission.title, value: state.label)
+                        }
+                    }
+                    if let lowPower = heartbeat.lowPowerMode {
+                        LabeledContent("Low Power Mode", value: lowPower ? "on" : "off")
+                    }
                 }
                 Button("Ping now") { Task { await model.ping(kid) } }
                 NavigationLink("Apps seen (\(model.data.items(for: kid.id).count))") { TrackedItemsView(kid: kid) }
@@ -314,5 +322,15 @@ struct TrackedItemsView: View {
             }
         }
         .navigationTitle("\(kid.displayName)'s apps")
+    }
+}
+
+private extension PermissionState {
+    var label: String {
+        switch self {
+        case .allowed: "on"
+        case .denied: "off"
+        case .notAsked: "not asked yet"
+        }
     }
 }
