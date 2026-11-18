@@ -25,7 +25,7 @@ struct AskForTimeView: View {
     var body: some View {
         let context = ShieldContext()
         let target = item.map { context.target(item: $0) }
-            ?? category.map { ShieldContext.Target(item: nil, category: $0, name: $0.displayName) }
+            ?? category.map { ShieldContext.Target(item: nil, category: $0, name: context.name(of: $0)) }
         let reason = target.flatMap { context.reason(for: $0) }
         NavigationStack {
             Form {

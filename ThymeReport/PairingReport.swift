@@ -7,8 +7,9 @@ import ThymeCore
 
 /// One of the reports that pair scanned tokens with bundle IDs and domains (PLAN.md §15.6, `TokenPairing`). The app
 /// filters it to the scanned items whose number has this report's bit set; it draws a QR code of hashes of the
-/// identifiers it sees (the names report: every scanned item, identifiers spelled out). This extension's own tokens are encrypted under another key than the scan's, so iOS does the
-/// comparison, through the filter.
+/// identifiers it sees (the names report: every scanned item, identifiers spelled out; category reports: the names of
+/// the categories it sees). This extension's own tokens are encrypted under another key than the scan's, so iOS does
+/// the comparison, through the filter.
 struct PairingData: @unchecked Sendable {
     var view: TokenPairing.View
     var identifiers = 0
@@ -34,6 +35,12 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
         for await device in data {
             for await segment in device.activitySegments {
                 for await category in segment.categories {
+                    if view.isCategory {
+                        if let name = category.category.localizedDisplayName {
+                            seen.insert(TokenPairing.Identifier(kind: .category, identifier: name))
+                        }
+                        continue
+                    }
                     for await app in category.applications {
                         if let bundle = app.application.bundleIdentifier {
                             seen.insert(TokenPairing.Identifier(kind: .app, identifier: bundle))
@@ -47,7 +54,8 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
         }
         report.identifiers = seen.count
         // The scan's order, as the app sees it, names the codes: codes from another scan can't be mixed in.
-        let order = TokenPairing.order(AppGroup.loadItems())
+        let items = AppGroup.loadItems()
+        let order = view.isCategory ? TokenPairing.categoryOrder(items) : TokenPairing.order(items)
         guard !order.isEmpty else {
             report.problem = "Can't read the app scan"
             return report
