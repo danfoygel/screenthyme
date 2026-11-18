@@ -643,17 +643,17 @@ like this:
   and several reports run on one screen. So iOS does the comparison: each scanned app and website gets a number (its
   place in `TokenPairing.order`, from 1), and the app shows one report per bit, filtered to the items with that bit
   set, plus a parity report (9 for 169 items; the extension declares 10 scenes, `pair.p`, `pair.b0`…`pair.b8`).
-  Each draws a QR code of 6-hex hashes of the identifiers it saw over the last 28 days, named by a fingerprint of
+  Each draws a QR code of 6-hex hashes of the identifiers it saw over the last 7 days (28 until Nov 18), named by a fingerprint of
   the order (the extension reads the App Group). Core Image draws nothing in the report extension (not even its
   software renderer), so the codes come from our own encoder (`QRCode`) and a `Canvas`. An identifier's number is the sum of its reports' bits. The kid
   takes 2 screenshots; the app reads them from the photo library with Vision and saves the matches. A pair
   overrides a match from watching use, and another scanned item matched to the same app loses its match and is
   watched again. Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
   filtered to every scanned item, one large code) spells out; a failed parity check (two scanned tokens for one app)
-  is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the 28 days, before
+  is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the window, before
   tracking began) creates a bare item for it, so parents can name the match; it never counts as a new app. First run
   (Nov 16, kid's phone): 24 new matches, the 7 earlier ones confirmed, no conflicts, and 42
-  identifiers unknown without the names report; with it, all 42 matched (73 of 169 in all). Apps unused in the 28 days
+  identifiers unknown without the names report; with it, all 42 matched (73 of 169 in all). Apps unused in the window
   still wait for their minute.
 - **Codes too small to read** (Nov 17, a kid's phone with over 200 identifiers): every bit report needed two 600-byte
   codes, stacked in a 190-point cell, with modules rounded to half points (1.5 px on a 3x screen). Codes at 3 whole
@@ -681,7 +681,7 @@ like this:
   get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which
   spell out the names of the categories they see (`localizedDisplayName`, as the Sampler names category items). A
   scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
-  unused in the 28 days stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
+  unused in the window stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
   shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
 - **New apps only** (Nov 17, `TokenPairing.Mode`, the default): after a first round, a new app's match can't come
   from one code (the token is what's unknown), but every code can be tiny. In `unmatched` mode the numbers go only
@@ -692,6 +692,12 @@ like this:
   since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
   websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
   has no token: scan again first.
+- **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
+  debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
+  was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment
+  (`TokenPairing.days`; iOS may still split it at a week boundary), its end is fixed while the screen is open, sizes
+  are computed without drawing a code (`QRCode.size(bytes:)`), and each mask's penalty is computed once. Each
+  report's caption shows its segments and the seconds spent fetching and drawing.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
   A scanned category counts through its match's name (`EnforcementPlanner.categoryNames`): before, a limit on one
   counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps
@@ -709,6 +715,26 @@ nothing adds none. The history keeps whole policies, not text, so it names apps 
 (`PolicyEdit.between` diffs them in ThymeCore). Screen Time → Change history lists a kid's changes with each parent's
 answers to requests for more time (`TimeGrant`s), oldest first, by day, opening on the latest. Only parents' phones
 read it; kids' phones never fetch it. Changes made before this build aren't in it.
+
+### 15.8 Groups and Downtime for some apps (Nov 18, 2026)
+
+- **Groups** (`ItemGroup`, in `Policy.groups`) are the parents' own categories: a name and apps, websites and Apple's
+  categories. An app may be in several; groups don't nest. Limits, Always Allowed, Blocked and Downtime windows name
+  groups by id beside items, so a change to a group changes everything that uses it. `Policy.resolved` replaces group
+  ids with their items; the planner, Enforcer and block page work on it. Deleting a group removes its uses.
+- **Downtime for some apps:** a window with `items` blocks only those (and its groups' items), not the whole phone;
+  none means the whole phone, as before. Whole-phone Downtime is still the first window that's on; every window for
+  some apps that's on is applied at once (`EnforcementPlan.scopedDowntime`), in its own store `downtime.some`
+  (`.2` … for more than 50 apps): app and website tokens one by one, categories as `.specific(except:)` Always
+  Allowed and granted apps. A window of an emptied group blocks nothing (`Policy.downtimeItems`), never the whole
+  phone.
+- Its shields name the app (or the category), so a request or one more minute lets just that through until the
+  window ends; only a press that names nothing pauses the window. Grants and minutes are per window occurrence
+  (`AppliedGrant.windowStart`, now taken from the policy, so it's right even while Downtime is paused).
+- Excepted apps are shared across the windows that are on: an app granted in one window passes another window's
+  categories too (not its own token shield). Rare, and accepted.
+- Old builds ignore both fields: a kid phone on an old build enforces a window for some apps as whole-phone Downtime,
+  and an old parent build drops groups when it saves. Update every phone.
 
 ## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
 

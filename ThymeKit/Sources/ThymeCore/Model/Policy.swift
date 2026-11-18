@@ -2,7 +2,8 @@ import Foundation
 
 /// What ScreenThyme enforces on one kid's phone (PLAN.md §15): Downtime, App Limits, Always Allowed, blocked items
 /// and Content & Privacy restrictions. Edited on parent phones and synced as one record, `Policy.<kid id>`.
-/// Items are `TrackedItem` ids: apps, websites and categories found in Apple's activity data.
+/// Items are `TrackedItem` ids (apps, websites and categories found in Apple's activity data) or `ItemGroup` ids, which
+/// stand for their items (`resolved`).
 public struct Policy: Codable, Sendable, Hashable {
     public var kidID: UUID
     public var updatedAt: Date
@@ -13,10 +14,12 @@ public struct Policy: Codable, Sendable, Hashable {
     public var limits: [AppLimit]
     public var blocked: Set<UUID>
     public var restrictions: Restrictions
+    /// The parents' own categories, used in Downtime, limits, Always Allowed and Blocked (PLAN.md §15.8).
+    public var groups: [ItemGroup]
 
     public init(kidID: UUID, updatedAt: Date = Date(), enabled: Bool = true, downtime: [DowntimeWindow] = [],
                 alwaysAllowed: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
-                restrictions: Restrictions = Restrictions()) {
+                restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = []) {
         self.kidID = kidID
         self.updatedAt = updatedAt
         self.enabled = enabled
@@ -25,6 +28,69 @@ public struct Policy: Codable, Sendable, Hashable {
         self.limits = limits
         self.blocked = blocked
         self.restrictions = restrictions
+        self.groups = groups
+    }
+
+    /// Policies saved before a field existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kidID = try container.decode(UUID.self, forKey: .kidID)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        downtime = try container.decode([DowntimeWindow].self, forKey: .downtime)
+        alwaysAllowed = try container.decode(Set<UUID>.self, forKey: .alwaysAllowed)
+        limits = try container.decode([AppLimit].self, forKey: .limits)
+        blocked = try container.decode(Set<UUID>.self, forKey: .blocked)
+        restrictions = try container.decode(Restrictions.self, forKey: .restrictions)
+        groups = try container.decodeIfPresent([ItemGroup].self, forKey: .groups) ?? []
+    }
+
+    /// `ids` with each group's id replaced by its items.
+    public func expandingGroups(_ ids: Set<UUID>) -> Set<UUID> {
+        guard !groups.isEmpty else { return ids }
+        var result = ids
+        for group in groups where result.remove(group.id) != nil { result.formUnion(group.items) }
+        return result
+    }
+
+    /// The policy as enforced: Always Allowed, Blocked and limits name items, never groups. Downtime windows keep
+    /// theirs: a window of an emptied group must still block nothing rather than the whole phone, so the planner
+    /// expands them (`downtimeItems`). Resolving twice changes nothing.
+    public var resolved: Policy {
+        var policy = self
+        policy.alwaysAllowed = expandingGroups(alwaysAllowed)
+        policy.blocked = expandingGroups(blocked)
+        for index in policy.limits.indices { policy.limits[index].items = expandingGroups(limits[index].items) }
+        return policy
+    }
+
+    /// What `window` blocks, as items; nil for the whole phone.
+    public func downtimeItems(_ window: DowntimeWindow) -> Set<UUID>? {
+        window.isWholePhone ? nil : expandingGroups(window.items)
+    }
+
+    /// Removes a group and every use of it.
+    public mutating func removeGroup(_ id: UUID) {
+        groups.removeAll { $0.id == id }
+        alwaysAllowed.remove(id)
+        blocked.remove(id)
+        for index in limits.indices { limits[index].items.remove(id) }
+        for index in downtime.indices { downtime[index].items.remove(id) }
+    }
+}
+
+/// A parent's own category: apps, websites and Apple's categories under one name, like "Games" or "Homework
+/// distractions". An app may be in several groups. Groups don't contain groups.
+public struct ItemGroup: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var name: String
+    /// `TrackedItem` ids.
+    public var items: Set<UUID>
+
+    public init(id: UUID = UUID(), name: String, items: Set<UUID> = []) {
+        self.id = id
+        self.name = name
+        self.items = items
     }
 }
 
@@ -36,14 +102,33 @@ public struct DowntimeWindow: Codable, Sendable, Hashable, Identifiable {
     public var startMinute: Int
     public var endMinute: Int
     public var weekdays: Set<Int>
+    /// What the window blocks: empty is the whole phone but Always Allowed; otherwise only these apps, websites,
+    /// categories and groups (PLAN.md §15.8).
+    public var items: Set<UUID>
 
-    public init(id: UUID = UUID(), name: String, startMinute: Int, endMinute: Int, weekdays: Set<Int> = []) {
+    public init(id: UUID = UUID(), name: String, startMinute: Int, endMinute: Int, weekdays: Set<Int> = [],
+                items: Set<UUID> = []) {
         self.id = id
         self.name = name
         self.startMinute = startMinute
         self.endMinute = endMinute
         self.weekdays = weekdays
+        self.items = items
     }
+
+    /// Windows saved before a field existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        startMinute = try container.decode(Int.self, forKey: .startMinute)
+        endMinute = try container.decode(Int.self, forKey: .endMinute)
+        weekdays = try container.decode(Set<Int>.self, forKey: .weekdays)
+        items = try container.decodeIfPresent(Set<UUID>.self, forKey: .items) ?? []
+    }
+
+    /// Blocks the whole phone, not only some apps.
+    public var isWholePhone: Bool { items.isEmpty }
 }
 
 /// A daily budget shared by its items, like Apple's App Limits.

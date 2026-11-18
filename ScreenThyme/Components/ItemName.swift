@@ -66,6 +66,15 @@ struct ItemName: View {
     }
 }
 
+/// A parent's group of apps (`ItemGroup`), as lists show it.
+struct GroupName: View {
+    let group: ItemGroup
+
+    var body: some View {
+        Label(group.name, systemImage: "square.stack.3d.up.fill")
+    }
+}
+
 enum Format {
     static func minutes(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"

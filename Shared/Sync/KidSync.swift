@@ -94,7 +94,7 @@ enum KidSync {
             return true
         }
         guard changed else { return }
-        try? AppGroup.journal.append(.note("policy updated: \(policy.enabled ? "on" : "off"), \(policy.downtime.count) downtime, \(policy.limits.count) limits"))
+        try? AppGroup.journal.append(.note("policy updated: \(policy.enabled ? "on" : "off"), \(policy.downtime.count) downtime, \(policy.limits.count) limits, \(policy.groups.count) groups"))
         Enforcer.reconcile()
     }
 }

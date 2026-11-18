@@ -63,7 +63,13 @@ private struct PolicyHistoryRow: View {
 
     private var lines: [(title: String, details: [String])] {
         let items = model.data.items(for: kid.id)
+        // Groups by their names before or after the change (or now, for a grant).
+        let groups: [ItemGroup] = switch entry {
+        case let .change(change): change.after.groups + (change.before?.groups ?? [])
+        case .grant: model.data.policy(for: kid.id).groups
+        }
         func name(_ id: UUID) -> String {
+            if let group = groups.first(where: { $0.id == id }) { return "group \u{201C}\(group.name)\u{201D}" }
             guard let item = items[id] else { return "a removed item" }
             return AppCatalog.shared.name(of: item, in: items) ?? item.displayName
         }

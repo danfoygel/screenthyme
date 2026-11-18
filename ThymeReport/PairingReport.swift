@@ -18,6 +18,10 @@ struct PairingData: @unchecked Sendable {
     /// Each code's modules, rows from the top, true for dark.
     var codes: [[[Bool]]] = []
     var problem: String?
+    /// Segments in Apple's data, and seconds spent fetching it and drawing the codes: the caption shows them.
+    var segments = 0
+    var fetchSeconds = 0.0
+    var drawSeconds = 0.0
 }
 
 struct PairingReport: @preconcurrency DeviceActivityReportScene {
@@ -34,8 +38,11 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
     nonisolated func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> PairingData {
         var report = PairingData(view: view)
         var seen: Set<TokenPairing.Identifier> = []
+        let clock = ContinuousClock()
+        let start = clock.now
         for await device in data {
             for await segment in device.activitySegments {
+                report.segments += 1
                 for await category in segment.categories {
                     if view.isCategory {
                         if let name = category.category.localizedDisplayName {
@@ -54,6 +61,8 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
                 }
             }
         }
+        let fetched = clock.now
+        report.fetchSeconds = Self.seconds(fetched - start)
         // The scan's order, as the app sees it, names the codes: codes from another scan can't be mixed in.
         let items = AppGroup.loadItems()
         let mode = AppGroup.tokenPairingMode()
@@ -69,7 +78,12 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
                                          lines: TokenPairing.lines(view, seen: drawn), maxBytes: report.display.maxBytes)
         report.codes = texts.compactMap(Self.modules)
         if report.codes.count < texts.count { report.problem = "Couldn't draw the code" }
+        report.drawSeconds = Self.seconds(clock.now - fetched)
         return report
+    }
+
+    private nonisolated static func seconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     /// Our own encoder: Core Image draws nothing in this extension, not even on the CPU.
@@ -100,7 +114,10 @@ struct PairingView: View {
                 } else {
                     Spacer()
                 }
-                Text(report.problem ?? "\(report.view.name) · \(index + 1) of \(report.codes.count) · \(report.identifiers)")
+                Text(report.problem ?? "\(report.view.name) · \(index + 1) of \(report.codes.count) · \(report.identifiers) · "
+                     + "\(report.fetchSeconds.formatted(.number.precision(.fractionLength(1)))) s")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .font(.caption)
                     .foregroundStyle(report.problem == nil ? Color.secondary : .orange)
             }
@@ -129,7 +146,12 @@ struct PairingView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Text(report.problem ?? "\(report.view.name) · \(report.identifiers)")
+            // Name · identifiers · segments · seconds fetching Apple's data + drawing.
+            Text(report.problem ?? "\(report.view.name) · \(report.identifiers) · \(report.segments)× · "
+                 + "\(report.fetchSeconds.formatted(.number.precision(.fractionLength(1)))) s + "
+                 + "\(report.drawSeconds.formatted(.number.precision(.fractionLength(2)))) s")
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .font(.caption2)
                 .foregroundStyle(report.problem == nil ? Color.secondary : .orange)
         }

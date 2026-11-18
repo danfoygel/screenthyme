@@ -13,16 +13,24 @@ struct KidScreenTimeSection: View {
     var body: some View {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         Section("Screen Time") {
-            if let plan = applied?.plan, let policy = AppGroup.loadPolicy(), policy.enabled {
+            if let plan = applied?.plan, let policy = AppGroup.loadPolicy()?.resolved, policy.enabled {
                 if let downtime = plan.downtime {
                     LabeledContent(downtime.name, value: "until \(Format.time(downtime.interval.end))")
+                }
+                ForEach(plan.scopedDowntime, id: \.windowID) { downtime in
+                    NavigationLink {
+                        SelectedItemsView(title: downtime.name, ids: downtime.items, items: items,
+                                          footer: "These are off until \(Format.time(downtime.interval.end)).")
+                    } label: {
+                        LabeledContent(downtime.name, value: "\(downtime.items.count) off until \(Format.time(downtime.interval.end))")
+                    }
                 }
                 ForEach(policy.limits.filter(\.enabled)) { limit in
                     let used = plan.used[limit.id] ?? 0
                     LabeledContent(limit.name, value: plan.budgets[limit.id].map { "\(Format.minutes(used)) of \(Format.minutes($0))" }
                         ?? "no limit today")
                 }
-                if plan.downtime == nil && policy.limits.isEmpty {
+                if !plan.hasDowntime && policy.limits.isEmpty {
                     Text("No Downtime now and no limits.").foregroundStyle(.secondary)
                 }
                 itemList("Always Allowed", ids: policy.alwaysAllowed, items: items,
@@ -31,7 +39,7 @@ struct KidScreenTimeSection: View {
             } else {
                 Text("No limits on this phone.").foregroundStyle(.secondary)
             }
-            if let plan = applied?.plan, plan.downtime != nil || !plan.exhaustedLimits.isEmpty || !plan.blockedItems.isEmpty {
+            if let plan = applied?.plan, plan.hasDowntime || !plan.exhaustedLimits.isEmpty || !plan.blockedItems.isEmpty {
                 Button("Ask for more time") { asking = true }
             }
             ForEach(requests) { request in
