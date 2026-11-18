@@ -67,6 +67,7 @@ extension AppModel {
         bundle.heartbeats = makeHeartbeat(.nearby).map { [$0] } ?? []
         bundle.alerts = AppGroup.outbox.readAll().filter { recent($0.at) }
         bundle.requests = AppGroup.requests.readAll().filter { recent($0.at) }
+        bundle.pairing = pairingShown.map { [$0] }  // so a parent's phone that connects later knows
         return bundle
     }
 
@@ -82,6 +83,10 @@ extension AppModel {
     }
 
     private func receivedNearby(_ bundle: LinkBundle, from peer: LinkHello) {
+        for message in bundle.pairing ?? [] { receivedPairing(message, from: peer) }
+        var bundle = bundle
+        bundle.pairing = nil
+        guard !bundle.isEmpty else { return }
         switch (config.role, peer.role) {
         case (.parent, .kid):
             guard let kidID = peer.kidID else { return }
@@ -110,6 +115,41 @@ extension AppModel {
         }
     }
 
+    // MARK: - Matching by a parent's camera (PLAN.md §15.6)
+
+    /// Kid: what the pairing screen shows now (nil: it closed), to every parent's phone nearby.
+    func showPairing(_ progress: LinkPairing?) {
+        pairingShown = progress
+        nearby.send([progress ?? .progress(showing: nil, done: 0, total: 0)]) { $0.role == .parent }
+    }
+
+    /// Kid: what pairing found, to every parent's phone nearby.
+    func sendPairingResult(_ text: String) {
+        nearby.send([.result(text)]) { $0.role == .parent }
+    }
+
+    /// Parent: the codes read so far, to that kid's phone.
+    func sendPairingCodes(_ texts: [String], to kid: UUID) {
+        nearby.send([.codes(texts)]) { $0.role == .kid && $0.kidID == kid }
+    }
+
+    private func receivedPairing(_ message: LinkPairing, from peer: LinkHello) {
+        switch (config.role, peer.role, message) {
+        case let (.kid, .parent, .codes(texts)):
+            pairingCodes.formUnion(texts)
+        case let (.parent, .kid, .progress(showing, done, total)):
+            guard let kid = peer.kidID else { return }
+            pairingPeers[kid, default: PairingPeer()].showing = showing
+            pairingPeers[kid, default: PairingPeer()].done = done
+            pairingPeers[kid, default: PairingPeer()].total = total
+        case let (.parent, .kid, .result(text)):
+            guard let kid = peer.kidID else { return }
+            pairingPeers[kid, default: PairingPeer()].result = text
+        default:
+            break
+        }
+    }
+
     // MARK: - Rule sets this phone published
 
     func rememberPublished(_ set: RuleSet) {
@@ -119,4 +159,13 @@ extension AppModel {
     private func publishedRuleSet(kid: UUID) -> RuleSet? {
         UserDefaults.standard.data(forKey: "publishedRuleSet.\(kid)").flatMap { try? JSONDecoder.thyme.decode(RuleSet.self, from: $0) }
     }
+}
+
+/// A kid's pairing screen, as a parent's phone hears of it.
+struct PairingPeer: Equatable {
+    /// The report it shows; nil once it has shown them all, or closed (`total` 0).
+    var showing: String?
+    var done = 0
+    var total = 0
+    var result: String?
 }

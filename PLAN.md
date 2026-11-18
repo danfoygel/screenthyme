@@ -662,6 +662,24 @@ like this:
   and a code holds up to 1150 bytes (version 28: as wide as a 2x phone's screen at 5 px). The app sizes each report
   from the scan (`TokenPairing.estimatedCodes`), in one column unless two fit; the extension lays several codes out in
   the grid that draws them largest. About 5 screenshots on a 3x phone with 200 identifiers.
+- **By a parent's camera** (Nov 18; `CameraPairingView` on the kid's phone, `PairingScannerView` on the parent's, under
+  Settings → the kid). The same reports and the same pairing, in either mode (new apps or everything, the same
+  switch as the screenshots'), without screenshots or the photo library. The kid's
+  phone shows one report at a time, filling the screen, names report first; reports drawn for a camera
+  (`TokenPairing.Display`, saved in the App Group before any report draws) hold at most 600 bytes a code (version 19,
+  93 modules: about 7 px a module across a 2x phone) and cycle through their codes every 0.7 s. The parent's phone
+  reads them with VisionKit's live scanner and, whenever it has every part of a report (`TokenPairing.complete`),
+  sends every complete report's codes over the nearby link (`LinkBundle.pairing`, `LinkPairing.codes`); the kid's
+  phone moves on to the first report not read yet. The kid's phone tells parents what it shows (`.progress`, also in
+  every 15 s bundle, so a parent's phone that connects later knows) and, once all are read, pairs and sends what it
+  found (`.result`). A parent's phone sends a report again when the kid's phone shows one it has read (reopened, or a
+  message lost). A report that draws no code can be skipped by hand; a skipped bit report means nothing pairs.
+  Needs both apps open and the link up, so a parent each time new apps are to be matched. Tried on the phones Nov 18:
+  the link came up over Wi-Fi in seconds and a "new apps" round matched 11 categories and a website, none missing or
+  in conflict. Kid heartbeats carry the last match's time (`Heartbeat.lastTokenPairing`; the kid's phone sends one
+  after each match), so a parent's phone counts the apps used since that no scanned item matches
+  (`TokenPairing.toMatch`, as the kid's home screen does) and says so on the kid's card and day, with a link to
+  the camera.
 - **Categories** (Nov 17) pair the same way, in reports of their own: a report filtered by a category shows every app
   in it, so categories can't share the apps' bits. The scan's categories (`TokenPairing.categoryOrder`, about a dozen)
   get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which

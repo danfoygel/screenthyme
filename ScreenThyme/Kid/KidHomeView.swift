@@ -69,19 +69,20 @@ struct KidHomeView: View {
                     Section {
                         Button("Scan apps (\(scan.all.applicationTokens.count) apps)") { pickingAll = true }
                         NavigationLink {
-                            TokenPairingView()
+                            CameraPairingView()
                         } label: {
                             let count = TokenPairing.toMatch(AppGroup.loadItems(), lastImport: TokenPairingView.lastImport()).count
-                            LabeledContent("Match apps by screenshot", value: count == 0 ? "" : "\(count) new")
+                            LabeledContent("Match with a parent's camera", value: count == 0 ? "" : "\(count) new")
                                 .foregroundStyle(count == 0 ? Color.primary : .orange)
                         }
+                        NavigationLink("Match apps by screenshot") { TokenPairingView() }
                         Button(scan.screenThyme.applicationTokens.isEmpty ? "Choose ScreenThyme" : "ScreenThyme chosen") {
                             pickingSelf = true
                         }
                     } header: {
                         Text("Apps for Screen Time")
                     } footer: {
-                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it. Match by screenshot after a scan, and when new apps have been used, so limits count them.")
+                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it. Match after a scan, and when new apps have been used, so limits count them: with a parent's phone nearby, or by screenshot.")
                     }
                     .familyActivityPicker(headerText: "Select All Apps & Categories", isPresented: $pickingAll,
                                           selection: $scan.all)

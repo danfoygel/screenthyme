@@ -66,6 +66,8 @@ enum AppGroup {
     static var rulesURL: URL { container.appending(path: "rules.json") }
     /// What ScreenThyme enforces on this kid phone (`Policy`), written by the app and `KidSync`.
     static var policyURL: URL { container.appending(path: "policy.json") }
+    /// How the pairing reports draw their codes (`TokenPairing.Display`), written by the app before it shows them.
+    static var pairingDisplayURL: URL { container.appending(path: "token-pairing-display.json") }
     /// Today's limit fires and applied grants (`EnforcementDayState`), written by the `Enforcer`.
     static var enforcementStateURL: URL { container.appending(path: "enforcement-state.json") }
     /// The plan last applied (`AppliedPlan`), read by the block page to say why something is blocked.

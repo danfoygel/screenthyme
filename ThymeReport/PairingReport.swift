@@ -13,6 +13,7 @@ import ThymeCore
 /// only, and apps, websites and categories already matched are left out.
 struct PairingData: @unchecked Sendable {
     var view: TokenPairing.View
+    var display = TokenPairing.Display.screenshots
     var identifiers = 0
     /// Each code's modules, rows from the top, true for dark.
     var codes: [[[Bool]]] = []
@@ -70,10 +71,11 @@ struct PairingReport: @preconcurrency DeviceActivityReportScene {
             report.problem = "Can't read the app scan"
             return report
         }
+        report.display = AppGroup.load(TokenPairing.Display.self, from: AppGroup.pairingDisplayURL) ?? .screenshots
         let drawn = TokenPairing.drawn(seen, items: items, mode: mode)
         report.identifiers = drawn.count
         let texts = TokenPairing.encode(fingerprint: TokenPairing.fingerprint(order), view: view,
-                                         lines: TokenPairing.lines(view, seen: drawn))
+                                         lines: TokenPairing.lines(view, seen: drawn), maxBytes: report.display.maxBytes)
         report.codes = texts.compactMap(Self.modules)
         if report.codes.count < texts.count { report.problem = "Couldn't draw the code" }
         report.drawSeconds = Self.seconds(clock.now - fetched)
@@ -94,6 +96,38 @@ struct PairingView: View {
     let report: PairingData
 
     var body: some View {
+        switch report.display {
+        case .screenshots: grid
+        case .camera: carousel
+        }
+    }
+
+    /// For a parent's camera: one code at a time, as large as the report, the next every `interval`. The parent's
+    /// phone reads each part as it comes round.
+    private var carousel: some View {
+        TimelineView(.periodic(from: .now, by: Self.interval)) { context in
+            let index = report.codes.isEmpty ? 0 : Int(context.date.timeIntervalSinceReferenceDate / Self.interval)
+                % report.codes.count
+            VStack(spacing: 4) {
+                if report.codes.indices.contains(index) {
+                    QRCodeView(modules: report.codes[index]).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Spacer()
+                }
+                Text(report.problem ?? "\(report.view.name) · \(index + 1) of \(report.codes.count) · \(report.identifiers) · "
+                     + "\(report.fetchSeconds.formatted(.number.precision(.fractionLength(1)))) s")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .font(.caption)
+                    .foregroundStyle(report.problem == nil ? Color.secondary : .orange)
+            }
+        }
+    }
+
+    private static let interval = 0.7
+
+    /// For screenshots: every code at once.
+    private var grid: some View {
         VStack(spacing: 2) {
             GeometryReader { proxy in
                 let columns = TokenPairing.columns(count: report.codes.count, width: proxy.size.width,

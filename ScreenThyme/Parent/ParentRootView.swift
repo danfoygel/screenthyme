@@ -89,6 +89,12 @@ struct KidCard: View {
             }
             .font(.subheadline)
             Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items))))").font(.subheadline.monospacedDigit())
+            let toMatch = model.appsToMatch(for: kid).count
+            if toMatch > 0 {
+                Label("\(toMatch) new \(toMatch == 1 ? "app" : "apps") to match", systemImage: "qrcode.viewfinder")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             ForEach(Array(top), id: \.key) { id, usage in
                 HStack {
                     ItemName(item: items[id])
@@ -129,6 +135,22 @@ struct KidDayView: View {
                 .buttonStyle(.borderless)
                 LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items)))
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
+            }
+            let toMatch = model.appsToMatch(for: kid)
+            if !toMatch.isEmpty {
+                Section {
+                    NavigationLink { PairingScannerView(kid: kid) } label: {
+                        Label("Match \(toMatch.count) new \(toMatch.count == 1 ? "app" : "apps") with camera",
+                              systemImage: "qrcode.viewfinder")
+                            .foregroundStyle(.orange)
+                    }
+                    ForEach(toMatch.prefix(5)) { item in ItemName(item: item).font(.subheadline) }
+                    if toMatch.count > 5 {
+                        Text("and \(toMatch.count - 5) more").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Used on \(kid.displayName)'s phone since its last match, so limits don't count them yet. Apps installed since the last app scan need a new scan on that phone first.")
+                }
             }
             Section {
                 NavigationLink { KidTimelineView(kid: kid, day: day) } label: {
