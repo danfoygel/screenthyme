@@ -23,7 +23,8 @@ struct TokenMatchesView: View {
                 ForEach(matched, id: \.0.id) { scannedItem, match in
                     VStack(alignment: .leading, spacing: 4) {
                         ItemName(item: scannedItem)
-                        Text("\(name(match)) · \(match.identifier)")
+                        // A category's identifier is its name.
+                        Text(match.kind == .category ? name(match) : "\(name(match)) · \(match.identifier)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
