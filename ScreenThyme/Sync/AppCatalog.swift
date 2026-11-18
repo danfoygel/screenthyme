@@ -6,8 +6,9 @@ import UIKit
 
 /// Real names and icons for the bundle IDs and domains in Apple's data (PLAN.md §15.6), cached on a parent's phone.
 /// Apps come from the App Store's public lookup, which knows most of Apple's own apps too (`BuiltInApps` keeps their
-/// short names); websites from the sites themselves. Settings and App Store aren't in the store: they take the icon
-/// of the scanned item matched to them, and Settings, which the scan never offers, gets a drawn gear.
+/// short names); websites from the sites themselves. An app matched to a scanned item takes that item's icon, as the
+/// kid's phone draws it, before the store's (Settings and App Store aren't in the store); Settings, which the scan never
+/// offers, gets a drawn gear.
 @MainActor @Observable
 final class AppCatalog {
     static let shared = AppCatalog()
@@ -57,9 +58,10 @@ final class AppCatalog {
     func icon(for item: TrackedItem) -> Icon? {
         switch item.kind {
         case .app:
+            // A matched token draws the icon the kid's phone shows; the store's can differ (Music's is a white tile).
+            if let token = TokenCoding.application(matchedTokens[item.id]) { return .token(token) }
             if let url = entries[item.identifier]?.icon { return .remote(url) }
             if item.identifier == Bundle.main.bundleIdentifier, let own = Self.ownIcon { return .image(own) }
-            if let token = TokenCoding.application(matchedTokens[item.id]) { return .token(token) }
             return Self.symbols[item.identifier].map(Icon.symbol)
         case .domain:
             return siteIcons[item.identifier].map(Icon.remote)
