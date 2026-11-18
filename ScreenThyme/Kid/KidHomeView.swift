@@ -94,7 +94,10 @@ struct KidHomeView: View {
                 Section {
                     NavigationLink("Debug") { KidDebugView() }
                 }
-                TestModeSection()
+                // A kid could otherwise switch on test mode and make this phone a parent's (PLAN.md §7.1).
+                if model.config.testMode {
+                    TestModeSection()
+                }
             }
             .navigationTitle("ScreenThyme")
             .sheet(item: $ask) { AskForTimeView(ask: $0.ask) }

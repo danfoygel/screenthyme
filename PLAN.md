@@ -335,7 +335,7 @@ The goal is to develop and run most spikes on one iPhone plus the Simulator, wit
 
 - **Authorization mode:** a debug setting picks `.individual` instead of `.child`. Capture (ladders, monitor extension, journal, upload) is identical. `.child`-only behavior is out of scope here: the parent approval flow, the app being undeletable, and `.child` support for the S4 export option.
 - **Identity override:** "Upload as kid: Emma / Leo / Test 3 / …". This sets the `kidId` stamped on every `UsageFire`, `Heartbeat`, `TrackedItem` and `LadderEpoch`. Each fake kid gets its own `Kid` record.
-- **Role switch:** the same install can switch between the kid and parent roles without reinstalling, so the phone can capture and then view its own data after a CloudKit round trip.
+- **Role switch:** the same install can switch between the kid and parent roles without reinstalling, so the phone can capture and then view its own data after a CloudKit round trip. A phone set up as a kid's enters test mode only from the welcome screen: the switch on the kid's home screen once let a kid make their phone a parent's.
 - **Second parent:** the Simulator, signed into a second Apple ID, accepts the Family CKShare as Parent B. It covers sharing, `CKDatabaseSubscription` pushes and parent UI testing. It can't render `Label(token)` for the phone's tokens, so it shows "App #n · Category."
 - **Push trigger:** to test pushes arriving on the phone, write records from the Simulator, the CloudKit Dashboard or `cktool` on the Mac, not from the phone itself.
 - **Separate environment:** test mode writes only to the CloudKit **development** environment, plus an `isTest` flag on `Kid`, so test data never mixes with the real family's data.
