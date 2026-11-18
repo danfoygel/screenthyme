@@ -657,10 +657,21 @@ like this:
   and a code holds up to 1150 bytes (version 28: as wide as a 2x phone's screen at 5 px). The app sizes each report
   from the scan (`TokenPairing.estimatedCodes`), in one column unless two fit; the extension lays several codes out in
   the grid that draws them largest. About 5 screenshots on a 3x phone with 200 identifiers.
+- **Categories** (Nov 17) pair the same way, in reports of their own: a report filtered by a category shows every app
+  in it, so categories can't share the apps' bits. The scan's categories (`TokenPairing.categoryOrder`, about a dozen)
+  get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which
+  spell out the names of the categories they see (`localizedDisplayName`, as the Sampler names category items). A
+  scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
+  unused in the 28 days stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
+  shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
+  A scanned category counts through its match's name (`EnforcementPlanner.categoryNames`): before, a limit on one
+  counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps
+  limits nor let their apps through Downtime. `.all(except:)` takes apps only, so an allowed category lets through
+  the scanned apps matched to its apps; unmatched apps stay shielded.
 - Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
-  name. Unmatched ones are listed apart, by `Label` only.
+  name, and scanned categories by their match's. Unmatched ones are listed apart, by `Label` only.
 
 ### 15.7 Change history (Nov 17, 2026)
 

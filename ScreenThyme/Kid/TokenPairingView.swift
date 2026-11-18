@@ -4,9 +4,9 @@ import SwiftUI
 import ThymeCore
 import Vision
 
-/// Matches scanned apps and websites to Apple's data at once (PLAN.md §15.6, `TokenPairing`). One Apple report per
-/// bit of each scanned item's number, filtered to the items with that bit set, draws a QR code of what it saw, and a
-/// names report spells the identifiers out; the kid takes screenshots of them, and this reads the codes back from the
+/// Matches scanned apps, websites and categories to Apple's data at once (PLAN.md §15.6, `TokenPairing`). One Apple
+/// report per bit of each scanned item's number, filtered to the items with that bit set, draws a QR code of what it
+/// saw, and a names report spells the identifiers out; categories have reports of their own. The kid takes screenshots of them, and this reads the codes back from the
 /// photo library.
 struct TokenPairingView: View {
     @Environment(AppModel.self) private var model
@@ -17,11 +17,13 @@ struct TokenPairingView: View {
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        let order = TokenPairing.order(AppGroup.loadItems())
-        let views = TokenPairing.views(count: order.count)
+        let items = AppGroup.loadItems()
+        let order = TokenPairing.order(items)
+        let categories = TokenPairing.categoryOrder(items)
+        let views = TokenPairing.views(count: order.count) + TokenPairing.categoryViews(count: categories.count)
         ScrollView {
             VStack(spacing: 8) {
-                Text("Take screenshots that together show all \(views.count + 1) codes, then import them.")
+                Text("Take screenshots that together show all \(views.count + (order.isEmpty ? 0 : 1)) codes, then import them.")
                     .font(.footnote)
                     .multilineTextAlignment(.center)
                 PhotosPicker(selection: $photos, maxSelectionCount: 10, matching: .screenshots) {
@@ -35,19 +37,18 @@ struct TokenPairingView: View {
                 if views.isEmpty {
                     Text("Scan the apps first.").foregroundStyle(.secondary)
                 }
-                if !views.isEmpty {
+                if !order.isEmpty {  // an empty filter would mean every app
                     let names = size(.names, members: order.count, columns: 1)
                     DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order))
                         .frame(height: names.height)
                 }
                 // Two columns while each code still gets its pixels a module (wider phones); one otherwise.
-                let members = views.map { TokenPairing.members($0, of: order).count }
-                let columns = zip(views, members).allSatisfy { size($0, members: $1, columns: 2).fits } ? 2 : 1
-                let height = zip(views, members).map { size($0, members: $1, columns: columns).height }.max() ?? 0
+                let members = views.map { TokenPairing.members($0, of: $0.isCategory ? categories : order) }
+                let columns = zip(views, members).allSatisfy { size($0, members: $1.count, columns: 2).fits } ? 2 : 1
+                let height = zip(views, members).map { size($0, members: $1.count, columns: columns).height }.max() ?? 0
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
-                    ForEach(views, id: \.self) { view in
-                        DeviceActivityReport(.init("pair." + view.name),
-                                             filter: Self.filter(TokenPairing.members(view, of: order)))
+                    ForEach(Array(zip(views, members)), id: \.0) { view, members in
+                        DeviceActivityReport(.init("pair." + view.name), filter: Self.filter(members))
                             .frame(height: height)
                     }
                 }
@@ -93,6 +94,7 @@ struct TokenPairingView: View {
         return DeviceActivityFilter(
             segment: .daily(during: DateInterval(start: start, end: now)), users: .all, devices: .all,
             applications: Set(items.compactMap { $0.kind == .app ? TokenCoding.application($0.tokenData) : nil }),
+            categories: Set(items.compactMap { $0.kind == .category ? TokenCoding.category($0.tokenData) : nil }),
             webDomains: Set(items.compactMap { $0.kind == .domain ? TokenCoding.webDomain($0.tokenData) : nil }))
     }
 
@@ -134,7 +136,8 @@ struct TokenPairingView: View {
     private static func pair(_ codes: [TokenPairing.Code], kid: Kid) -> (TokenPairing.Resolution, TokenPairing.Outcome) {
         AppGroup.withLock("sampler") {  // the sampler rewrites items.json too
             var items = AppGroup.loadItems()
-            let resolution = TokenPairing.resolve(codes, order: TokenPairing.order(items), known: items)
+            let resolution = TokenPairing.resolve(codes, order: TokenPairing.order(items),
+                                                  categories: TokenPairing.categoryOrder(items), known: items)
             guard resolution.missing.isEmpty else { return (resolution, TokenPairing.Outcome()) }
             AppGroup.save(State(importedAt: Date()), to: stateURL)
             let outcome = TokenPairing.apply(resolution.pairs, to: &items, kid: kid.id)

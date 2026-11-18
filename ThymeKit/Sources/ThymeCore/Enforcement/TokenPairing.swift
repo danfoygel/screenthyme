@@ -8,7 +8,7 @@ import Foundation
 /// number, filtered to the items with that bit set, plus a parity report. Each report draws a QR code of short hashes
 /// of the bundle IDs and domains it saw. An identifier's number is the sum of the bits of the reports it appears in.
 /// A names report, filtered to every scanned item, spells the identifiers out, for those the phone hasn't seen in
-/// Apple's data yet.
+/// Apple's data yet. Scanned categories are numbered apart, in reports of their own that spell the category names out.
 /// The extension can't send anything, so the kid takes screenshots, and the app reads the codes back.
 public enum TokenPairing {
     /// How far back the reports look.
@@ -22,6 +22,13 @@ public enum TokenPairing {
             .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
+    /// Scanned categories with tokens, numbered apart from apps and websites: a report filtered by a category shows
+    /// every app in it, so categories can't share the apps' reports.
+    public static func categoryOrder(_ items: [TrackedItem]) -> [TrackedItem] {
+        items.filter { $0.isScanned && $0.kind == .category && $0.tokenData != nil }
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
     /// Names one `order`, so codes from another scan are told apart.
     public static func fingerprint(_ order: [TrackedItem]) -> String {
         String(format: "%08x", UInt32(truncatingIfNeeded: fnv1a(order.map(\.id.uuidString).joined(separator: ","))))
@@ -32,16 +39,26 @@ public enum TokenPairing {
         case bit(Int)
         /// Every scanned item; spells out the identifiers instead of hashing them. Optional.
         case names
+        /// The same for scanned categories (`categoryOrder`), names spelled out: Apple has only about a dozen.
+        case categoryParity
+        case categoryBit(Int)
 
         /// Up to 511 scanned items.
         public static let maxBits = 9
-        public static var allCases: [View] { [.names, .parity] + (0..<maxBits).map { .bit($0) } }
+        /// Up to 31 scanned categories.
+        public static let maxCategoryBits = 5
+        public static var allCases: [View] {
+            [.names, .parity] + (0..<maxBits).map { .bit($0) } + [.categoryParity]
+                + (0..<maxCategoryBits).map { .categoryBit($0) }
+        }
 
         public var name: String {
             switch self {
             case .parity: "p"
             case let .bit(bit): "b\(bit)"
             case .names: "n"
+            case .categoryParity: "cp"
+            case let .categoryBit(bit): "c\(bit)"
             }
         }
 
@@ -50,17 +67,29 @@ public enum TokenPairing {
                 self = .parity
             } else if name == "n" {
                 self = .names
+            } else if name == "cp" {
+                self = .categoryParity
             } else if name.hasPrefix("b"), let bit = Int(name.dropFirst()), (0..<Self.maxBits).contains(bit) {
                 self = .bit(bit)
+            } else if name.hasPrefix("c"), let bit = Int(name.dropFirst()), (0..<Self.maxCategoryBits).contains(bit) {
+                self = .categoryBit(bit)
             } else {
                 return nil
             }
         }
 
+        /// A category report: filtered by `categoryOrder`, and it lists categories.
+        public var isCategory: Bool {
+            switch self {
+            case .categoryParity, .categoryBit: true
+            case .parity, .bit, .names: false
+            }
+        }
+
         public func contains(number: Int) -> Bool {
             switch self {
-            case .parity: number.nonzeroBitCount % 2 == 1
-            case let .bit(bit): number >> bit & 1 == 1
+            case .parity, .categoryParity: number.nonzeroBitCount % 2 == 1
+            case let .bit(bit), let .categoryBit(bit): number >> bit & 1 == 1
             case .names: true
             }
         }
@@ -70,6 +99,12 @@ public enum TokenPairing {
     public static func views(count: Int) -> [View] {
         guard count > 0 else { return [] }
         return [.parity] + (0..<(Int.bitWidth - count.leadingZeroBitCount)).map { .bit($0) }
+    }
+
+    /// The category reports needed for `count` scanned categories.
+    public static func categoryViews(count: Int) -> [View] {
+        guard count > 0 else { return [] }
+        return [.categoryParity] + (0..<(Int.bitWidth - count.leadingZeroBitCount)).map { .categoryBit($0) }
     }
 
     /// The items a view's report is filtered to.
@@ -82,7 +117,7 @@ public enum TokenPairing {
         String(format: "%06x", fnv1a("\(kind.rawValue):\(identifier)") & 0xFFFFFF)
     }
 
-    /// A bundle ID or domain, as the names report spells it out.
+    /// A bundle ID, domain or category name, as the names and category reports spell it out.
     public struct Identifier: Hashable, Sendable {
         public var kind: ItemKind
         public var identifier: String
@@ -93,18 +128,26 @@ public enum TokenPairing {
         }
 
         var hash: String { TokenPairing.hash(kind: kind, identifier: identifier) }
-        var line: String { "\(kind == .app ? "a" : "w") \(identifier)" }
+        var line: String {
+            let prefix = switch kind {
+            case .app: "a"
+            case .domain: "w"
+            case .category: "c"
+            }
+            return "\(prefix) \(identifier)"
+        }
 
         init?(line: String) {
             let fields = line.split(separator: " ", maxSplits: 1).map(String.init)
-            guard fields.count == 2, ["a", "w"].contains(fields[0]) else { return nil }
-            self.init(kind: fields[0] == "a" ? .app : .domain, identifier: fields[1])
+            let kinds: [String: ItemKind] = ["a": .app, "w": .domain, "c": .category]
+            guard fields.count == 2, let kind = kinds[fields[0]] else { return nil }
+            self.init(kind: kind, identifier: fields[1])
         }
     }
 
-    /// A report's lines: hashes of what it saw, or for `names`, the identifiers spelled out.
+    /// A report's lines: hashes of what it saw, or for `names` and category reports, the identifiers spelled out.
     public static func lines(_ view: View, seen: some Sequence<Identifier>) -> [String] {
-        view == .names ? seen.map(\.line) : seen.map(\.hash)
+        view == .names || view.isCategory ? seen.map(\.line) : seen.map(\.hash)
     }
 
     /// One code holds up to 1150 bytes and its header (version 28, 129 modules): a bit report's hashes of up to 160
@@ -119,7 +162,7 @@ public enum TokenPairing {
     /// About how many modules wide, quiet zone included, the largest of a report's codes is for `members` scanned
     /// items, and how many codes there are. The app sizes the reports from it before they draw.
     public static func estimatedCodes(_ view: View, members: Int) -> (count: Int, modules: Int) {
-        let bytes = members * (view == .names ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
+        let bytes = members * (view == .names || view.isCategory ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
         let count = max(1, (bytes + maxBytes - 1) / maxBytes)
         let size = QRCode([UInt8](repeating: 0, count: min(bytes, maxBytes) + 32))?.size ?? 129  // the first is fullest
         return (count, size + 8)
@@ -170,7 +213,7 @@ public enum TokenPairing {
         return Code(fingerprint: fields[1], view: view, part: part[0], parts: part[1], lines: Array(lines.dropFirst()))
     }
 
-    /// A scanned item and the bundle ID or domain its token is.
+    /// A scanned item and the bundle ID, domain or category name its token is.
     public struct Pair: Hashable, Sendable {
         public var scanned: UUID
         public var kind: ItemKind
@@ -200,14 +243,16 @@ public enum TokenPairing {
 
     /// - Parameters:
     ///   - order: `order(_:)` of this phone's items now.
+    ///   - categories: `categoryOrder(_:)` of this phone's items now.
     ///   - known: items from Apple's data, to look the hashes up in.
-    public static func resolve(_ codes: some Sequence<Code>, order: [TrackedItem], known: [TrackedItem]) -> Resolution {
+    public static func resolve(_ codes: some Sequence<Code>, order: [TrackedItem], categories: [TrackedItem] = [],
+                               known: [TrackedItem]) -> Resolution {
         var resolution = Resolution()
-        let fingerprint = fingerprint(order)
+        let fingerprints = (apps: fingerprint(order), categories: fingerprint(categories))
         var parts: [View: (seen: Set<Int>, count: Int)] = [:]
         var hashes: [View: Set<String>] = [:]
         for code in Set(codes) {
-            guard code.fingerprint == fingerprint else {
+            guard code.fingerprint == (code.view.isCategory ? fingerprints.categories : fingerprints.apps) else {
                 resolution.otherScan += 1
                 continue
             }
@@ -216,24 +261,46 @@ public enum TokenPairing {
         }
         let names = (hashes.removeValue(forKey: .names) ?? []).compactMap(Identifier.init(line:))
         let views = views(count: order.count)
-        resolution.missing = views.filter { view in parts[view].map { $0.seen.count < $0.count } ?? true }.map(\.name)
+        let categoryViews = categoryViews(count: categories.count)
+        resolution.missing = (views + categoryViews)
+            .filter { view in parts[view].map { $0.seen.count < $0.count } ?? true }.map(\.name)
         guard resolution.missing.isEmpty else { return resolution }
 
         var byHash: [String: Set<Identifier>] = [:]
         let identifiers = known.filter { !$0.isScanned && $0.kind != .category }
             .map { Identifier(kind: $0.kind, identifier: $0.identifier) } + names
         for identifier in identifiers { byHash[identifier.hash, default: []].insert(identifier) }
+        pair(hashes, views: views, order: order, into: &resolution) { hash in
+            guard let candidates = byHash[hash], candidates.count == 1 else { return nil }
+            return candidates.first
+        }
+        pair(hashes, views: categoryViews, order: categories, into: &resolution) { line in
+            Identifier(line: line).flatMap { $0.kind == .category ? $0 : nil }
+        }
+        resolution.pairs.sort { $0.identifier < $1.identifier }
+        return resolution
+    }
+
+    /// Pairs the lines of `views`' codes with `order`'s items: a line's number is the sum of the bits of the reports it
+    /// appears in. `identify` turns a line into what it names (nil: unknown).
+    private static func pair(_ hashes: [View: Set<String>], views: [View], order: [TrackedItem],
+                             into resolution: inout Resolution, identify: (String) -> Identifier?) {
         var byNumber: [Int: [Identifier]] = [:]
-        for hash in Set(hashes.values.flatMap { $0 }) {
-            guard let candidates = byHash[hash], candidates.count == 1, let item = candidates.first else {
+        for line in Set(views.flatMap { hashes[$0] ?? [] }) {
+            guard let item = identify(line) else {
                 resolution.unknown += 1
                 continue
             }
-            let number = views.reduce(0) { sum, view in
-                guard case let .bit(bit) = view, hashes[view]?.contains(hash) == true else { return sum }
-                return sum | 1 << bit
+            var number = 0
+            var odd = false
+            for view in views where hashes[view]?.contains(line) == true {
+                switch view {
+                case let .bit(bit), let .categoryBit(bit): number |= 1 << bit
+                case .parity, .categoryParity: odd = true
+                case .names: break
+                }
             }
-            guard (1...order.count).contains(number), View.parity.contains(number: number) == hashes[.parity]?.contains(hash),
+            guard number >= 1, number <= order.count, View.parity.contains(number: number) == odd,
                   order[number - 1].kind == item.kind else {
                 resolution.conflicts += 1
                 continue
@@ -247,8 +314,6 @@ public enum TokenPairing {
             }
             resolution.pairs.append(Pair(scanned: order[number - 1].id, kind: item.kind, identifier: item.identifier))
         }
-        resolution.pairs.sort { $0.identifier < $1.identifier }
-        return resolution
     }
 
     public struct Outcome: Equatable, Sendable {
@@ -271,7 +336,7 @@ public enum TokenPairing {
         public init() {}
     }
 
-    /// Sets each paired scanned item's match to the item for its bundle ID or domain. That item's id comes from the
+    /// Sets each paired scanned item's match to the item for its bundle ID, domain or category name. That item's id comes from the
     /// kid and the identifier; one this phone hasn't seen yet is created. Another scanned item matched to the same app
     /// or website loses its match.
     public static func apply(_ pairs: some Sequence<Pair>, to items: inout [TrackedItem], kid: UUID, now: Date = Date())

@@ -56,6 +56,34 @@ struct EnforcementTests {
         #expect(result.limitedItems == [social.id, instagram.id])
     }
 
+    /// Limits and Always Allowed name scanned items, which count through their matches (`TokenPairing`).
+    @Test func scannedCategoriesCountThroughTheirMatch() {
+        var scannedSocial = TrackedItem(kidID: kid, kind: .category, identifier: TrackedItem.scannedPrefix + "s",
+                                        firstSeen: dayStart)
+        var scannedInstagram = TrackedItem(kidID: kid, kind: .app, identifier: TrackedItem.scannedPrefix + "i",
+                                           firstSeen: dayStart)
+        var scannedMessages = TrackedItem(kidID: kid, kind: .app, identifier: TrackedItem.scannedPrefix + "m",
+                                          firstSeen: dayStart)
+        let unmatched = TrackedItem(kidID: kid, kind: .category, identifier: TrackedItem.scannedPrefix + "u",
+                                    firstSeen: dayStart)
+        scannedSocial.match = social.id
+        scannedInstagram.match = instagram.id
+        scannedMessages.match = messages.id
+        let all = items.merging([scannedSocial, scannedInstagram, scannedMessages, unmatched].map { ($0.id, $0) }) { a, _ in a }
+        // As `UsageSnapshot` gives it: matched scanned items repeat their match's use.
+        let usage = [instagram.id: 20 * 60.0, snapchat.id: 11 * 60.0, messages.id: 50 * 60.0,
+                     scannedInstagram.id: 20 * 60.0, scannedMessages.id: 50 * 60.0]
+
+        #expect(EnforcementPlanner.categoryNames([scannedSocial.id, unmatched.id], items: all)
+            == ["Social", unmatched.identifier])
+        // Instagram once, though both the category and its scanned app are targets; Messages is allowed.
+        #expect(EnforcementPlanner.seconds(of: [scannedSocial.id, scannedInstagram.id], items: all, usage: usage,
+                                           excluding: [scannedMessages.id]) == 31 * 60)
+        #expect(EnforcementPlanner.seconds(of: [unmatched.id], items: all, usage: usage) == 0)
+        // An allowed scanned category leaves its apps out of all use.
+        #expect(EnforcementPlanner.totalSeconds(items: all, usage: usage, excluding: [scannedSocial.id]) == 0)
+    }
+
     @Test func limitFireExhaustsBeforeAppleDataCatchesUp() {
         let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
         var state = EnforcementDayState(day: testDay)
