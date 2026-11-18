@@ -184,12 +184,15 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var cellularData: PermissionState?
     public var bluetooth: PermissionState?
     public var lowPowerMode: Bool?
+    /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
+    /// since (`TokenPairing.toMatch`). Nil before the first match, and from older builds.
+    public var lastTokenPairing: Date?
 
     public init(id: UUID = UUID(), kidID: UUID, at: Date, source: HeartbeatSource, authStatus: String,
                 activeActivities: [String], expectedActivities: [String], appVersion: String,
                 backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
                 backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
-                bluetooth: PermissionState? = nil, lowPowerMode: Bool? = nil) {
+                bluetooth: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -205,6 +208,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.cellularData = cellularData
         self.bluetooth = bluetooth
         self.lowPowerMode = lowPowerMode
+        self.lastTokenPairing = lastTokenPairing
     }
 }
 

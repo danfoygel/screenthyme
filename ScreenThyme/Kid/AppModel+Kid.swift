@@ -143,7 +143,8 @@ extension AppModel {
                          backgroundRefresh: DevicePermissions.backgroundRefresh,
                          cellularData: DevicePermissions.cellularData,
                          bluetooth: DevicePermissions.bluetooth,
-                         lowPowerMode: DevicePermissions.lowPowerMode)
+                         lowPowerMode: DevicePermissions.lowPowerMode,
+                         lastTokenPairing: TokenPairingView.lastImport())
     }
 
     /// A day of this phone's capture as a trace file, for the replay tool and test fixtures (PLAN.md §7.2).

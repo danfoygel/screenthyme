@@ -136,7 +136,11 @@ struct KidSettingsView: View {
                                  day: DayKey(Date()))
                 }
                 if model.data.items(for: kid.id).values.contains(where: \.isScanned) {
-                    NavigationLink("Match apps with camera") { PairingScannerView(kid: kid) }
+                    NavigationLink { PairingScannerView(kid: kid) } label: {
+                        let count = model.appsToMatch(for: kid).count
+                        LabeledContent("Match apps with camera", value: count == 0 ? "" : "\(count) new")
+                            .foregroundStyle(count == 0 ? Color.primary : .orange)
+                    }
                 }
                 ForEach([ItemKind.app, .domain, .category], id: \.self) { kind in
                     let scanned = TokenMatchesView.scanned(kind, in: model.data.items(for: kid.id))

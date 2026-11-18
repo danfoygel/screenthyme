@@ -674,8 +674,12 @@ like this:
   every 15 s bundle, so a parent's phone that connects later knows) and, once all are read, pairs and sends what it
   found (`.result`). A parent's phone sends a report again when the kid's phone shows one it has read (reopened, or a
   message lost). A report that draws no code can be skipped by hand; a skipped bit report means nothing pairs.
-  Needs both apps open and the link up, so a parent each time new apps are to be matched. **Not yet tried on the
-  phones.**
+  Needs both apps open and the link up, so a parent each time new apps are to be matched. Tried on the phones Nov 18:
+  the link came up over Wi-Fi in seconds and a "new apps" round matched 11 categories and a website, none missing or
+  in conflict. Kid heartbeats carry the last match's time (`Heartbeat.lastTokenPairing`; the kid's phone sends one
+  after each match), so a parent's phone counts the apps used since that no scanned item matches
+  (`TokenPairing.toMatch`, as the kid's home screen does) and says so on the kid's card and day, with a link to
+  the camera.
 - **Categories** (Nov 17) pair the same way, in reports of their own: a report filtered by a category shows every app
   in it, so categories can't share the apps' bits. The scan's categories (`TokenPairing.categoryOrder`, about a dozen)
   get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which

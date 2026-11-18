@@ -172,6 +172,7 @@ struct TokenPairingView: View {
             await Enforcer.offMain { Enforcer.reconcile() }
             await model.flush()
         }
+        await model.sendHeartbeat(.manual)  // parents' phones stop counting the apps just looked for
         return (parts.joined(separator: ", ") + ".", true)
     }
 

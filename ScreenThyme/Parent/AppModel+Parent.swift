@@ -129,6 +129,14 @@ extension AppModel {
         do { try await publishRuleSet(for: rule.kidID) } catch { show(error) }
     }
 
+    /// Apps on the kid's phone that another match round may match (`TokenPairing.toMatch`): those that turned up since
+    /// the phone last matched, as its latest heartbeat says. None before its first match, which the kid's phone starts.
+    func appsToMatch(for kid: Kid) -> [TrackedItem] {
+        guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return [] }
+        return TokenPairing.toMatch(Array(data.items(for: kid.id).values), lastImport: last)
+            .sorted { $0.firstSeen > $1.firstSeen }
+    }
+
     func healthIssues(for kid: Kid, now: Date = Date()) -> [HealthIssue] {
         let staleness = data.rules(for: kid.id).lazy.compactMap { rule -> (Int, Int, Int)? in
             guard rule.enabled, case let .staleness(hours, start, end) = rule.condition else { return nil }
