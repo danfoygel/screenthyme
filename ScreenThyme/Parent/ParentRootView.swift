@@ -134,6 +134,9 @@ struct KidDayView: View {
                 NavigationLink { KidTimelineView(kid: kid, day: day) } label: {
                     Label("Day timeline", systemImage: "calendar.day.timeline.left")
                 }
+                NavigationLink { PolicyHistoryView(kid: kid) } label: {
+                    Label("Change history", systemImage: "clock.arrow.circlepath")
+                }
             }
             Section {
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start(), tint: kid.color)
