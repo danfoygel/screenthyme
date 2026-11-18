@@ -1,8 +1,8 @@
 import SwiftUI
 import ThymeCore
 
-/// The day as a calendar: hours top to bottom, each app's blocks drawn like events. Apps in use in the same stretch
-/// sit side by side for that stretch (`CalendarLayout`). Long stretches with nothing drawn are cut out of the tape
+/// The day as a calendar: hours top to bottom, each app's blocks drawn like events. Blocks that overlap sit side by
+/// side in swim lanes (`CalendarLayout`). Long stretches with nothing drawn are cut out of the tape
 /// (`CalendarAxis`). The line beside the hours says how well each stretch is placed (`Coverage`): use the check-ins
 /// don't place is drawn dashed, at a best guess.
 struct UsageCalendar: View {
@@ -157,7 +157,7 @@ struct UsageCalendar: View {
                     } else if isHour {
                         Text(tick.formatted(.dateTime.hour()))
                     } else {
-                        Text(tick.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+                        Text(Self.minuteFormat.string(from: tick))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -170,6 +170,15 @@ struct UsageCalendar: View {
             .offset(y: axis.y(tick) + inset - 8)
         }
     }
+
+    /// "2:15" (or "14:15"): the locale's own hour pattern, without AM/PM. Formatting with the AM/PM omitted pads the
+    /// hour to "02:15" on some phones.
+    private static let minuteFormat: DateFormatter = {
+        let formatter = DateFormatter()
+        let pattern = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current) ?? "h:mm"
+        formatter.dateFormat = pattern.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces)
+        return formatter
+    }()
 
     /// A stretch cut out of the tape: torn edges, and what was cut.
     private func tapeBreak(_ segment: CalendarAxis.Segment) -> some View {
@@ -229,12 +238,10 @@ struct UsageCalendar: View {
     private func event(_ piece: CalendarPiece, axis: CalendarAxis, width: CGFloat) -> some View {
         let block = piece.block
         let column = width / CGFloat(piece.columns)
-        let isFirst = piece.start == block.start, isLast = piece.end == block.end
         // A point of space below each block, as between events in a calendar.
-        let height = max(minHeight, axis.y(piece.end) - axis.y(piece.start) - (isLast ? 1 : 0))
+        let height = max(minHeight, axis.y(block.end) - axis.y(block.start) - 1)
         let color = Self.color(for: block.itemID)
-        let shape = UnevenRoundedRectangle(topLeadingRadius: isFirst ? 4 : 0, bottomLeadingRadius: isLast ? 4 : 0,
-                                           bottomTrailingRadius: isLast ? 4 : 0, topTrailingRadius: isFirst ? 4 : 0)
+        let shape = RoundedRectangle(cornerRadius: 4)
         return ZStack(alignment: .topLeading) {
             shape.fill(color.opacity(0.12 + 0.28 * block.intensity))
             // Use the phone's in-use minutes don't place: its time is a guess, so dashed.
@@ -242,7 +249,7 @@ struct UsageCalendar: View {
                 shape.strokeBorder(color, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
             }
             Rectangle().fill(color).frame(width: 3)
-            if piece.isLabeled && height >= 14 {
+            if height >= 14 {
                 VStack(alignment: .leading, spacing: 1) {
                     ItemName(item: items[block.itemID], showIcon: height >= 36 && piece.columns <= 2)
                         .font(.caption.weight(.semibold))
@@ -266,7 +273,7 @@ struct UsageCalendar: View {
         .popover(isPresented: Binding(get: { selected == piece }, set: { if !$0 { selected = nil } })) {
             detail(block).presentationCompactAdaptation(.popover)
         }
-        .offset(x: gutter + 4 + column * CGFloat(piece.column), y: axis.y(piece.start) + inset)
+        .offset(x: gutter + 4 + column * CGFloat(piece.column), y: axis.y(block.start) + inset)
     }
 
     private func duration(_ block: UsageBlock) -> String {
