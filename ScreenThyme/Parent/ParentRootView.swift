@@ -235,11 +235,15 @@ struct RequestRow: View {
     }
 
     private var reason: String {
-        let policy = model.data.policy(for: request.kidID)
-        switch request.reason {
+        Self.describe(request.reason, itemID: request.itemID, policy: model.data.policy(for: request.kidID))
+    }
+
+    /// "during Bedtime", "over the Games limit".
+    static func describe(_ reason: BlockReason, itemID: UUID?, policy: Policy) -> String {
+        switch reason {
         case let .downtime(id):
             let name = policy.downtime.first { $0.id == id }?.name ?? "Downtime"
-            return request.itemID == nil ? "during \(name), for the whole phone" : "during \(name)"
+            return itemID == nil ? "during \(name), for the whole phone" : "during \(name)"
         case let .limit(id): return "over the \(policy.limits.first { $0.id == id }?.name ?? "time") limit"
         case .blocked: return "for a blocked app"
         }

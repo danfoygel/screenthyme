@@ -23,7 +23,7 @@ struct PolicyView: View {
             Section("Downtime") {
                 ForEach(policy.downtime) { window in
                     Button { editingWindow = window } label: {
-                        LabeledContent(window.name, value: Self.describe(window))
+                        LabeledContent(window.name, value: window.schedule())
                     }
                     .swipeActions { Button("Delete", role: .destructive) { update(policy) { $0.downtime.removeAll { $0.id == window.id } } } }
                 }
@@ -56,6 +56,11 @@ struct PolicyView: View {
             }
             Section {
                 NavigationLink("Content & Privacy") { RestrictionsView(restrictions: binding(policy, \.restrictions)) }
+            }
+            Section {
+                NavigationLink { PolicyHistoryView(kid: kid) } label: {
+                    Label("Change history", systemImage: "clock.arrow.circlepath")
+                }
             }
         }
         .navigationTitle("Screen Time")
@@ -104,12 +109,6 @@ struct PolicyView: View {
 
     private func binding<Value>(_ policy: Policy, _ keyPath: WritableKeyPath<Policy, Value>) -> Binding<Value> {
         Binding(get: { (draft ?? policy)[keyPath: keyPath] }, set: { value in update(policy) { $0[keyPath: keyPath] = value } })
-    }
-
-    static func describe(_ window: DowntimeWindow) -> String {
-        let days = window.weekdays.isEmpty || window.weekdays.count == 7 ? "every day"
-            : window.weekdays.sorted().map { Calendar.current.shortWeekdaySymbols[$0 - 1] }.joined(separator: " ")
-        return "\(RuleCondition.clock(window.startMinute))–\(RuleCondition.clock(window.endMinute)), \(days)"
     }
 }
 
@@ -272,28 +271,18 @@ struct RestrictionsView: View {
                 Toggle("Always require password", isOn: $restrictions.requirePasswordForPurchases)
                 Picker("Apps up to", selection: $restrictions.maximumAppRating) {
                     Text("All").tag(Int?.none)
-                    Text("4+").tag(Int?.some(100))
-                    Text("9+").tag(Int?.some(200))
-                    Text("12+").tag(Int?.some(300))
-                    Text("17+").tag(Int?.some(600))
+                    ForEach(Restrictions.appRatings, id: \.0) { Text($0.1).tag(Int?.some($0.0)) }
                 }
             }
             Section("Media") {
                 Toggle("Block explicit music, podcasts and books", isOn: $restrictions.denyExplicitContent)
                 Picker("Movies up to", selection: $restrictions.maximumMovieRating) {
                     Text("All").tag(Int?.none)
-                    Text("G").tag(Int?.some(100))
-                    Text("PG").tag(Int?.some(200))
-                    Text("PG-13").tag(Int?.some(300))
-                    Text("R").tag(Int?.some(400))
+                    ForEach(Restrictions.movieRatings, id: \.0) { Text($0.1).tag(Int?.some($0.0)) }
                 }
                 Picker("TV shows up to", selection: $restrictions.maximumTVShowRating) {
                     Text("All").tag(Int?.none)
-                    Text("TV-Y").tag(Int?.some(100))
-                    Text("TV-Y7").tag(Int?.some(200))
-                    Text("TV-G").tag(Int?.some(300))
-                    Text("TV-PG").tag(Int?.some(400))
-                    Text("TV-14").tag(Int?.some(500))
+                    ForEach(Restrictions.tvRatings, id: \.0) { Text($0.1).tag(Int?.some($0.0)) }
                 }
                 Toggle("Block sexual content in books", isOn: $restrictions.denyBookstoreErotica)
                 Toggle("Block Apple Music", isOn: $restrictions.denyMusicService)
@@ -353,13 +342,7 @@ struct RestrictionsView: View {
             }
         }
 
-        var title: String {
-            switch self {
-            case .unrestricted: "Unrestricted"
-            case .limitAdult: "Limit adult websites"
-            case .allowedOnly: "Allowed websites only"
-            }
-        }
+        var title: String { filter(keeping: .unrestricted).modeTitle }
 
         func filter(keeping old: WebFilter) -> WebFilter {
             switch (self, old) {

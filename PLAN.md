@@ -658,6 +658,15 @@ like this:
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
   name. Unmatched ones are listed apart, by `Label` only.
 
+### 15.7 Change history (Nov 17, 2026)
+
+Every Save on the policy screen also saves a `PolicyChange.<uuid>` record: the kid, the time, the parent's name (as
+on grants: their name from Settings, else "Parent A"/"Parent B") and the policy before and after. A save that changes
+nothing adds none. The history keeps whole policies, not text, so it names apps as they're named now
+(`PolicyEdit.between` diffs them in ThymeCore). Screen Time → Change history lists a kid's changes with each parent's
+answers to requests for more time (`TimeGrant`s), oldest first, by day, opening on the latest. Only parents' phones
+read it; kids' phones never fetch it. Changes made before this build aren't in it.
+
 ## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
 
 A parent's Always Allowed change didn't reach the kid's phone for over an hour: the monitor extension hadn't woken
