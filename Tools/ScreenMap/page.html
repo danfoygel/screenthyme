@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ScreenThyme Screen Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+html{color-scheme:light}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+
+/* Layout: a narrow reading column for the words; each map runs full width in its own sideways scroller. */
+:root {
+  --bg: #f4f6f2; --surface: #ffffff; --ink: #1b2420; --muted: #5b6862; --line: #c5cec8; --edge: #6a7770;
+  --accent: #3b7a4d; --on-accent: #ffffff;
+  --lilac: #7656a6; --lilac-bg: #f0eaf8;
+  --amber: #a1611a; --amber-bg: #f8ebda;
+  --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111513; --surface: #1a201d; --ink: #e3eae5; --muted: #9ba8a0; --line: #3a453f; --edge: #8b988f;
+  --accent: #7cc28f; --on-accent: #0e1a12;
+  --lilac: #b9a1e2; --lilac-bg: #251e32;
+  --amber: #e2a55c; --amber-bg: #2d2316; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111513; --surface: #1a201d; --ink: #e3eae5; --muted: #9ba8a0; --line: #3a453f; --edge: #8b988f;
+  --accent: #7cc28f; --on-accent: #0e1a12;
+  --lilac: #b9a1e2; --lilac-bg: #251e32;
+  --amber: #e2a55c; --amber-bg: #2d2316; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 64px; }
+.col { max-width: 760px; margin: 0 auto; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; letter-spacing: -0.01em; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.05; }
+h2 { font-size: 26px; line-height: 1.15; }
+p { margin: 0; }
+.lede { color: var(--muted); margin-top: 12px; max-width: 64ch; }
+.src { font-family: var(--f-mono); font-size: 12px; color: var(--muted); margin-top: 14px; }
+code { font-family: var(--f-mono); font-size: 0.86em; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 28px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.legend .item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.legend svg { flex: none; }
+
+section { margin-top: 56px; }
+.head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.head p { color: var(--muted); margin-top: 6px; max-width: 62ch; }
+button.fit { font: 500 13px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+button.fit:hover { border-color: var(--edge); }
+button.fit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+figure { margin: 18px 0 0; }
+.scroller { overflow-x: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-block: 8px; }
+.scroller svg { display: block; margin: 0 auto; }
+.scroller.fitted svg { width: 100%; height: auto; }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; margin-top: 22px; }
+.notes > div { min-width: 0; }
+.notes h3 { font: 600 11.5px var(--f-body); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 6px; }
+.notes ul { margin: 0; padding-left: 18px; font-size: 14px; }
+.notes li + li { margin-top: 4px; }
+
+/* the maps */
+.flow { font-family: var(--f-body); }
+.node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+.n-root rect { stroke: var(--ink); stroke-width: 1.8; }
+.n-sheet rect, .n-popover rect { fill: var(--lilac-bg); stroke: var(--lilac); }
+.n-apple rect { fill: var(--bg); stroke: var(--muted); stroke-dasharray: 4 3; }
+.n-outside rect { fill: var(--amber-bg); stroke: var(--amber); stroke-width: 1.4; }
+.n-mode rect { fill: var(--accent); }
+.ntitle { font-size: 13px; font-weight: 600; fill: var(--ink); }
+.ntype { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted); }
+.nnote { font-size: 11px; fill: var(--muted); }
+.ntag { font-size: 8.5px; font-weight: 700; letter-spacing: 0.09em; fill: var(--muted); }
+.n-sheet .ntag, .n-popover .ntag { fill: var(--lilac); }
+.n-outside .ntag { fill: var(--amber); }
+.n-root .ntag { fill: var(--ink); }
+.mtitle { font-size: 13px; font-weight: 700; fill: var(--on-accent); }
+.edge { fill: none; stroke-width: 1.4; }
+.e-push { stroke: var(--edge); }
+.e-sheet { stroke: var(--lilac); stroke-dasharray: 6 4; }
+.e-apple { stroke: var(--muted); stroke-dasharray: 2 3; }
+.e-mode { stroke: var(--accent); stroke-width: 1.8; }
+.e-outside { stroke: var(--amber); stroke-width: 1.6; }
+.m-push path { fill: var(--edge); } .m-sheet path { fill: var(--lilac); } .m-apple path { fill: var(--muted); }
+.m-mode path { fill: var(--accent); } .m-outside path { fill: var(--amber); }
+.elabel { font-size: 11px; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.l-sheet { fill: var(--lilac); } .l-outside { fill: var(--amber); } .l-mode { fill: var(--accent); font-weight: 600; }
+.frame { fill: none; stroke: var(--line); stroke-width: 1.2; }
+.framelabel { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; fill: var(--muted); }
+
+/* hover previews */
+.node[data-shot], .node[data-why] { cursor: pointer; }
+.node[data-shot]:hover rect, .node[data-why]:hover rect, .node:focus-visible rect { stroke: var(--accent); stroke-width: 2.2; }
+.node:focus { outline: none; }
+#peek { position: fixed; z-index: 20; width: 236px; padding: 8px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 22px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); pointer-events: none; }
+#peek img { display: block; width: 100%; height: auto; border-radius: 15px; background: var(--bg); }
+#peek p { font-size: 12.5px; font-weight: 600; margin: 8px 6px 2px; }
+#peek p.why { font-weight: 400; color: var(--muted); margin-top: 2px; }
+#peek.text { width: 220px; border-radius: 12px; }
+#peek.text p:first-child { margin-top: 2px; }
+</style>
+</head>
+<body>
+
+
+<div class="col">
+  <h1>ScreenThyme screen map</h1>
+  <p class="lede">Every screen in the app, and each tap that leads from one to another, for the two roles a phone can take. Titles are what the screen shows at the top; <code>‹angle brackets›</code> stand for a name filled in at run time. Grey notes say when a link appears. Hover over a box, or tap it, to see that screen.</p>
+  <p class="src">{{SOURCE}}</p>
+  <p class="src">Screenshots: iOS Simulator, single-phone test mode, with a synthetic school day for a test kid. No real family data.</p>
+
+  <div class="legend" aria-label="Legend">
+    <div class="item"><svg width="34" height="20" aria-hidden="true"><g class="node"><rect x="1" y="1" width="32" height="18" rx="4"/></g></svg>Screen pushed on a stack</div>
+    <div class="item"><svg width="34" height="20" aria-hidden="true"><g class="node n-root"><rect x="1" y="1" width="32" height="18" rx="4"/></g></svg>Start, home or tab root</div>
+    <div class="item"><svg width="34" height="20" aria-hidden="true"><g class="node n-sheet"><rect x="1" y="1" width="32" height="18" rx="4"/></g></svg>ScreenThyme sheet or popover</div>
+    <div class="item"><svg width="34" height="20" aria-hidden="true"><g class="node n-apple"><rect x="1" y="1" width="32" height="18" rx="4"/></g></svg>Apple's own sheet or prompt</div>
+    <div class="item"><svg width="34" height="20" aria-hidden="true"><g class="node n-outside"><rect x="1" y="1" width="32" height="18" rx="4"/></g></svg>Outside the app</div>
+    <div class="item"><svg width="44" height="12" aria-hidden="true"><path class="edge e-push" d="M2,6 H42"/></svg>Push</div>
+    <div class="item"><svg width="44" height="12" aria-hidden="true"><path class="edge e-sheet" d="M2,6 H42"/></svg>Presents a sheet</div>
+    <div class="item"><svg width="44" height="12" aria-hidden="true"><path class="edge e-apple" d="M2,6 H42"/></svg>Opens Apple's UI</div>
+    <div class="item"><svg width="44" height="12" aria-hidden="true"><path class="edge e-mode" d="M2,6 H42"/></svg>Sets the role</div>
+  </div>
+</div>
+
+<section id="kid">
+  <div class="col head">
+    <div>
+      <h2>Kid mode</h2>
+      <p>One navigation stack under the home screen. A parent does the setup steps here; the kid mostly sees the Screen Time section and asks for more time.</p>
+    </div>
+    <button class="fit" type="button" id="fit-kid" aria-pressed="false" data-target="sc-kid">Fit to width</button>
+  </div>
+  <figure>
+    <div class="scroller" id="sc-kid">
+{{KID}}
+    </div>
+    <figcaption class="col">From Welcome, the kid's home leads to the Screen Time lists, Ask for more time, Apple's pickers, Match by screenshot, Debug and Test mode. The block page outside the app also leads to Ask for more time.</figcaption>
+  </figure>
+  <div class="col notes">
+    <div>
+      <h3>The block page</h3>
+      <ul>
+        <li>Apple draws it over a blocked app with ScreenThyme's text (ThymeShield). <b>OK</b> closes the app.</li>
+        <li>Its menu's <b>One more minute</b> lets the app through, once a day per app, without opening ScreenThyme.</li>
+        <li><b>Ask for more time</b> saves what was blocked. On iOS 26.5 and later it opens ScreenThyme, which shows the sheet over Home. On earlier iOS it just closes, and the sheet appears the next time the kid opens the app.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Same screen, two ways in</h3>
+      <ul>
+        <li><b>Match by screenshot</b>: from Home's Apps for Screen Time section, and from Debug.</li>
+        <li><b>Ask for more time</b>: from the Screen Time section's button, and from the block page.</li>
+        <li>Pushes from the Ask sheet stay inside the sheet, which has its own stack; <b>Done</b> closes it.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Not drawn</h3>
+      <ul>
+        <li>Buttons that act in place: Upload now, Start monitoring, Re-register, Stop monitoring, the One more minute stepper.</li>
+        <li>Pull to refresh, Debug's day arrows, and the timeline's inline block detail.</li>
+        <li>The app-wide “ScreenThyme” message alert, which can show over any screen.</li>
+        <li>Joining a family: the kid opens a parent's invite link from Messages or Mail. No screen changes.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="parent">
+  <div class="col head">
+    <div>
+      <h2>Parent mode</h2>
+      <p>Three tabs, each with its own navigation stack. Most of the depth is under one kid's Rules and health, where Screen Time edits what the kid's phone enforces.</p>
+    </div>
+    <button class="fit" type="button" id="fit-parent" aria-pressed="false" data-target="sc-parent">Fit to width</button>
+  </div>
+  <figure>
+    <div class="scroller" id="sc-parent">
+{{PARENT}}
+    </div>
+    <figcaption class="col">From Welcome, the tab bar opens on Kids. A kid's day leads to the timeline, change history and Rules and health; Rules and health leads to Screen Time, whose editor sheets and lists share one item picker.</figcaption>
+  </figure>
+  <div class="col notes">
+    <div>
+      <h3>Same screen, two ways in</h3>
+      <ul>
+        <li><b>‹kid›</b> (Rules and health): from a kid's day, and from Settings › Kids.</li>
+        <li><b>Change history</b>: from a kid's day, and from Screen Time.</li>
+        <li><b>‹list name›</b> item picker: inside the Downtime, App Limit and Group sheets, and on the main stack from Always Allowed and Blocked.</li>
+        <li><b>Raw usage</b> is the same view the kid's Debug uses, fed from the synced records.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>In place, no new screen</h3>
+      <ul>
+        <li>Alerts: requests are answered right in the list (Approve, Other ▾, Decline), and the kid filter is a menu.</li>
+        <li>Screen Time: Save and Revert in the toolbar, swipe to delete a window, limit or group.</li>
+        <li>Add rule ▾ is a menu of seven presets; each opens the rule sheet.</li>
+        <li>Timeline: zoom buttons and the Options ▾ menu.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Not drawn</h3>
+      <ul>
+        <li>Create family, Ping now, Re-install push subscriptions, and pull to refresh.</li>
+        <li>Content & Privacy's rating pickers and the Websites mode, which are menus. The mode decides which website lists appear.</li>
+        <li>Tapping an alert notification opens the app where it was; there are no deep links.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div id="peek" hidden role="tooltip"><img alt=""><p></p><p class="why"></p></div>
+<script>
+(function () {
+  var peek = document.getElementById("peek"), img = peek.querySelector("img"),
+      title = peek.querySelector("p"), why = peek.querySelector("p.why"), current = null;
+  function place(node) {
+    var r = node.getBoundingClientRect(), pw = peek.offsetWidth, ph = peek.offsetHeight, gap = 14;
+    var x = r.right + gap;
+    if (x + pw > innerWidth - 8) x = r.left - gap - pw;
+    if (x < 8) x = Math.max(8, Math.min(innerWidth - pw - 8, r.left));
+    var y = r.top + r.height / 2 - ph / 2;
+    y = Math.max(8, Math.min(innerHeight - ph - 8, y));
+    peek.style.left = x + "px"; peek.style.top = y + "px";
+  }
+  function show(node) {
+    current = node;
+    var shot = node.getAttribute("data-shot");
+    title.textContent = node.getAttribute("data-title");
+    peek.classList.toggle("text", !shot);
+    img.hidden = !shot;
+    why.hidden = !!shot;
+    if (shot) {
+      img.onload = function () { if (current === node) place(node); };
+      img.src = shot; img.alt = "Screenshot: " + title.textContent;
+    } else {
+      why.textContent = node.getAttribute("data-why");
+    }
+    peek.hidden = false;
+    place(node);
+  }
+  function hide(node) { if (!node || node === current) { peek.hidden = true; current = null; } }
+  document.querySelectorAll(".node[data-shot], .node[data-why]").forEach(function (n) {
+    n.addEventListener("mouseenter", function () { show(n); });
+    n.addEventListener("mouseleave", function () { hide(n); });
+    n.addEventListener("focus", function () { show(n); });
+    n.addEventListener("blur", function () { hide(n); });
+    n.addEventListener("click", function (e) { e.stopPropagation(); if (current === n && !peek.hidden) hide(n); else show(n); });
+  });
+  document.addEventListener("click", function () { hide(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+  document.querySelectorAll(".scroller").forEach(function (sc) { sc.addEventListener("scroll", function () { if (current) place(current); }); });
+  addEventListener("scroll", function () { if (current) place(current); }, { passive: true });
+})();
+
+document.querySelectorAll("button.fit").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var sc = document.getElementById(b.dataset.target);
+    var on = sc.classList.toggle("fitted");
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.textContent = on ? "Actual size" : "Fit to width";
+  });
+});
+</script>
+</body>
+</html>

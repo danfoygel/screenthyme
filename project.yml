@@ -196,6 +196,20 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: ScreenThyme Report
 
+  # Simulator only: screenshots for the screen map (Tools/ScreenMap/capture.sh).
+  ScreenTour:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - ScreenTour
+    dependencies:
+      - target: ScreenThyme
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.danfoygel.screenthyme.tour
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ScreenThyme
+
 schemes:
   ScreenThyme:
     build:
@@ -203,3 +217,5 @@ schemes:
         ScreenThyme: all
     run:
       config: Debug
+    test:
+      targets: [ScreenTour]

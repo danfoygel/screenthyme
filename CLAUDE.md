@@ -23,6 +23,8 @@ ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own 
 ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
 ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme;
                      "One more minute" runs the Enforcer itself (PLAN.md §15.5)
+ScreenTour/          UI test, Simulator only: the screen map's screenshots
+Tools/ScreenMap/     the screen map (kid and parent screen flows, published to GitHub Pages); see its README
 ```
 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
@@ -58,6 +60,11 @@ xcrun devicectl device copy from --device <udid> --domain-type appDataContainer 
 
 xcodebuild -project ScreenThyme.xcodeproj -scheme ScreenThyme \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build build
+
+# The screen map: screenshots from a Simulator (test data only), the page, then GitHub Pages.
+# A change to the app's navigation changes Tools/ScreenMap/build.py's graph too.
+Tools/ScreenMap/capture.sh "iPhone Air" /tmp/screen-map && python3 Tools/ScreenMap/build.py /tmp/screen-map
+Tools/ScreenMap/publish.sh /tmp/screen-map
 
 # On a parent phone (unlocked): save one test rule of each kind for a kid, set to fire soon (stable ids);
 # -removeTestRules <kid name> deletes them
