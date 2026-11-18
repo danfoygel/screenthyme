@@ -21,6 +21,8 @@ struct UsageCalendar: View {
     @State private var selected: CalendarPiece?
     @State private var position = ScrollPosition(edge: .top)
     @State private var geometry: ScrollGeometry?
+    /// On opening and on changing days; the jump waits until the scroll view has a size.
+    @State private var jumpPending = true
     /// While pinching. Gesture state, so a pinch that's cancelled can't leave a stale anchor for the next one.
     @GestureState private var pinch: Pinch?
     /// The pinch already scrolled to keep its spot in place; the scale change it commits needn't.
@@ -73,9 +75,12 @@ struct UsageCalendar: View {
         // the scrolling). Scrolling stops while pinching: a pan or a fling under the fingers would fight the anchor.
         .simultaneousGesture(magnify)
         .scrollDisabled(pinch != nil)
-        .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in geometry = new }
-        .onAppear(perform: scrollToFirstUse)
-        .onChange(of: dayStart, scrollToFirstUse)
+        .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in
+            geometry = new
+            jumpIfReady()
+        }
+        .onAppear(perform: jump)
+        .onChange(of: dayStart, jump)
         // Pinching keeps the time under the fingers in place; when it ends (or is cancelled), at the scale it leaves.
         .onChange(of: pinch) { old, new in
             if let pinch = new ?? old { scroll(to: pinch.anchor, screenY: pinch.screenY, scale: hourHeight) }
@@ -121,10 +126,23 @@ struct UsageCalendar: View {
         position.scrollTo(y: min(max(0, axis.y(date) + inset - screenY), bottom))
     }
 
-    /// To a little before the first use, or the current time on a day with none yet.
-    private func scrollToFirstUse() {
+    private func jump() {
+        jumpPending = true
+        jumpIfReady()
+    }
+
+    /// Today, to the current time, two thirds down the screen so the use before it shows; another day, to a little
+    /// before its first use.
+    private func jumpIfReady() {
+        guard jumpPending, visible.height > 0 else { return }
+        jumpPending = false
+        let now = Date()
+        if day.contains(now) {
+            scroll(to: now, screenY: visible.height * 2 / 3, scale: hourHeight)
+            return
+        }
         let first = blocks.map(\.start).min() ?? timeline.coverage.first { $0.coverage != .quiet }?.start
-            ?? (day.contains(Date()) ? Date() : dayStart.addingTimeInterval(8 * 3600))
+            ?? dayStart.addingTimeInterval(8 * 3600)
         scroll(to: first, screenY: 80, scale: hourHeight)
     }
 
