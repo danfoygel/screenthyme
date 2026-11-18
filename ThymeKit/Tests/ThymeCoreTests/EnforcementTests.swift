@@ -132,6 +132,25 @@ struct EnforcementTests {
         #expect(after.extraMinuteEnds == nil)
     }
 
+    @Test func oneMoreMinuteLastsTheKidPhonesChosenMinutes() {
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let policy = Policy(kidID: kid, downtime: [window])
+        var state = EnforcementDayState(day: testDay)
+        state.extraMinutes = [ExtraMinute(itemID: nil, reason: .downtime(window.id), at: at(21, 0), minutes: 5)]
+        #expect(plan(policy, state: state, at: at(21, 4, 59)).downtime == nil)
+        #expect(plan(policy, state: state, at: at(21, 1)).extraMinuteEnds == at(21, 5))
+        #expect(plan(policy, state: state, at: at(21, 5)).downtime?.windowID == window.id)
+    }
+
+    @Test func extraMinutesStayBetweenOneAndFive() {
+        #expect(ExtraMinute.minutes(nil) == 1)
+        #expect(ExtraMinute.minutes(0) == 1)
+        #expect(ExtraMinute.minutes(3) == 3)
+        #expect(ExtraMinute.minutes(9) == 5)
+        let minute = ExtraMinute(itemID: nil, reason: .blocked, at: at(12, 0), minutes: 60)
+        #expect(minute.until == at(12, 5))
+    }
+
     @Test func oneMoreMinuteForAnAppLetsOnlyThatAppThrough() {
         let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
         let limit = AppLimit(name: "Social", items: [instagram.id, snapchat.id], minutes: 30)

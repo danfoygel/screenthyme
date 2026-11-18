@@ -587,7 +587,8 @@ category ids) for the app, which shows `AskForTimeView`:
 ### 15.5 One more minute
 
 Like Apple's: from a Downtime or limit block page, the kid can let the app through for a minute without asking, once a
-day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iOS 26.4): **One more minute** /
+day. The kid's phone sets how long (1–5 minutes, default 1; `SharedConfig.extraMinutes`, on the kid's home screen);
+past 1 the menu item reads "N more minutes". "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iOS 26.4): **One more minute** /
 **Ask a parent** (§15.4). Once the minute is used, the button asks straight away. Never for Blocked apps.
 - The press decides what is lifted, as a request would (`ShieldContext.requestScope`). An app shielded by itself (a
   per-app limit) lets that app through. A category shield (a category limit) names only the category, so that
@@ -595,11 +596,11 @@ day. "Ask for more time" then opens a submenu (`secondaryButtonSubmenuItems`, iO
   whole phone for the minute. Once a day per app, or for a Downtime press, once per window
   (`EnforcementDayState.canTakeExtraMinute`). The block page computes the menu for what its press will name
   (`ShieldContext.pressed`), so the action extension maps the item pressed back to the same choice.
-- The ShieldAction extension records an `ExtraMinute` (60 s of the clock) in `enforcement-state.json`, runs the
+- The ShieldAction extension records an `ExtraMinute` (the chosen minutes of the clock) in `enforcement-state.json`, runs the
   `Enforcer`, which lifts it from the stores, and answers `.defer`, so iOS re-evaluates the shield and opens the app.
   The extension compiles the Enforcer and `UsageSnapshot` (today's use, without Apple's data or SwiftUI).
 - Shielded again by the activity `om.end`: schedules count whole minutes and last at least 15, so it is a ~16-minute
-  interval whose end warning falls at the first whole minute after the minute ends (60–120 s after the press). The
+  interval whose end warning falls at the first whole minute after the extra time ends. The
   monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
   reshields it.
 - No alert to parents; the journal notes each one.
