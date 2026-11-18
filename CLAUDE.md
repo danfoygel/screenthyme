@@ -118,7 +118,9 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - Scanned tokens are matched to Apple's bundle IDs by screenshot (`TokenPairing`, PLAN.md §15.6): the report
   extension's tokens use another key than the scan's and never compare equal, but a report filtered by scanned tokens
   honors them, so one filtered report per bit of each item's number draws a QR code (our own `QRCode`: Core Image
-  draws nothing in that extension) that the kid app reads back. The kid's home screen counts new apps to match. The
+  draws nothing in that extension) that the kid app reads back. The kid's home screen counts new apps to match. By
+  default only unmatched tokens are numbered and only unmatched apps drawn (`TokenPairing.Mode`, saved in the App
+  Group for the extension), so new apps take one screenshot. The
   minute-of-use matcher (`tm`) is retired: launch stops it (`RetiredTokenMatcher`).
 - A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
   `AskForTimeView` (PLAN.md §15.4).

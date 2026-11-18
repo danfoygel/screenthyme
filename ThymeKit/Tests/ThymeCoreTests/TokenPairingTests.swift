@@ -16,12 +16,14 @@ struct TokenPairingTests {
 
     /// What the report extension would draw if `truth` maps scanned items to the identifiers their tokens are.
     func codes(order: [TrackedItem], truth: [UUID: TrackedItem], names: Bool = false,
-               maxBytes: Int = TokenPairing.maxBytes) -> [TokenPairing.Code] {
+               maxBytes: Int = TokenPairing.maxBytes, items: [TrackedItem] = [],
+               mode: TokenPairing.Mode = .all) -> [TokenPairing.Code] {
         let fingerprint = TokenPairing.fingerprint(order)
         return (TokenPairing.views(count: order.count) + (names ? [.names] : [])).flatMap { view in
-            let seen = TokenPairing.members(view, of: order).compactMap { truth[$0.id] }
-                .map { TokenPairing.Identifier(kind: $0.kind, identifier: $0.identifier) }
-            return TokenPairing.encode(fingerprint: fingerprint, view: view, lines: TokenPairing.lines(view, seen: seen),
+            let seen = Set(TokenPairing.members(view, of: order).compactMap { truth[$0.id] }
+                .map { TokenPairing.Identifier(kind: $0.kind, identifier: $0.identifier) })
+            let drawn = TokenPairing.drawn(seen, items: items, mode: mode)
+            return TokenPairing.encode(fingerprint: fingerprint, view: view, lines: TokenPairing.lines(view, seen: drawn),
                                        maxBytes: maxBytes)
         }
         .compactMap(TokenPairing.decode)
@@ -40,7 +42,7 @@ struct TokenPairingTests {
     @Test func usedItemsResolveToTheirScannedItems() {
         let apps = (0..<81).map { scanned("a\($0)") }
         let sites = (0..<88).map { scanned("w\($0)", .domain) }
-        let order = TokenPairing.order(apps + sites + [scanned("cat", .category)])
+        let order = TokenPairing.order(apps + sites + [scanned("cat", .category)], mode: .all)
         #expect(order.count == 169)
         // Every third app and every fifth site was used.
         var truth: [UUID: TrackedItem] = [:]
@@ -58,7 +60,7 @@ struct TokenPairingTests {
     }
 
     @Test func aMissingReportPairsNothing() {
-        let order = TokenPairing.order((0..<10).map { scanned("a\($0)") })
+        let order = TokenPairing.order((0..<10).map { scanned("a\($0)") }, mode: .all)
         let truth = [order[3].id: data("com.three")]
         let partial = codes(order: order, truth: truth).filter { $0.view != .bit(2) }
         let resolution = TokenPairing.resolve(partial, order: order, known: Array(truth.values))
@@ -67,8 +69,8 @@ struct TokenPairingTests {
     }
 
     @Test func codesFromAnotherScanAreSetAside() {
-        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") })
-        let old = TokenPairing.order((0..<5).map { scanned("a\($0)") })
+        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") }, mode: .all)
+        let old = TokenPairing.order((0..<5).map { scanned("a\($0)") }, mode: .all)
         let truth = [order[0].id: data("com.zero")]
         let resolution = TokenPairing.resolve(codes(order: order, truth: truth) + codes(order: old, truth: truth),
                                               order: order, known: Array(truth.values))
@@ -77,7 +79,7 @@ struct TokenPairingTests {
     }
 
     @Test func identifiersThePhoneHasNotSeenAreUnknown() {
-        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") })
+        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") }, mode: .all)
         let resolution = TokenPairing.resolve(codes(order: order, truth: [order[1].id: data("com.new")]), order: order,
                                               known: [])
         #expect(resolution.unknown == 1)
@@ -85,7 +87,7 @@ struct TokenPairingTests {
     }
 
     @Test func theNamesReportSpellsOutWhatThePhoneHasNotSeen() {
-        let order = TokenPairing.order((0..<20).map { scanned("a\($0)") } + [scanned("w", .domain)])
+        let order = TokenPairing.order((0..<20).map { scanned("a\($0)") } + [scanned("w", .domain)], mode: .all)
         let site = order.first { $0.kind == .domain }!
         let apps = order.filter { $0.kind == .app }
         let truth = [apps[1].id: data("com.new"), apps[7].id: data("com.seen"), site.id: data("new.example.com", .domain)]
@@ -101,7 +103,7 @@ struct TokenPairingTests {
 
     @Test func twoScannedTokensForOneAppFailTheCheck() {
         // Items 1 and 2 (bits 01 and 10) are both com.dup: its hash lands in b0 and b1 but not in parity (3 is even).
-        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") })
+        let order = TokenPairing.order((0..<4).map { scanned("a\($0)") }, mode: .all)
         let dup = data("com.dup")
         let resolution = TokenPairing.resolve(codes(order: order, truth: [order[0].id: dup, order[1].id: dup]),
                                               order: order, known: [dup])
@@ -195,13 +197,54 @@ struct TokenPairingTests {
         #expect(Set(outcome.changed.map(\.id)) == [game.id, guess.id])
     }
 
+    /// After a first round matched most apps, a new app's codes hold only its own hash: all of them fit one screen.
+    @Test func unmatchedModePairsNewAppsWithSmallCodes() throws {
+        var scans = (0..<200).map { scanned("a\($0)") }
+        var truth: [UUID: TrackedItem] = [:]
+        var seen: [TrackedItem] = []
+        for index in 0..<150 {
+            let app = data("com.example.app\(index)")
+            scans[index].match = app.id
+            truth[scans[index].id] = app
+            seen.append(app)
+        }
+        let new = data("com.new")
+        truth[scans[180].id] = new
+        // A second scanned token for a matched app stays out of it: that app keeps its match.
+        truth[scans[190].id] = truth[scans[3].id]
+        let items = scans + seen + [new]
+
+        let order = TokenPairing.order(items, mode: .unmatched)
+        #expect(order.count == 50)
+        let drawn = codes(order: order, truth: truth, names: true, items: items, mode: .unmatched)
+        #expect(drawn.count == TokenPairing.views(count: order.count).count + 1)
+        #expect(drawn.allSatisfy { $0.lines.count <= 1 })
+
+        let resolution = TokenPairing.resolve(drawn, order: order, known: items)
+        #expect(resolution.pairs == [.init(scanned: scans[180].id, kind: .app, identifier: "com.new")])
+        #expect(resolution.conflicts == 0)
+        #expect(resolution.unknown == 0)
+
+        for view in TokenPairing.views(count: order.count) + [.names] {
+            let members = view == .names ? order : TokenPairing.members(view, of: order)
+            let lines = TokenPairing.estimatedLines(members: members, items: items, mode: .unmatched)
+            #expect(lines == 5, "\(view.name)")  // the one app nothing is matched to, and spare
+            let estimate = TokenPairing.estimatedCodes(view, lines: lines)
+            #expect(estimate.count == 1)
+            // 5 px a module: a bit report's code is 113 points wide on a 2x phone, three to a row.
+            #expect(estimate.modules <= (view == .names ? 61 : 45), "\(view.name)")
+        }
+        #expect(TokenPairing.estimatedLines(members: order, items: items, mode: .all) == 50)
+        #expect(TokenPairing.order(items, mode: .all).count == 200)
+    }
+
     /// 207 identifiers: each bit report's hashes fit one code, and no code is wider than a 2x phone's screen.
     @Test func estimatesCoverWhatIsDrawn() throws {
         let order = (0..<207).map { scanned("h\($0)") }
         let truth = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1.id, data("com.example.app\($0)")) })
         let drawn = Dictionary(grouping: codes(order: order, truth: truth, names: true), by: \.view)
         for (view, codes) in drawn {
-            let estimate = TokenPairing.estimatedCodes(view, members: TokenPairing.members(view, of: order).count)
+            let estimate = TokenPairing.estimatedCodes(view, lines: TokenPairing.members(view, of: order).count)
             #expect(estimate.count >= codes.count, "\(view.name)")
             let text = TokenPairing.encode(fingerprint: TokenPairing.fingerprint(order), view: view,
                                            lines: codes.flatMap(\.lines))
