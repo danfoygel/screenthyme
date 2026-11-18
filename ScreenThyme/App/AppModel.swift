@@ -64,6 +64,7 @@ final class AppModel {
         await ensureSubscriptions()
         switch config.role {
         case .kid:
+            DevicePermissions.prepare()
             ensureMonitoring()
             await sampleNow()
             await Enforcer.offMain {

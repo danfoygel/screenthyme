@@ -203,11 +203,15 @@ All alerts are recorded in the timeline, so the alert feed and the timeline matc
   - `DeviceActivityCenter().activities` (are our schedules still registered?)
   - backlog size
   - app version
+  - the Settings switches the kid can turn off for ScreenThyme and no app can lock: Background App Refresh, cellular
+    data, Bluetooth, and Low Power Mode (`DevicePermissions`). The kid app uses no notifications, so they aren't one
 - **Parent-side checks:**
   - authorization not approved → **immediate alert**
   - missing activities → **immediate alert**, and the kid app re-registers on its next launch
   - no heartbeat for more than X hours during waking hours → **alert** ("offline since 3:12pm"), which covers airplane mode, Wi-Fi off and Background App Refresh off
   - backlog growing → warning
+  - one of those switches off → **immediate alert**; Low Power Mode → warning (it also reports Background App Refresh
+    as off, so that alert waits until Low Power Mode is off)
 - The host app wakes regularly (background refresh, silent pushes, a nightly rollup). That also works around the reported "extension stops after days without the host app launching" problem.
 - `.child` authorization means the kid can't delete the app. Turning off Background App Refresh or connectivity only delays delivery, because data is queued locally.
 

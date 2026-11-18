@@ -139,7 +139,11 @@ extension AppModel {
                          appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?",
                          backlogCount: Uploader.backlogCount(),
                          lastFireAt: AppGroup.journal.lastThresholdAt(),
-                         batteryLevel: batteryLevel >= 0 ? Double(batteryLevel) : nil)
+                         batteryLevel: batteryLevel >= 0 ? Double(batteryLevel) : nil,
+                         backgroundRefresh: DevicePermissions.backgroundRefresh,
+                         cellularData: DevicePermissions.cellularData,
+                         bluetooth: DevicePermissions.bluetooth,
+                         lowPowerMode: DevicePermissions.lowPowerMode)
     }
 
     /// A day of this phone's capture as a trace file, for the replay tool and test fixtures (PLAN.md §7.2).
