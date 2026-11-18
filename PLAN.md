@@ -685,8 +685,10 @@ like this:
   get a parity report and up to 5 bit reports (`pair.cp`, `pair.c0`…`pair.c4`), filtered by category tokens only, which
   spell out the names of the categories they see (`localizedDisplayName`, as the Sampler names category items). A
   scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
-  unused in the window stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
-  shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
+  unused in the window stays unmatched. **Works on the kid's phone** (Nov 18): a filter of category tokens alone
+  shows just those categories, and every category used in the window matched its own label. The scan also returns
+  a category token labelled "AllAppsAndCategories" (the All Apps & Categories pick itself, it seems): it never
+  matches, and nothing on the phone tells its token from a real category's, so it stays listed as not matched.
 - **New apps only** (Nov 17, `TokenPairing.Mode`, the default): after a first round, a new app's match can't come
   from one code (the token is what's unknown), but every code can be tiny. In `unmatched` mode the numbers go only
   to scanned items with no match (a rescan keeps matches, so these are the new tokens and those still unused), and
