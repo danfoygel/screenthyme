@@ -12,6 +12,8 @@ import Vision
 struct TokenPairingView: View {
     @Environment(AppModel.self) private var model
     @State private var mode = AppGroup.tokenPairingMode()
+    /// The reports' window ends here, fixed while the screen is open: a new filter makes every report fetch again.
+    @State private var now = Date()
     @State private var photos: [PhotosPickerItem] = []
     @State private var result: String?
     @State private var working = false
@@ -62,7 +64,7 @@ struct TokenPairingView: View {
                 if !order.isEmpty {  // an empty filter would mean every app
                     let names = size(.names, lines: TokenPairing.estimatedLines(members: order, items: items, mode: mode),
                                      columns: 1)
-                    DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order))
+                    DeviceActivityReport(.init("pair." + TokenPairing.View.names.name), filter: Self.filter(order, now: now))
                         .frame(height: names.height)
                 }
                 // As many columns (up to 3) as still give each code its pixels a module: small codes, wider phones.
@@ -74,7 +76,7 @@ struct TokenPairingView: View {
                 let height = zip(views, lines).map { size($0, lines: $1, columns: columns).height }.max() ?? 0
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
                     ForEach(Array(zip(views, members)), id: \.0) { view, members in
-                        DeviceActivityReport(.init("pair." + view.name), filter: Self.filter(members))
+                        DeviceActivityReport(.init("pair." + view.name), filter: Self.filter(members, now: now))
                             .frame(height: height)
                     }
                 }
@@ -114,12 +116,12 @@ struct TokenPairingView: View {
         AppGroup.load(State.self, from: stateURL)?.importedAt
     }
 
-    private static func filter(_ items: [TrackedItem]) -> DeviceActivityFilter {
-        let now = Date()
-        let start = Calendar.current.date(byAdding: .day, value: -(TokenPairing.days - 1),
-                                          to: Calendar.current.startOfDay(for: now))!
+    /// One weekly segment over the last `TokenPairing.days`: pairing needs only which apps were used, and each
+    /// segment repeats every app used in it.
+    private static func filter(_ items: [TrackedItem], now: Date) -> DeviceActivityFilter {
+        let start = now.addingTimeInterval(-Double(TokenPairing.days) * 86_400)
         return DeviceActivityFilter(
-            segment: .daily(during: DateInterval(start: start, end: now)), users: .all, devices: .all,
+            segment: .weekly(during: DateInterval(start: start, end: now)), users: .all, devices: .all,
             applications: Set(items.compactMap { $0.kind == .app ? TokenCoding.application($0.tokenData) : nil }),
             categories: Set(items.compactMap { $0.kind == .category ? TokenCoding.category($0.tokenData) : nil }),
             webDomains: Set(items.compactMap { $0.kind == .domain ? TokenCoding.webDomain($0.tokenData) : nil }))
