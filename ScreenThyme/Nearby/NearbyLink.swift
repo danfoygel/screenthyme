@@ -69,9 +69,9 @@ final class NearbyLink {
         peers.contains { $0.hello.kidID == kid }
     }
 
-    /// Starts or restarts for this configuration; does nothing if it's already running with it.
+    /// Starts or restarts for this configuration; if it's already running with it, only replaces a failed Wi-Fi side.
     func start(_ configuration: Configuration) {
-        guard configuration != self.configuration else { return }
+        guard configuration != self.configuration else { return restartFailedWiFi() }
         stop()
         self.configuration = configuration
         status = .looking
@@ -106,12 +106,24 @@ final class NearbyLink {
         for connection in connections.values where connection.session.isReady && isPreferred(connection) {
             send(bundleFor(connection.session.peer!), on: connection)
         }
+        restartFailedWiFi()
         if let configuration, configuration.role == .parent {
             for (endpoint, _) in found where !isDialing(endpoint) {
                 dial(endpoint, configuration)
             }
         }
         bluetooth?.retry()
+    }
+
+    /// A failed listener or browser stays failed: after a suspension iOS can drop its connection to the Bonjour daemon
+    /// (`DefunctConnection`). Its state handler dropped it; make a new one.
+    private func restartFailedWiFi() {
+        guard let configuration, listener == nil, browser == nil else { return }
+        log("restart Wi-Fi")
+        switch configuration.role {
+        case .kid: listen(configuration)
+        case .parent: browse(configuration)
+        }
     }
 
     // MARK: - Wi-Fi, kid: listen
@@ -128,8 +140,15 @@ final class NearbyLink {
         }
         listener.service = NWListener.Service(name: configuration.key.serviceName(kid: kidID), type: Self.serviceType,
                                               domain: nil, txtRecord: Self.txtRecord(configuration.key))
-        listener.stateUpdateHandler = { [weak self] state in
-            MainActor.assumeIsolated { self?.update(state) }
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.update(state)
+                if case .failed = state, let listener, self.listener === listener {
+                    listener.cancel()
+                    self.listener = nil
+                }
+            }
         }
         listener.newConnectionHandler = { [weak self] connection in
             MainActor.assumeIsolated {
@@ -155,13 +174,19 @@ final class NearbyLink {
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: Self.serviceType, domain: nil),
                                 using: NetworkTransport.parameters())
         let tag = configuration.key.familyTag
-        browser.stateUpdateHandler = { [weak self] state in
+        browser.stateUpdateHandler = { [weak self, weak browser] state in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.log("browser \(state)")
                 switch state {
                 case .ready: self.status = .looking
-                case let .waiting(error), let .failed(error): self.status = Self.status(for: error)
+                case let .waiting(error): self.status = Self.status(for: error)
+                case let .failed(error):
+                    self.status = Self.status(for: error)
+                    if let browser, self.browser === browser {
+                        browser.cancel()
+                        self.browser = nil
+                    }
                 default: break
                 }
             }
