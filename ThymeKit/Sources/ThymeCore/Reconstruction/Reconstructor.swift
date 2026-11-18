@@ -26,6 +26,10 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
     /// Set when no on-time check-in places this use: it happened sometime in this window, and the block is drawn
     /// at a best guess.
     public var somewhereIn: DateInterval?
+    /// For a Home Screen web app: the website it most likely showed, the one whose time matches its own.
+    public var site: UUID?
+    /// Each website's use, in this block's check-ins, that the web app's own time can account for.
+    var siteSeconds: [UUID: Double] = [:]
 
     public var id: String { "\(itemID)-\(start.timeIntervalSince1970)" }
     /// The share of the stretch the item was in use: 1 when it filled it.
@@ -84,7 +88,8 @@ public enum Reconstructor {
         return DayTimeline(inUse: inUse,
                            coverage: CheckIns.coverage(stretches),
                            runs: mergeRuns(inUse),
-                           blocks: merge(CheckIns.pieces(stretches, websites: input.websites)),
+                           blocks: merge(CheckIns.pieces(stretches, websites: input.websites, webApps: input.webApps))
+                               .map(withSite),
                            items: items,
                            totalMinutes: total.points.last?.minute ?? 0,
                            preTrackingMinutes: preTracking,
@@ -102,6 +107,7 @@ public enum Reconstructor {
                    piece.start.timeIntervalSince(block.end) <= blockGap {
                     block.end = max(block.end, piece.end)
                     block.seconds += piece.seconds
+                    block.siteSeconds.merge(piece.siteSeconds, uniquingKeysWith: +)
                     if let window = piece.somewhereIn, let earlier = block.somewhereIn {
                         block.somewhereIn = DateInterval(start: min(earlier.start, window.start),
                                                          end: max(earlier.end, window.end))
@@ -115,6 +121,15 @@ public enum Reconstructor {
             if let current { blocks.append(current) }
         }
         return blocks.sorted { ($0.start, $0.end, $0.seconds) < ($1.start, $1.end, $1.seconds) }
+    }
+
+    /// A web app's block takes the website that accounts for at least half its time. Apple counts a Home Screen web
+    /// app's use twice: under one bundle ID shared by every web app, and under the site's domain.
+    static func withSite(_ block: UsageBlock) -> UsageBlock {
+        var block = block
+        let best = block.siteSeconds.max { ($0.value, $1.key.uuidString) < ($1.value, $0.key.uuidString) }
+        if let best, best.value >= block.seconds / 2 { block.site = best.key }
+        return block
     }
 
     static func inCatchUp(_ date: Date, starts: [Date]) -> Bool {

@@ -258,7 +258,8 @@ struct UsageCalendar: View {
         let column = width / CGFloat(piece.columns)
         // A point of space below each block, as between events in a calendar.
         let height = max(minHeight, axis.y(block.end) - axis.y(block.start) - 1)
-        let color = Self.color(for: block.itemID)
+        // A web app's block goes by the website it showed.
+        let color = Self.color(for: block.site ?? block.itemID)
         let shape = RoundedRectangle(cornerRadius: 4)
         return ZStack(alignment: .topLeading) {
             shape.fill(color.opacity(0.12 + 0.28 * block.intensity))
@@ -270,7 +271,7 @@ struct UsageCalendar: View {
             if height >= 14 {
                 VStack(alignment: .leading, spacing: 1) {
                     // The icon when it leaves room for a short name beside it.
-                    ItemName(item: items[block.itemID], showIcon: height >= 36 && column >= 100)
+                    ItemName(item: items[block.site ?? block.itemID], showIcon: height >= 36 && column >= 100)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     if height >= 32 {
@@ -301,8 +302,14 @@ struct UsageCalendar: View {
 
     private func detail(_ block: UsageBlock) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            ItemName(item: items[block.itemID]).font(.headline)
+            ItemName(item: items[block.site ?? block.itemID]).font(.headline)
             Text("\(Format.time(block.start))–\(Format.time(block.end))").monospacedDigit()
+            if block.site != nil {
+                Text("Used in a Home Screen web app. Apple doesn't say which site a web app shows, but this site's time matches it.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("\(duration(block)) of use")
             if let window = block.somewhereIn {
                 Text("Sometime between \(Format.time(window.start)) and \(Format.time(window.end)): the phone's check-ins don't say when.")
