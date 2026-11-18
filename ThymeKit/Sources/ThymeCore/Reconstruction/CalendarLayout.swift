@@ -1,22 +1,19 @@
 import Foundation
 
-/// Part of a block on the calendar-style timeline: from `start` to `end` the block shares the width with
-/// `columns - 1` other apps and sits in `column`.
+/// A block on the calendar-style timeline, drawn whole in swim lane `column` of `columns`: as many lanes as its group
+/// of overlapping blocks needs.
 public struct CalendarPiece: Sendable, Hashable, Identifiable {
     public var block: UsageBlock
-    public var start: Date
-    public var end: Date
     public var column: Int
     public var columns: Int
-    /// The block's longest piece, where its name goes.
-    public var isLabeled: Bool
 
-    public var id: String { "\(block.id)-\(start.timeIntervalSince1970)" }
+    public var id: String { block.id }
 }
 
-/// Lays out the day's blocks like events in a calendar: a stretch with one app in use is one full-width rectangle;
-/// where apps were in use in the same stretch (the same fetch interval, at least), they sit side by side for just
-/// that stretch. Apps keep the order they started in. Pure and deterministic.
+/// Lays out the day's blocks like events in a calendar, each a rectangle: a block alone is full width; blocks that
+/// overlap (in use in the same fetch interval, at least) go in swim lanes side by side, all of one group of
+/// overlapping blocks the same width. Apps keep the order they started in, and an app keeps its lane in a group while
+/// it's free. Pure and deterministic.
 public enum CalendarLayout {
     /// An app's blocks closer together than this are joined: a pause shorter than one step of the wake alarm.
     public static let joinGap: TimeInterval = 120
@@ -62,27 +59,27 @@ public enum CalendarLayout {
         let blocks = blocks.filter { $0.end > $0.start }.sorted {
             ($0.start, $0.itemID.uuidString) < ($1.start, $1.itemID.uuidString)
         }
-        let bounds = Set(blocks.flatMap { [$0.start, $0.end] }).sorted()
         var pieces: [CalendarPiece] = []
-        /// Each block's latest piece, extended while its column and company stay the same.
-        var current: [Int: Int] = [:]
-        for (start, end) in zip(bounds, bounds.dropFirst()) {
-            let active = blocks.indices.filter { blocks[$0].start < end && blocks[$0].end > start }
-            for (column, index) in active.enumerated() {
-                if let last = current[index], pieces[last].end == start,
-                   pieces[last].column == column, pieces[last].columns == active.count {
-                    pieces[last].end = end
-                } else {
-                    current[index] = pieces.count
-                    pieces.append(CalendarPiece(block: blocks[index], start: start, end: end, column: column,
-                                                columns: active.count, isLabeled: false))
-                }
-            }
+        var group: [CalendarPiece] = []
+        /// When each lane of the group comes free, and the lane each app was last in.
+        var lanes: [Date] = []
+        var lastLane: [UUID: Int] = [:]
+        func close() {
+            pieces += group.map { CalendarPiece(block: $0.block, column: $0.column, columns: lanes.count) }
+            group = []
+            lanes = []
+            lastLane = [:]
         }
-        let longest = Dictionary(grouping: pieces.indices, by: { pieces[$0].block.id }).values.compactMap { indices in
-            indices.max { pieces[$0].end.timeIntervalSince(pieces[$0].start) < pieces[$1].end.timeIntervalSince(pieces[$1].start) }
+        for block in blocks {
+            if let groupEnd = lanes.max(), block.start >= groupEnd { close() }
+            let lane = lastLane[block.itemID].flatMap { lanes[$0] <= block.start ? $0 : nil }
+                ?? lanes.firstIndex { $0 <= block.start }
+                ?? lanes.count
+            if lane == lanes.count { lanes.append(block.end) } else { lanes[lane] = block.end }
+            lastLane[block.itemID] = lane
+            group.append(CalendarPiece(block: block, column: lane, columns: 0))
         }
-        for index in longest { pieces[index].isLabeled = true }
+        close()
         return pieces
     }
 }

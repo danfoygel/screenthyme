@@ -9,39 +9,43 @@ struct CalendarLayoutTests {
         UsageBlock(itemID: item, start: start, end: end, seconds: end.timeIntervalSince(start))
     }
 
-    func pieces(_ placed: [CalendarPiece], _ item: UUID) -> [CalendarPiece] {
-        placed.filter { $0.block.itemID == item }.sorted { $0.start < $1.start }
+    func piece(_ placed: [CalendarPiece], _ item: UUID, at start: Date) -> CalendarPiece? {
+        placed.first { $0.block.itemID == item && $0.block.start == start }
     }
 
     @Test func oneAppAtATimeFillsTheWidth() {
         let placed = CalendarLayout.place([block(youtube, at(16, 0), at(16, 30)), block(roblox, at(16, 30), at(17, 0))])
         #expect(placed.count == 2)
-        #expect(placed.allSatisfy { $0.column == 0 && $0.columns == 1 && $0.isLabeled })
+        #expect(placed.allSatisfy { $0.column == 0 && $0.columns == 1 })
     }
 
-    @Test func concurrentAppsSitSideBySideOnlyWhileConcurrent() {
+    @Test func overlappingAppsGetSwimLanes() {
         let placed = CalendarLayout.place([
             block(roblox, at(16, 10), at(16, 20)),
             block(youtube, at(16, 0), at(16, 30)),
+            block(messages, at(17, 0), at(17, 10)),
         ])
-        let tube = pieces(placed, youtube)
-        #expect(tube.map(\.start) == [at(16, 0), at(16, 10), at(16, 20)])
-        #expect(tube.map(\.columns) == [1, 2, 1])
-        #expect(tube.allSatisfy { $0.column == 0 })
-        let blox = pieces(placed, roblox)
-        #expect(blox.count == 1 && blox.first?.column == 1 && blox.first?.columns == 2)
+        // Each block is drawn whole: one piece.
+        #expect(placed.count == 3)
+        #expect(piece(placed, youtube, at: at(16, 0))?.column == 0)
+        #expect(piece(placed, roblox, at: at(16, 10))?.column == 1)
+        #expect(piece(placed, youtube, at: at(16, 0))?.columns == 2)
+        #expect(piece(placed, roblox, at: at(16, 10))?.columns == 2)
+        // A block that overlaps nothing is full width.
+        #expect(piece(placed, messages, at: at(17, 0))?.columns == 1)
     }
 
-    @Test func aSwitchSharedByOneFetchIsASliver() {
-        // Both apps were used in the 15:59–16:01 fetch.
+    @Test func anAppKeepsItsLane() {
+        // Instagram, then Reddit overlapping it, then Instagram again overlapping Reddit.
+        let instagram = youtube, reddit = roblox
         let placed = CalendarLayout.place([
-            block(roblox, at(15, 30), at(16, 1)),
-            block(youtube, at(15, 59), at(16, 45)),
+            block(instagram, at(14, 55), at(15, 3)),
+            block(reddit, at(15, 1), at(15, 6)),
+            block(instagram, at(15, 5), at(15, 10)),
         ])
-        #expect(placed.filter { $0.columns == 2 }.allSatisfy { $0.start == at(15, 59) && $0.end == at(16, 1) })
-        // Each name goes on the block's full-width stretch.
-        #expect(pieces(placed, youtube).first { $0.isLabeled }?.start == at(16, 1))
-        #expect(pieces(placed, roblox).first { $0.isLabeled }?.end == at(15, 59))
+        #expect(placed.filter { $0.block.itemID == instagram }.allSatisfy { $0.column == 0 })
+        #expect(piece(placed, reddit, at: at(15, 1))?.column == 1)
+        #expect(placed.allSatisfy { $0.columns == 2 })
     }
 
     @Test func appsKeepTheOrderTheyStartedIn() {
@@ -50,28 +54,23 @@ struct CalendarLayoutTests {
             block(roblox, at(16, 10), at(16, 20)),
             block(messages, at(16, 15), at(16, 30)),
         ])
-        #expect(pieces(placed, youtube).allSatisfy { $0.column == 0 })
-        #expect(pieces(placed, roblox).allSatisfy { $0.column == 1 })
-        #expect(pieces(placed, messages).map(\.column) == [2, 1])
-        #expect(placed.filter { $0.isLabeled }.count == 3)
+        #expect(placed.map(\.column) == [0, 1, 2])
+        #expect(placed.allSatisfy { $0.columns == 3 })
     }
 
-    @Test func fastSwitchingDayHasSideBySidePieces() {
+    @Test func fastSwitchingDayHasSwimLanes() {
         let trace = SyntheticScenario.fastSwitching.trace(kid: testKid, day: testDay, calendar: utc)
         let result = Reconstructor.build(DayInput(fires: trace.fires(calendar: utc), samples: trace.samples, dayStart: dayStart))
         let placed = CalendarLayout.place(result.blocks)
         #expect(placed.contains { $0.columns > 1 })
-        #expect(placed.filter { $0.isLabeled }.count == result.blocks.count)
-        // Every block is covered by its pieces, end to end.
-        for block in result.blocks {
-            let own = placed.filter { $0.block == block }.sorted { $0.start < $1.start }
-            #expect(own.first?.start == block.start && own.last?.end == block.end)
-            #expect(zip(own, own.dropFirst()).allSatisfy { $0.end == $1.start })
-        }
-        // No two pieces share a column at the same time.
+        // One piece per block, in a lane that exists.
+        #expect(placed.count == result.blocks.filter { $0.end > $0.start }.count)
+        #expect(placed.allSatisfy { $0.column < $0.columns })
+        // No two overlapping blocks share a lane, and overlapping blocks are drawn the same width.
         for a in placed {
-            for b in placed where a.id != b.id && a.start < b.end && b.start < a.end {
+            for b in placed where a.id != b.id && a.block.start < b.block.end && b.block.start < a.block.end {
                 #expect(a.column != b.column)
+                #expect(a.columns == b.columns)
             }
         }
     }
