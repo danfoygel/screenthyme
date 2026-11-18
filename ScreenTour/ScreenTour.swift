@@ -102,7 +102,8 @@ final class ScreenTour: XCTestCase {
         tap("Test mode")
         if kid == nil { snap("p-test") }
         tap("Replay tool")
-        if let kid { choose(kid, from: "Kid") } else { snap("p-replay") }
+        // The picker reads "Kid, New test kid"; "Kid" alone would match the Kids tab first.
+        if let kid { choose(kid, from: "Kid,") } else { snap("p-replay") }
         tap("Replay")
         let done = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Replayed'")).firstMatch
         if !done.waitForExistence(timeout: 30) { print("TOUR replay didn't finish") }
@@ -119,7 +120,7 @@ final class ScreenTour: XCTestCase {
         enableTestMode()
         tap("Set up as parent")
         let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
-        if allow.waitForExistence(timeout: 8) { snap("p-notif"); allow.tap() }
+        if allow.waitForExistence(timeout: 20) { snap("p-notif"); allow.tap() } else { print("TOUR no notifications prompt") }
         tab("Settings")
         snap("p-settings")
         replay(onto: nil)
