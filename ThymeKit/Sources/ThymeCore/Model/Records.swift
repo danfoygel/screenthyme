@@ -178,10 +178,18 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var lastFireAt: Date?
     /// The phone's charge, 0–1, when the heartbeat was sent; nil if iOS didn't say.
     public var batteryLevel: Double?
+    /// Switches in Settings the kid can turn off for ScreenThyme and the app can't lock; nil from older builds
+    /// (and cellular data when CoreTelephony didn't say).
+    public var backgroundRefresh: PermissionState?
+    public var cellularData: PermissionState?
+    public var bluetooth: PermissionState?
+    public var lowPowerMode: Bool?
 
     public init(id: UUID = UUID(), kidID: UUID, at: Date, source: HeartbeatSource, authStatus: String,
                 activeActivities: [String], expectedActivities: [String], appVersion: String,
-                backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil) {
+                backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
+                backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
+                bluetooth: PermissionState? = nil, lowPowerMode: Bool? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -193,7 +201,16 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.backlogCount = backlogCount
         self.lastFireAt = lastFireAt
         self.batteryLevel = batteryLevel
+        self.backgroundRefresh = backgroundRefresh
+        self.cellularData = cellularData
+        self.bluetooth = bluetooth
+        self.lowPowerMode = lowPowerMode
     }
+}
+
+/// A permission as the kid's app last saw it.
+public enum PermissionState: String, Codable, Sendable, Hashable {
+    case allowed, denied, notAsked
 }
 
 public struct AlertRecord: Codable, Sendable, Hashable, Identifiable {

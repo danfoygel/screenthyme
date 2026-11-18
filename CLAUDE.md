@@ -121,7 +121,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   draws nothing in that extension) that the kid app reads back. Categories pair in reports of their own, by name.
   With a camera, the kid's phone shows one report at a time and a parent's phone sends the codes it read back over
   the nearby link (`LinkPairing`); the reports learn which way to draw from App Group `token-pairing-display.json`.
-  The kid's home screen counts new apps to match. The
+  The kid's home screen counts new apps to match. By default only unmatched tokens are numbered and only unmatched
+  apps drawn (`TokenPairing.Mode`, saved in the App Group for the extension), so new apps take one screenshot. The
   minute-of-use matcher (`tm`) is retired: launch stops it (`RetiredTokenMatcher`).
 - A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
   `AskForTimeView` (PLAN.md §15.4).

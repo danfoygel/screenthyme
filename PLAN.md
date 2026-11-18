@@ -203,11 +203,15 @@ All alerts are recorded in the timeline, so the alert feed and the timeline matc
   - `DeviceActivityCenter().activities` (are our schedules still registered?)
   - backlog size
   - app version
+  - the Settings switches the kid can turn off for ScreenThyme and no app can lock: Background App Refresh, cellular
+    data, Bluetooth, and Low Power Mode (`DevicePermissions`). The kid app uses no notifications, so they aren't one
 - **Parent-side checks:**
   - authorization not approved → **immediate alert**
   - missing activities → **immediate alert**, and the kid app re-registers on its next launch
   - no heartbeat for more than X hours during waking hours → **alert** ("offline since 3:12pm"), which covers airplane mode, Wi-Fi off and Background App Refresh off
   - backlog growing → warning
+  - one of those switches off → **immediate alert**; Low Power Mode → warning (it also reports Background App Refresh
+    as off, so that alert waits until Low Power Mode is off)
 - The host app wakes regularly (background refresh, silent pushes, a nightly rollup). That also works around the reported "extension stops after days without the host app launching" problem.
 - `.child` authorization means the kid can't delete the app. Turning off Background App Refresh or connectivity only delays delivery, because data is queued locally.
 
@@ -659,7 +663,8 @@ like this:
   from the scan (`TokenPairing.estimatedCodes`), in one column unless two fit; the extension lays several codes out in
   the grid that draws them largest. About 5 screenshots on a 3x phone with 200 identifiers.
 - **By a parent's camera** (Nov 18; `CameraPairingView` on the kid's phone, `PairingScannerView` on the parent's, under
-  Settings → the kid). The same reports and the same pairing, without screenshots or the photo library. The kid's
+  Settings → the kid). The same reports and the same pairing, in either mode (new apps or everything, the same
+  switch as the screenshots'), without screenshots or the photo library. The kid's
   phone shows one report at a time, filling the screen, names report first; reports drawn for a camera
   (`TokenPairing.Display`, saved in the App Group before any report draws) hold at most 600 bytes a code (version 19,
   93 modules: about 7 px a module across a 2x phone) and cycle through their codes every 0.7 s. The parent's phone
@@ -678,6 +683,15 @@ like this:
   scanned category's match is Apple's category item of that name; one the phone hasn't seen is created. A category
   unused in the 28 days stays unmatched. **Not yet tried on a phone:** whether a filter of category tokens alone
   shows just those categories (if iOS ignored it, every report would list every category, and nothing would pair).
+- **New apps only** (Nov 17, `TokenPairing.Mode`, the default): after a first round, a new app's match can't come
+  from one code (the token is what's unknown), but every code can be tiny. In `unmatched` mode the numbers go only
+  to scanned items with no match (a rescan keeps matches, so these are the new tokens and those still unused), and
+  the reports leave out apps, websites and categories already matched, so each bit report holds the hashes of the few new
+  identifiers: about 45 modules, three to a row, and all the codes in one screenshot. "Everything" (`all`) checks
+  every match again. The app saves the mode in the App Group (`token-pairing-mode.json`) before the reports draw,
+  since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
+  websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
+  has no token: scan again first.
 - A matched scanned item uses its match's numbers (`UsageSnapshot.todayUsage`): limits count it, grants run by use.
   A scanned category counts through its match's name (`EnforcementPlanner.categoryNames`): before, a limit on one
   counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps

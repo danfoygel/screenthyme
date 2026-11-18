@@ -15,18 +15,54 @@ public enum TokenPairing {
     public static let days = 28
     static let header = "STPAIR2"
 
-    /// Scanned apps and websites with tokens, in a fixed order; an item's number is its place + 1. The app and the
-    /// report extension both derive it from the App Group's items.
-    public static func order(_ items: [TrackedItem]) -> [TrackedItem] {
-        items.filter { $0.isScanned && $0.kind != .category && $0.tokenData != nil }
+    /// Which scanned items a round of screenshots pairs. The app saves it in the App Group, for the report extension.
+    public enum Mode: String, Codable, Sendable, CaseIterable {
+        /// Scanned items with no match yet, and only apps, websites and categories nothing is matched to: after a
+        /// first round, new apps' codes are small enough for one screenshot.
+        case unmatched
+        /// Every scanned item, checking every match again.
+        case all
+    }
+
+    /// Scanned apps and websites with tokens (in `unmatched`, those with no match), in a fixed order; an item's number
+    /// is its place + 1. The app and the report extension both derive it from the App Group's items.
+    public static func order(_ items: [TrackedItem], mode: Mode) -> [TrackedItem] {
+        items.filter { $0.isScanned && $0.kind != .category && $0.tokenData != nil && (mode == .all || $0.match == nil) }
             .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
-    /// Scanned categories with tokens, numbered apart from apps and websites: a report filtered by a category shows
-    /// every app in it, so categories can't share the apps' reports.
-    public static func categoryOrder(_ items: [TrackedItem]) -> [TrackedItem] {
-        items.filter { $0.isScanned && $0.kind == .category && $0.tokenData != nil }
+    /// Scanned categories with tokens (in `unmatched`, those with no match), numbered apart from apps and websites: a
+    /// report filtered by a category shows every app in it, so categories can't share the apps' reports.
+    public static func categoryOrder(_ items: [TrackedItem], mode: Mode) -> [TrackedItem] {
+        items.filter { $0.isScanned && $0.kind == .category && $0.tokenData != nil && (mode == .all || $0.match == nil) }
             .sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    /// Apps, websites and categories some scanned item is matched to.
+    static func matched(_ items: [TrackedItem]) -> Set<Identifier> {
+        let matches = Set(items.compactMap { $0.isScanned ? $0.match : nil })
+        return Set(items.filter { matches.contains($0.id) }.map { Identifier(kind: $0.kind, identifier: $0.identifier) })
+    }
+
+    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item is matched to already
+    /// (a second scanned token for a matched app would take its match away).
+    public static func drawn(_ seen: Set<Identifier>, items: [TrackedItem], mode: Mode) -> Set<Identifier> {
+        mode == .all ? seen : seen.subtracting(matched(items))
+    }
+
+    /// At most about how many identifiers a report filtered to `members` draws: one for each member used. In
+    /// `unmatched`, no more than the apps, websites and categories this phone has seen that nothing is matched to, and
+    /// a few spare for any it hasn't seen.
+    public static func estimatedLines(members: [TrackedItem], items: [TrackedItem], mode: Mode) -> Int {
+        guard mode == .unmatched else { return members.count }
+        let matched = matched(items)
+        let open = items.filter {
+            !$0.isScanned && !matched.contains(Identifier(kind: $0.kind, identifier: $0.identifier))
+        }
+        let bound = [ItemKind.app, .domain, .category].reduce(0) { sum, kind in
+            sum + min(members.count { $0.kind == kind }, open.count { $0.kind == kind })
+        }
+        return min(members.count, bound + 4)
     }
 
     /// Names one `order`, so codes from another scan are told apart.
@@ -182,10 +218,10 @@ public enum TokenPairing {
     /// half at 4 px, and all of them at 3 (it scales the image down); it reads nothing at 1 px even in a small image.
     public static let pixelsPerModule = 5
 
-    /// About how many modules wide, quiet zone included, the largest of a report's codes is for `members` scanned
-    /// items, and how many codes there are. The app sizes the reports from it before they draw.
-    public static func estimatedCodes(_ view: View, members: Int) -> (count: Int, modules: Int) {
-        let bytes = members * (view == .names || view.isCategory ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
+    /// About how many modules wide, quiet zone included, the largest of a report's codes is for `lines` identifiers
+    /// (`estimatedLines`), and how many codes there are. The app sizes the reports from it before they draw.
+    public static func estimatedCodes(_ view: View, lines: Int) -> (count: Int, modules: Int) {
+        let bytes = lines * (view == .names || view.isCategory ? 28 : 7)  // "a com.example.app\n"; a hash and a newline
         let count = max(1, (bytes + maxBytes - 1) / maxBytes)
         let size = QRCode([UInt8](repeating: 0, count: min(bytes, maxBytes) + 32))?.size ?? 129  // the first is fullest
         return (count, size + 8)
@@ -265,8 +301,8 @@ public enum TokenPairing {
     }
 
     /// - Parameters:
-    ///   - order: `order(_:)` of this phone's items now.
-    ///   - categories: `categoryOrder(_:)` of this phone's items now.
+    ///   - order: `order(_:mode:)` of this phone's items now, in the mode the reports were drawn in.
+    ///   - categories: `categoryOrder(_:mode:)` of this phone's items now, in the same mode.
     ///   - known: items from Apple's data, to look the hashes up in.
     public static func resolve(_ codes: some Sequence<Code>, order: [TrackedItem], categories: [TrackedItem] = [],
                                known: [TrackedItem]) -> Resolution {

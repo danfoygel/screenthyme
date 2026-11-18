@@ -11,12 +11,16 @@ struct CameraPairingView: View {
     @Environment(AppModel.self) private var model
     /// Loaded once, when the screen opens: a filter made anew at every redraw would make the report fetch again.
     @State private var setup: Setup?
+    @State private var mode = AppGroup.tokenPairingMode()
     /// Reports passed over by hand: one that draws no code would hold everything up.
     @State private var skipped: Set<TokenPairing.View> = []
     @State private var result: String?
     @State private var saving = false
 
     struct Setup {
+        var mode: TokenPairing.Mode
+        /// Whether the scan has items at all, matched or not.
+        var scanned: Bool
         var order: [TrackedItem]
         var categories: [TrackedItem]
         /// The names report first: it spells out identifiers the phone hasn't seen in Apple's data, which the bit
@@ -24,9 +28,11 @@ struct CameraPairingView: View {
         var views: [TokenPairing.View]
         var now: Date
 
-        init(items: [TrackedItem]) {
-            order = TokenPairing.order(items)
-            categories = TokenPairing.categoryOrder(items)
+        init(items: [TrackedItem], mode: TokenPairing.Mode) {
+            self.mode = mode
+            scanned = !(TokenPairing.order(items, mode: .all) + TokenPairing.categoryOrder(items, mode: .all)).isEmpty
+            order = TokenPairing.order(items, mode: mode)
+            categories = TokenPairing.categoryOrder(items, mode: mode)
             views = (order.isEmpty ? [] : [.names]) + TokenPairing.views(count: order.count)
                 + TokenPairing.categoryViews(count: categories.count)
             now = Date()
@@ -50,6 +56,12 @@ struct CameraPairingView: View {
             if let setup {
                 let read = setup.read(model.pairingCodes)
                 let current = setup.views.first { !read.contains($0) && !skipped.contains($0) }
+                // Saved before the reports redraw: the report extension reads it.
+                Picker("Match", selection: Binding(get: { mode }, set: { start($0) })) {
+                    Text("New apps").tag(TokenPairing.Mode.unmatched)
+                    Text("Everything").tag(TokenPairing.Mode.all)
+                }
+                .pickerStyle(.segmented)
                 Text(status)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -71,14 +83,15 @@ struct CameraPairingView: View {
                     if let result {
                         Text(result).multilineTextAlignment(.center)
                     } else if setup.views.isEmpty {
-                        Text("Scan the apps first.").foregroundStyle(.secondary)
+                        Text(setup.scanned ? "Every scanned app and website is matched." : "Scan the apps first.")
+                            .foregroundStyle(.secondary)
                     } else {
                         ProgressView("Matching…")
                     }
                     Spacer()
                 }
                 Color.clear.frame(height: 0)
-                    .task(id: current?.name ?? "") { await shown(current, of: setup, read: read) }
+                    .task(id: "\(setup.mode.rawValue).\(current?.name ?? "")") { await shown(current, of: setup, read: read) }
             }
         }
         .padding(.horizontal)
@@ -87,14 +100,23 @@ struct CameraPairingView: View {
         .onAppear {
             // Before any report draws: smaller codes, one at a time.
             AppGroup.save(TokenPairing.Display.camera, to: AppGroup.pairingDisplayURL)
-            model.pairingCodes = []
-            setup = Setup(items: AppGroup.loadItems())
+            start(mode)
             UIApplication.shared.isIdleTimerDisabled = true
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             model.showPairing(nil)
         }
+    }
+
+    /// Starts over in `mode`: codes read in the other mode name another order, so they wouldn't count anyway.
+    private func start(_ mode: TokenPairing.Mode) {
+        AppGroup.save(mode, to: AppGroup.tokenPairingModeURL)
+        self.mode = mode
+        model.pairingCodes = []
+        skipped = []
+        result = nil
+        setup = Setup(items: AppGroup.loadItems(), mode: mode)
     }
 
     private var status: String {
@@ -115,7 +137,7 @@ struct CameraPairingView: View {
         saving = true
         defer { saving = false }
         let codes = model.pairingCodes.compactMap(TokenPairing.decode)
-        let saved = await TokenPairingView.save(codes, model: model, source: "what the camera reads")
+        let saved = await TokenPairingView.save(codes, model: model, mode: setup.mode, source: "what the camera reads")
         result = saved.text
         model.sendPairingResult(saved.text)
     }

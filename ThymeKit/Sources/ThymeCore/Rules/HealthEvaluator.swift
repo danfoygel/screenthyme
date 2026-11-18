@@ -9,11 +9,15 @@ public enum HealthIssue: Sendable, Hashable {
     case activitiesMissing([String])
     case stale(since: Date)
     case backlog(Int)
+    /// A switch the kid turned off in Settings; the app can't lock these.
+    case permissionDenied(DevicePermission)
+    /// Pauses Background App Refresh, so pings and heartbeats wait for the app to open.
+    case lowPowerMode
 
     public var isUrgent: Bool {
         switch self {
-        case .notAuthorized, .dataAccessLost, .activitiesMissing, .stale: true
-        case .neverReported, .backlog: false
+        case .notAuthorized, .dataAccessLost, .activitiesMissing, .stale, .permissionDenied: true
+        case .neverReported, .backlog, .lowPowerMode: false
         }
     }
 
@@ -25,6 +29,34 @@ public enum HealthIssue: Sendable, Hashable {
         case let .activitiesMissing(names): "\(names.count) monitoring schedule(s) missing"
         case let .stale(since): "Offline since \(since.formatted(date: .omitted, time: .shortened))"
         case let .backlog(count): "\(count) events waiting to upload"
+        case let .permissionDenied(permission): "\(permission.title) is off for ScreenThyme"
+        case .lowPowerMode: "Low Power Mode is on: updates may be late"
+        }
+    }
+}
+
+/// The Settings switches a heartbeat reports.
+public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
+    /// Pings and background heartbeats. Capture and shields run in the extensions and don't need it.
+    case backgroundRefresh
+    /// Uploads away from Wi-Fi.
+    case cellularData
+    /// The nearby link when Wi-Fi is off (PLAN.md §17).
+    case bluetooth
+
+    public var title: String {
+        switch self {
+        case .backgroundRefresh: "Background App Refresh"
+        case .cellularData: "Cellular data"
+        case .bluetooth: "Bluetooth"
+        }
+    }
+
+    public func state(in heartbeat: Heartbeat) -> PermissionState? {
+        switch self {
+        case .backgroundRefresh: heartbeat.backgroundRefresh
+        case .cellularData: heartbeat.cellularData
+        case .bluetooth: heartbeat.bluetooth
         }
     }
 }
@@ -60,6 +92,14 @@ public enum HealthEvaluator {
         }
         if latest.backlogCount >= backlogWarning {
             issues.append(.backlog(latest.backlogCount))
+        }
+        for permission in DevicePermission.allCases where permission.state(in: latest) == .denied {
+            // Low Power Mode reports Background App Refresh as off too; that's reported as itself.
+            if permission == .backgroundRefresh, latest.lowPowerMode == true { continue }
+            issues.append(.permissionDenied(permission))
+        }
+        if latest.lowPowerMode == true {
+            issues.append(.lowPowerMode)
         }
         return issues
     }
