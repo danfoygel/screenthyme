@@ -166,6 +166,16 @@ struct KidDayView: View {
             } footer: {
                 Text("Apple counts each app's use between two of the phone's check-ins (every 2 minutes of use); each block puts that count on the minutes just before an on-time check-in. Fainter means the app was in use for only part of that time. Tap a block for times.")
             }
+            Section {
+                UsageHeatmapView(heatmap: UsageHeatmap.build(today: DayKey(Date()), now: Date(),
+                                                             samples: { model.data.samples(kid: kid.id, day: $0) },
+                                                             counts: { items[$0.itemID]?.kind != .domain }),
+                                 tint: kid.color)
+            } header: {
+                Text("When")
+            } footer: {
+                Text("All apps. " + UsageHeatmapView.footer)
+            }
             Section("Apps") {
                 ForEach(used.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, usage in
                     ItemDetailsLink(item: items[id]) {

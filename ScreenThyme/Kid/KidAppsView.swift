@@ -13,9 +13,19 @@ struct KidAppsView: View {
     }
 
     @State private var rows: [Row]?
+    @State private var heatmap: UsageHeatmap?
 
     var body: some View {
         List {
+            if let heatmap, !heatmap.isEmpty {
+                Section {
+                    UsageHeatmapView(heatmap: heatmap)
+                } header: {
+                    Text("When")
+                } footer: {
+                    Text("All apps. " + UsageHeatmapView.footer)
+                }
+            }
             ForEach([ItemKind.app, .domain], id: \.self) { kind in
                 let group = (rows ?? []).filter { $0.item.kind == kind }
                 if !group.isEmpty {
@@ -52,7 +62,12 @@ struct KidAppsView: View {
         let since = today.adding(days: -(AppDetails.usageDays - 1))
         var todaySeconds: [UUID: Double] = [:]
         var monthSeconds: [UUID: Double] = [:]
-        for sample in AppGroup.samples.readAll() where sample.day >= since {
+        let samples = AppGroup.samples.readAll()
+        let byDay = Dictionary(grouping: samples, by: \.day)
+        let websites = Set(items.filter { $0.kind == .domain }.map(\.id))
+        heatmap = UsageHeatmap.build(today: today, now: Date(), samples: { byDay[$0] ?? [] },
+                                     counts: { !websites.contains($0.itemID) })
+        for sample in samples where sample.day >= since {
             monthSeconds[sample.itemID, default: 0] += sample.seconds
             if sample.day == today { todaySeconds[sample.itemID, default: 0] += sample.seconds }
         }
