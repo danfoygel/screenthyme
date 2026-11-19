@@ -33,7 +33,7 @@ public struct LinkHello: Codable, Sendable, Hashable {
 }
 
 /// Records one phone sends another: what the other phone would otherwise fetch from CloudKit. A kid phone sends its
-/// usage, heartbeat, alerts and requests for more time; a parent phone sends that kid's rules, policy and answers.
+/// usage, heartbeat, alerts, requests for more time and one more minute; a parent phone sends that kid's rules, policy and answers.
 /// Every record has the same id it has in CloudKit, so the CloudKit copy that arrives later just overwrites it.
 public struct LinkBundle: Codable, Sendable, Hashable {
     public var kids: [Kid] = []
@@ -50,6 +50,8 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     /// Matching by a parent's camera (PLAN.md §15.6), sent at once rather than every 15 s, and never filtered. Optional,
     /// so a bundle from a build without it still opens.
     public var pairing: [LinkPairing]?
+    /// Optional, so a bundle from a build without it still opens.
+    public var extraMinutes: [ExtraMinuteUse]?
 
     public init() {}
 
@@ -58,6 +60,7 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     public var count: Int {
         kids.count + items.count + epochs.count + fires.count + samples.count + heartbeats.count + alerts.count
             + requests.count + ruleSets.count + policies.count + grants.count + (pairing?.count ?? 0)
+            + (extraMinutes?.count ?? 0)
     }
 
     /// Keeps only the records about one kid: a phone accepts nothing about other kids from a peer.
@@ -74,6 +77,7 @@ public struct LinkBundle: Codable, Sendable, Hashable {
         copy.ruleSets = ruleSets.filter { $0.kidID == kid }
         copy.policies = policies.filter { $0.kidID == kid }
         copy.grants = grants.filter { $0.kidID == kid }
+        copy.extraMinutes = extraMinutes?.filter { $0.kidID == kid }
         return copy
     }
 }
@@ -112,6 +116,7 @@ public struct LinkSentFilter: Sendable {
         out.policies = filter(bundle.policies, "Policy", id: \.kidID)
         out.grants = filter(bundle.grants, "TimeGrant", id: \.requestID)
         out.pairing = bundle.pairing
+        out.extraMinutes = bundle.extraMinutes.map { filter($0, "ExtraMinuteUse", id: \.id) }
         return out
     }
 
