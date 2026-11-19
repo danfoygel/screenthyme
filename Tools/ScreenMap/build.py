@@ -162,8 +162,10 @@ k.node("camera", 2, 7, "Match with camera", "CameraPairingView", "a parent's pho
 k.node("pairing", 2, 8, "Match by screenshot", "TokenPairingView", "after data access")
 k.node("report", 2, 9.5, "Report a problem", "BugReportView", "also the bug, top right of\nevery screen (a sheet)", h=72)
 k.node("debug", 2, 11.25, "Debug", "KidDebugView")
+k.node("apps", 2, 13, "Apps", "KidAppsView", "used in the last 30 days")
 k.node("test", 2, 15, "Test mode", "TestModeView", "only with test mode on")
 
+k.node("appDetails", 3, 1, "‹app›", "AppDetailsView", "groups, limits, use, requests")
 k.node("choose", 3, 3, "Apple's app picker", "FamilyActivityPicker", "Choose the app", kind="apple")
 k.node("photos", 3, 8, "Photos picker", "PhotosPicker", "screenshots", kind="apple")
 k.node("day", 3, 9.25, "‹date›", "UsageCalendar", "the day as a calendar")
@@ -191,6 +193,10 @@ k.edge("home", "camera", "Match with a\nparent's camera")
 k.edge("home", "pairing", "Match apps by\nscreenshot")
 k.edge("home", "report", "Report a problem")
 k.edge("home", "debug", "Debug")
+k.edge("home", "apps", "Apps")
+k.edge("apps", "appDetails", "an app", bend="dst")
+for src in ("dtItems", "allowed", "blocked"):
+    k.edge(src, "appDetails", "an app" if src == "allowed" else "", dp=k.cy(src) - k.cy("appDetails"))
 k.edge("home", "test", "Test mode")
 k.edge("ask", "choose", "Choose the app", kind="apple")
 k.edge("pairing", "photos", "Import screenshots", kind="apple")
@@ -256,6 +262,7 @@ p.node("select", 6, 0, "‹list name›", "ItemSelectionView",
        "Search and tick categories,\napps, websites and groups.\n\nTitled after what it edits:\nDowntime, Limit, the group's\nname, Always Allowed or\nBlocked.",
        rows=(1, 5))
 p.node("domains", 6, 6, "‹website list›", "DomainListView", "Always allow, Never allow\nor Allowed websites", h=72)
+p.node("appDetails", 6, 7.5, "‹app›", "AppDetailsView", "groups, limits, use, requests;\nEdit Screen Time › PolicyView", h=72)
 
 p.edge("welcome", "kids", "Set up as parent", kind="mode")
 p.edge("kids", "kidDay", "tap a kid's card")
@@ -288,6 +295,14 @@ for src, lab in (("downtime", "Included · Some apps"), ("limit", "Included · n
                  ("allowed", "Edit"), ("blocked", "Edit")):
     p.edge(src, "select", lab, dp=p.cy(src) - p.cy("select"))
 p.edge("content", "domains", "a website list", dp=p.cy("content") - p.cy("domains"))
+for src, lab in (("allowed", ""), ("blocked", "an app"), ("apps", "an app or site")):
+    p.edge(src, "appDetails", lab, bend="dst", dp=-14 if src == "apps" else 0)
+# The day's Apps and Websites rows: up over the columns, then down the right edge into the details' side
+kd, ad = p.nodes["kidDay"], p.nodes["appDetails"]
+top, rx = MT - 30, ad["x"] + W + 24
+p.edge("kidDay", "appDetails", "an app or site in the day's lists",
+       pts=[(kd["x"] + 40, kd["y"]), (kd["x"] + 40, top), (rx, top), (rx, p.cy("appDetails")), (ad["x"] + W, p.cy("appDetails"))],
+       lpos=(kd["x"] + 52, top - 6, "start"))
 # Rules and health's camera link: straight up the column
 sx = p.nodes["kidSettings"]["x"] + 30
 p.edge("kidSettings", "scanner", "Match apps\nwith camera",
@@ -313,6 +328,7 @@ WHY.update({
     ("k", "popover"): "The kid's Debug timeline is empty in the Simulator (no Screen Time data), so there's no block to tap.",
     ("k", "apple"): "Apple's report extension draws nothing in the Simulator.",
     ("k", "camera"): "Its link appears only after data access, which the Simulator can't grant.",
+    ("k", "appDetails"): "The kid's Apps list is empty in the Simulator (no Screen Time data), so there's no app to open. The parent's ‹app› box shows the same screen.",
     ("p", "scanner"): "Its links appear once a kid's phone has scanned its apps, and it needs a real camera.",
     ("p", "sharing"): "Apple's iCloud sharing sheet. It needs an iCloud family, which the Simulator doesn't have.",
     ("p", "matches"): "Appears once apps have been scanned and matched on the kid's phone.",
@@ -320,9 +336,9 @@ WHY.update({
 })
 
 kid_svg = k.render("Kid mode screen flow: Welcome leads to the ScreenThyme home screen, which links to the kid's Screen Time lists, "
-                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug and Test mode; the block page outside the app also opens Ask for more time.")
+                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, and Test mode; the block page outside the app also opens Ask for more time.")
 parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts and Settings; a kid's day leads to the timeline, "
-                      "change history, camera matching and rules and health, which leads to the Screen Time editor and its sheets and item picker.")
+                      "change history, camera matching, an app's details and rules and health, which leads to the Screen Time editor and its sheets and item picker.")
 
 commit = subprocess.run(["git", "-C", HERE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 source = f"Traced from the SwiftUI sources at {commit} · {datetime.date.today():%-d %b %Y}"

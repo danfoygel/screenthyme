@@ -607,7 +607,9 @@ past 1 the menu item reads "N more minutes". "Ask for more time" then opens a su
   interval whose end warning falls at the first whole minute after the extra time ends. The
   monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
   reshields it.
-- No alert to parents; the journal notes each one.
+- No alert to parents; the journal notes each one. Each is also kept as an `ExtraMinuteUse` (App Group
+  `Outbox/extra-minutes.jsonl`), uploaded like requests and sent nearby, so an app's details show it on parents'
+  phones too (§15.9).
 - **Not yet tried on a phone:** whether the submenu sends only the submenu actions, and whether `.defer` opens the app
   once the stores stop shielding it.
 
@@ -741,6 +743,22 @@ read it; kids' phones never fetch it. Changes made before this build aren't in i
   categories too (not its own token shield). Rare, and accepted.
 - Old builds ignore both fields: a kid phone on an old build enforces a window for some apps as whole-phone Downtime,
   and an old parent build drops groups when it saves. Update every phone.
+
+### 15.9 An app's details (Nov 19, 2026)
+
+One screen per app or website (`AppDetailsView`), the same on parents' phones and the kid's: whether it's blocked now
+and why, its use (today, yesterday, 7 and 30 days, a daily average over the days before today the phone reported, and
+a 30-day chart), the groups, Always Allowed and Blocked lists it's in, the Downtime windows and limits that cover it
+(each saying how: itself, a group, its category, or the whole phone), the last 30 days' requests for more time and one
+more minutes for it or its category, its alert rules, and its bundle ID, category and whether the scan is matched.
+- ThymeCore's `AppDetails` works it out. A matched app is two items, Apple's (usage) and the scan's (the token the
+  policy names), and the details cover both and every category item for its category.
+- Parents open it from a kid's day (Apps, Websites), Apps seen, Always Allowed and Blocked; the kid from Home › Apps
+  (`KidAppsView`, apps used in the last 30 days) and the Screen Time lists.
+- Parents' phones work out "blocked now" from what has synced: the policy, today's samples, answers and one more
+  minutes, with `EnforcementPlanner`; the kid's phone reads its applied plan. A limit's numbers count everything the
+  limit counts.
+- The kid's phone keeps every answer it applied (App Group `grants.jsonl`): the enforcement state keeps only today's.
 
 ## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
 

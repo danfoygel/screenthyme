@@ -168,14 +168,18 @@ struct KidDayView: View {
             }
             Section("Apps") {
                 ForEach(used.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, usage in
-                    LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                    ItemDetailsLink(item: items[id]) {
+                        LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                    }
                 }
             }
             let sites = used.filter { items[$0.key]?.kind == .domain }
             if !sites.isEmpty {
                 Section("Websites") {
                     ForEach(sites, id: \.key) { id, usage in
-                        LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                        ItemDetailsLink(item: items[id]) {
+                            LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                        }
                     }
                 }
             }

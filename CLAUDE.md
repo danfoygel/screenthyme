@@ -12,6 +12,7 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
   Journal/           append-only JSONL with flock + fsync, upload ledger
   Reconstruction/    total fires + samples → in-use strip, per-app blocks and totals, live status
   Rules/             RuleEngine (kid-side alerts), HealthEvaluator (parent-side)
+  Details/           AppDetails: one app's groups, lists, Downtime, limits, use and requests (its details screen)
   Link/              nearby link protocol: LinkKey (family secret), LinkSession (hello, AES-GCM frames), LinkBundle
   Energy/            EnergyLedger: our processes' daily energy from kernel counters (sampled by Shared/Energy)
   BugReport/         a kid's bug report, the family's GitHub repo and token (IssueTracker), filing it (GitHubIssues)

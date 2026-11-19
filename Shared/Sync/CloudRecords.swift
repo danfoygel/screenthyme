@@ -137,6 +137,12 @@ extension TimeGrant: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+extension ExtraMinuteUse: CloudRecordable {
+    static let recordType = "ExtraMinuteUse"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+}
+
 extension Ping: CloudRecordable {
     static let recordType = "Ping"
     var recordUUID: UUID { id }

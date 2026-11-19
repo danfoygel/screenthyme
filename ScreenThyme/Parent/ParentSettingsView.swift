@@ -327,9 +327,11 @@ struct TrackedItemsView: View {
                 if !group.isEmpty {
                     Section("\(kind.pluralTitle) · \(group.count)") {
                         ForEach(group) { item in
-                            VStack(alignment: .leading) {
-                                ItemName(item: item)
-                                Text(item.identifier).font(.caption).foregroundStyle(.secondary)
+                            ItemDetailsLink(item: item) {
+                                VStack(alignment: .leading) {
+                                    ItemName(item: item)
+                                    Text(item.identifier).font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }

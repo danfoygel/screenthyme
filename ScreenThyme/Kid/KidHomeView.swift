@@ -20,6 +20,11 @@ struct KidHomeView: View {
                 }
                 KidScreenTimeSection()
                 Section {
+                    NavigationLink { KidAppsView() } label: { Label("Apps", systemImage: "square.grid.2x2") }
+                } footer: {
+                    Text("How long you've used each app, and the Downtime and limits for it.")
+                }
+                Section {
                     NavigationLink("Report a problem") { BugReportView() }
                 } footer: {
                     Text("Something not working right? Tell us, and add screenshots if they help.")

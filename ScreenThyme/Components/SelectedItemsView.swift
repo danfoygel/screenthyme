@@ -29,7 +29,7 @@ struct SelectedItemsView: View {
                     .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
                 if !group.isEmpty {
                     Section(kind.pluralTitle) {
-                        ForEach(group, id: \.0.id) { ItemName(item: $0.0) }
+                        ForEach(group, id: \.0.id) { item in ItemDetailsLink(item: item.0) { ItemName(item: item.0) } }
                     }
                 }
             }

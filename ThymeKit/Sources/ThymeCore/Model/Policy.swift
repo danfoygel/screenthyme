@@ -265,3 +265,23 @@ public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
         self.by = by
     }
 }
+
+/// A "one more minute" the kid took on a block page (`ExtraMinute`), kept on the kid's phone and synced, so the app's
+/// details show it on parents' phones too. `itemID` is what the press named, as in `ExtraMinute`.
+public struct ExtraMinuteUse: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var kidID: UUID
+    public var itemID: UUID?
+    public var reason: BlockReason
+    public var at: Date
+    public var minutes: Int
+
+    public init(id: UUID = UUID(), kidID: UUID, itemID: UUID?, reason: BlockReason, at: Date, minutes: Int) {
+        self.id = id
+        self.kidID = kidID
+        self.itemID = itemID
+        self.reason = reason
+        self.at = at
+        self.minutes = minutes
+    }
+}
