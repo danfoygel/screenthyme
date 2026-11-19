@@ -28,7 +28,7 @@ struct AppDetailsView: View {
                     Text("Not matched to the app scan yet, so ScreenThyme can block it only through its category or Downtime for the whole phone.")
                 }
             }
-            usageSection(usage)
+            usageSection(usage, details: details, data: data, name: AppCatalog.shared.name(of: shown, in: data.items))
             groupsSection(details, data: data)
             downtimeSection(details, data: data)
             limitsSection(details, data: data)
@@ -53,7 +53,7 @@ struct AppDetailsView: View {
     // MARK: - Use
 
     @ViewBuilder
-    private func usageSection(_ usage: AppDetails.Usage) -> some View {
+    private func usageSection(_ usage: AppDetails.Usage, details: AppDetails, data: AppDetailsData, name: String?) -> some View {
         Section {
             LabeledContent("Today", value: Self.time(usage.today))
             LabeledContent("Yesterday", value: Self.time(usage.yesterday))
@@ -83,6 +83,13 @@ struct AppDetailsView: View {
                 }
                 .frame(height: 140)
                 .padding(.vertical, 4)
+            }
+            NavigationLink {
+                // Opens on the last day it was used: today's raw list is empty when it wasn't used today.
+                RawUsageView(items: data.items, samples: { data.samples($0).filter { details.ids.contains($0.itemID) } },
+                             day: usage.lastUsed.map { DayKey($0) } ?? DayKey(Date()), only: name ?? item.displayName)
+            } label: {
+                Label("Raw usage", systemImage: "list.bullet.rectangle")
             }
         } header: {
             Text("Use")

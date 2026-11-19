@@ -2,11 +2,14 @@ import SwiftUI
 import ThymeCore
 
 /// Every usage sample for a day, grouped by the fetch that found it: "at 1:23:05 PM, YouTube +2 min".
-/// Shown on the kid's Debug screen (this phone's outbox) and in a parent's kid settings (the synced records).
+/// Shown on the kid's Debug screen (this phone's outbox), in a parent's kid settings (the synced records), and for one
+/// app from its details.
 struct RawUsageView: View {
     let items: [UUID: TrackedItem]
     let samples: (DayKey) -> [UsageSample]
     @State var day: DayKey
+    /// The app the samples were narrowed to, for the footer.
+    var only: String?
 
     var body: some View {
         let reports = UsageReport.reports(samples(day))
@@ -22,7 +25,11 @@ struct RawUsageView: View {
                 }
                 .buttonStyle(.borderless)
             } footer: {
-                Text("\(reports.count) reports · \(Self.duration(reports.reduce(0) { $0 + $1.seconds })) in all. Each report is one fetch of Apple's numbers; a row is what that app or site gained since the fetch before.")
+                if let only {
+                    Text("\(reports.count) reports · \(Self.duration(reports.reduce(0) { $0 + $1.seconds })) in all. Each report is one fetch of Apple's numbers that found use of \(only); a row is what it gained since the fetch before.")
+                } else {
+                    Text("\(reports.count) reports · \(Self.duration(reports.reduce(0) { $0 + $1.seconds })) in all. Each report is one fetch of Apple's numbers; a row is what that app or site gained since the fetch before.")
+                }
             }
             if reports.isEmpty {
                 Text("No usage reported this day").foregroundStyle(.secondary)

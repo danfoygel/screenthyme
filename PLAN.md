@@ -751,6 +751,7 @@ and why, its use (today, yesterday, 7 and 30 days, a daily average over the days
 a 30-day chart), the groups, Always Allowed and Blocked lists it's in, the Downtime windows and limits that cover it
 (each saying how: itself, a group, its category, or the whole phone), the last 30 days' requests for more time and one
 more minutes for it or its category, its alert rules, and its bundle ID, category and whether the scan is matched.
+Its Raw usage opens the raw list (`RawUsageView`) narrowed to the app, on the last day it was used.
 - ThymeCore's `AppDetails` works it out. A matched app is two items, Apple's (usage) and the scan's (the token the
   policy names), and the details cover both and every category item for its category.
 - Parents open it from a kid's day (Apps, Websites), Apps seen, Always Allowed and Blocked; the kid from Home › Apps
