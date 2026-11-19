@@ -1,7 +1,7 @@
 import SwiftUI
 import ThymeCore
 
-/// The GitHub repository kids' bug reports go to, and the token their phones file them with (PLAN.md §18).
+/// The GitHub repository the family's bug reports go to, and the token phones file them with (PLAN.md §18).
 struct IssueTrackerView: View {
     @Environment(AppModel.self) private var model
     @State private var saved: IssueTracker?
@@ -23,7 +23,7 @@ struct IssueTrackerView: View {
             } header: {
                 Text("GitHub")
             } footer: {
-                Text("Kids' phones file each report as an issue in this repository, with its screenshots committed under reports/. Use a private repository, and a fine-grained token for that repository only, with Issues and Contents set to Read and write. Every phone in the family can read the token.")
+                Text("Each phone files its reports as issues in this repository, with its screenshots committed under reports/. Use a private repository, and a fine-grained token for that repository only, with Issues and Contents set to Read and write. Every phone in the family can read the token.")
             }
             Section {
                 Button(saving ? "Saving…" : "Save") { Task { await save() } }
@@ -32,11 +32,12 @@ struct IssueTrackerView: View {
                 if let saved {
                     Text("Saved: \(saved.repository), \(Format.relative(saved.updatedAt)).")
                 } else if !loading {
-                    Text("Not set up: kids' reports wait on their phones until it is.")
+                    Text("Not set up: reports wait on each phone until it is.")
                 }
             }
         }
         .navigationTitle("Bug reports")
+        .bugButton()
         .task { await load() }
     }
 

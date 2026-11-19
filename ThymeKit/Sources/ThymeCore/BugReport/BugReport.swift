@@ -1,7 +1,7 @@
 import Foundation
 
-/// A kid's report of a problem with ScreenThyme (PLAN.md §18). The kid's own phone files it as an issue in the family's
-/// private GitHub repository (`IssueTracker`), and keeps it queued until then.
+/// A report of a problem with ScreenThyme, from a kid's phone or a parent's (PLAN.md §18). The phone files it as an issue
+/// in the family's private GitHub repository (`IssueTracker`), and keeps it queued until then.
 public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     public struct Detail: Codable, Sendable, Hashable {
         public var label: String
@@ -14,14 +14,16 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var id: UUID
-    public var kidID: UUID
-    public var kidName: String
+    /// The kid, when sent from a kid's phone.
+    public var kidID: UUID?
+    /// Who sent it: the kid's name, or the parent's.
+    public var reporter: String
     public var at: Date
-    /// The kid's own words.
+    /// The reporter's own words.
     public var text: String
     /// File names in the phone's folder for this report, in the order chosen.
     public var screenshots: [String]
-    /// App version, iOS, Screen Time access and the like, as the phone saw them when the kid sent it.
+    /// App version, iOS, Screen Time access and the like, as the phone saw them when sent.
     public var details: [Detail]
     /// Recent journal notes, oldest first.
     public var log: [String]
@@ -32,11 +34,16 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     public var issueURL: URL?
     public var lastError: String?
 
-    public init(id: UUID = UUID(), kidID: UUID, kidName: String, at: Date, text: String, screenshots: [String] = [],
+    // Reports queued before parents could send them named the reporter `kidName`.
+    enum CodingKeys: String, CodingKey {
+        case id, kidID, reporter = "kidName", at, text, screenshots, details, log, uploaded, issueURL, lastError
+    }
+
+    public init(id: UUID = UUID(), kidID: UUID?, reporter: String, at: Date, text: String, screenshots: [String] = [],
                 details: [Detail] = [], log: [String] = []) {
         self.id = id
         self.kidID = kidID
-        self.kidName = kidName
+        self.reporter = reporter
         self.at = at
         self.text = text
         self.screenshots = screenshots
@@ -46,7 +53,7 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
 
     public var isFiled: Bool { issueURL != nil }
 
-    /// The first line of the kid's words, shortened.
+    /// The first line of the reporter's words, shortened.
     public var summary: String {
         let line = text.split(whereSeparator: \.isNewline).first.map(String.init)?
             .trimmingCharacters(in: .whitespaces) ?? ""
@@ -55,8 +62,8 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// Where kids' phones file bug reports: a GitHub repository and a token that can write its issues and contents.
-/// One per family, saved by a parent as `IssueTracker.<fixed id>` and fetched by name on the kid's phone.
+/// Where family phones file bug reports: a GitHub repository and a token that can write its issues and contents.
+/// One per family, saved by a parent as `IssueTracker.<fixed id>` and fetched by name on each phone that files one.
 public struct IssueTracker: Codable, Sendable, Hashable, Identifiable {
     public static let fixedID = Replay.stableUUID("issue-tracker")
 

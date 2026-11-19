@@ -96,6 +96,7 @@ struct CameraPairingView: View {
         }
         .padding(.horizontal)
         .navigationTitle("Match with a parent's camera")
+        .bugButton()
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             // Before any report draws: smaller codes, one at a time.

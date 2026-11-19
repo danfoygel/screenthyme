@@ -849,11 +849,13 @@ phone later uploads the alert.
   (`Enforcer.offMain`). Monitoring checks (`DeviceActivityCenter().activities`) still run on it.
 - Still to check: peer-to-peer Wi-Fi with no network joined, and an offline request → approval → the app unblocking.
 
-## 18. Bug reports from a kid's phone (Nov 18, 2026)
+## 18. Bug reports from family phones (Nov 18, 2026)
 
-A kid opens **Report a problem** on the home screen, writes what happened and adds up to five pictures from Photos
-(`PhotosPicker`, no photo-library permission). The kid's own phone files it as a GitHub issue; the kid needs no GitHub
-account. This repository is public, so the issues go to a **private** repository: a kid's words and screenshots
+Every screen, kid and parent, has a bug at the top right (`.bugButton()` beside each `navigationTitle`). It opens
+**Report a problem** as a sheet, with a picture of the screen it was pressed on already attached (removable) and that
+screen's source file and line in the report. The kid's home screen also links to it. The reporter writes what happened
+and adds pictures from Photos (`PhotosPicker`, no photo-library permission), five in all. The phone itself files it as
+a GitHub issue; nobody needs a GitHub account. This repository is public, so the issues go to a **private** repository: a kid's words and screenshots
 (names, usage) must not be published.
 
 - **Where:** a parent enters the repository (`owner/name`) and a fine-grained token in Settings › Bug reports. It is
@@ -863,14 +865,15 @@ account. This repository is public, so the issues go to a **private** repository
 - **Screenshots:** GitHub's API can't attach images to an issue. Each picture is shrunk to at most 2000 px as JPEG
   (which also drops its location metadata), committed under `reports/<day>-<id8>/` with the Contents API, and shown
   in the issue from its page (`…/blob/<branch>/<path>?raw=true`), which renders only for people with access.
-- **The issue:** title `<kid>: <first line>`; body: the kid's words, the screenshots, a table (kid, time sent, app
-  version, when the build was made, iOS, phone model, Screen Time access, monitoring, last wake, upload backlog, nearby
-  parent phone) and yesterday's and today's journal notes, collapsed. Logic and formatting are in
+- **The issue:** title `<reporter>: <first line>` (the kid's name, or the parent's from Settings); body: their words,
+  the pictures, a table (time sent, the phone's role, screen, app version, when the build was made, iOS, phone model,
+  family; on a kid's phone Screen Time access, monitoring, last wake, upload backlog; on a parent's the number of kids
+  and changes waiting for the internet; phones nearby) and yesterday's and today's journal notes, collapsed. Logic and formatting are in
   `ThymeCore/BugReport` (`GitHubIssues`, unit-tested with a fake transport).
 - **Queue:** reports wait in the app's Application Support (`BugReportQueue`, `BugReports/`), sent at once, then at
   every launch, background refresh and visit to the screen, until filed. Each upload is saved as it succeeds, so a retry
   skips screenshots already committed (a 422 on one already there is answered by fetching it). Filing stops at the
   first failure; the kid sees why ("Waiting for the internet", "Waiting for a parent to set up bug reports", GitHub's
-  message). Screenshots are deleted once filed; the last 20 filed reports stay listed as "Sent".
-- **Not covered:** parents' phones can't file reports; a report whose issue was opened but whose answer was lost is
-  filed again on retry (a duplicate issue).
+  message). Pictures are deleted once filed; the last 20 filed reports stay listed as "Sent".
+- **Not covered:** a report whose issue was opened but whose answer was lost is filed again on retry (a duplicate
+  issue). The picture of the screen can't show Apple's own views (the report extension's, the pickers).

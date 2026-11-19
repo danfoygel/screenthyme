@@ -203,6 +203,10 @@ final class ScreenTour: XCTestCase {
         tap("Bug reports")
         snap("p-issues")
         back()
+        tap("Report a problem")
+        Thread.sleep(forTimeInterval: 1)
+        snap("p-report")
+        tap("Done")
         tab("Alerts")
         snap("p-alerts")
     }

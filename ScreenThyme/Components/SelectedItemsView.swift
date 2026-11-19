@@ -47,6 +47,7 @@ struct SelectedItemsView: View {
             }
         }
         .navigationTitle(title)
+        .bugButton()
         .toolbar {
             if selection != nil { Button("Edit") { editing = true } }
         }

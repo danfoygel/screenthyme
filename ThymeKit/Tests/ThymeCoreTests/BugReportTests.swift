@@ -6,7 +6,7 @@ struct BugReportTests {
     let tracker = IssueTracker(repository: " family/screenthyme-bugs ", token: "token\n", updatedAt: at(8, 0))
     let report: BugReport = {
         var report = BugReport(id: UUID(uuidString: "12345678-0000-0000-0000-000000000000")!, kidID: testKid.id,
-                               kidName: "Emma", at: at(9, 30),
+                               reporter: "Emma", at: at(9, 30),
                                text: "The timer | says zero\nbut I still have time", screenshots: ["1.jpg", "2.jpg"],
                                details: [.init("App version", "1.0 (7)")], log: ["09:29:58 rules updated: 3"])
         report.uploaded = ["1.jpg": URL(string: "https://github.com/family/screenthyme-bugs/blob/main/a/1.jpg")!]
@@ -55,9 +55,19 @@ struct BugReportTests {
         #expect(body.hasPrefix("The timer | says zero\nbut I still have time\n\n"))
         #expect(body.contains("![Screenshot 1](https://github.com/family/screenthyme-bugs/blob/main/a/1.jpg?raw=true)"))
         #expect(!body.contains("Screenshot 2"))
-        #expect(body.contains("| Kid | Emma |\n| App version | 1.0 (7) |"))
+        #expect(body.contains("| From | Emma |\n| App version | 1.0 (7) |"))
         #expect(body.contains("````\n09:29:58 rules updated: 3\n````"))
         #expect(body.contains("12345678-0000-0000-0000-000000000000"))
+    }
+
+    @Test func reportsQueuedAsKidNameStillDecode() throws {
+        let data = try JSONEncoder().encode(report)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(json.contains(#""kidName":"Emma""#))
+        #expect(try JSONDecoder().decode(BugReport.self, from: data) == report)
+        var parent = report
+        parent.kidID = nil
+        #expect(try JSONDecoder().decode(BugReport.self, from: JSONEncoder().encode(parent)).kidID == nil)
     }
 
     @Test func uploadCommitsTheScreenshot() async throws {

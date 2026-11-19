@@ -4,8 +4,8 @@ import Observation
 import ThymeCore
 import UIKit
 
-/// A kid's bug reports (PLAN.md §18), queued in Application Support with their screenshots until this phone files
-/// them on GitHub. Sent at once, then again at every launch and background refresh until they're filed.
+/// This phone's bug reports, a kid's or a parent's (PLAN.md §18), queued in Application Support with their screenshots
+/// until this phone files them on GitHub. Sent at once, then again at every launch and background refresh until they're filed.
 @MainActor @Observable
 final class BugReportQueue {
     /// Newest first.
@@ -23,8 +23,9 @@ final class BugReportQueue {
         reports = (try? Data(contentsOf: listURL)).flatMap { try? JSONDecoder.thyme.decode([BugReport].self, from: $0) } ?? []
     }
 
-    func add(text: String, screenshots: [Data], kid: Kid, details: [BugReport.Detail], log: [String]) throws {
-        var report = BugReport(kidID: kid.id, kidName: kid.displayName, at: Date(), text: text, details: details, log: log)
+    func add(text: String, screenshots: [Data], reporter: String, kidID: UUID?, details: [BugReport.Detail],
+             log: [String]) throws {
+        var report = BugReport(kidID: kidID, reporter: reporter, at: Date(), text: text, details: details, log: log)
         let folder = folder(of: report)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for (index, data) in screenshots.enumerated() {
@@ -133,28 +134,54 @@ final class BugReportQueue {
 }
 
 extension AppModel {
-    /// What a developer needs to know about this phone, as it is now.
-    func bugReportDetails(now: Date = Date()) -> [BugReport.Detail] {
+    /// Who a report is from: the kid on a kid's phone, the parent's name on a parent's.
+    var bugReporter: (name: String, kidID: UUID?) {
+        switch config.role {
+        case .kid: (config.kid?.displayName ?? "A kid", config.kid?.id)
+        case .parent: (config.parentName.flatMap { $0.isEmpty ? nil : $0 } ?? "A parent", nil)
+        case .unset: ("A phone not set up yet", nil)
+        }
+    }
+
+    /// What a developer needs to know about this phone, as it is now, and the screen the report was started from.
+    func bugReportDetails(screen: String?, now: Date = Date()) -> [BugReport.Detail] {
         let info = Bundle.main.infoDictionary
         let version = "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
+        let format = Date.ISO8601FormatStyle(timeZone: .current)
         var details: [BugReport.Detail] = [
-            .init("Sent", now.formatted(Date.ISO8601FormatStyle(timeZone: .current))),
-            .init("App version", version),
+            .init("Sent", now.formatted(format)),
+            .init("Phone's role", config.role.rawValue + (config.testMode ? " (test mode)" : "")),
         ]
+        if let screen { details.append(.init("Screen", screen)) }
+        details.append(.init("App version", version))
         // The version never changes between development builds; the executable's date tells them apart.
         if let url = Bundle.main.executableURL,
            let built = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
-            details.append(.init("Built", built.formatted(Date.ISO8601FormatStyle(timeZone: .current))))
+            details.append(.init("Built", built.formatted(format)))
         }
         details += [
             .init("iOS", UIDevice.current.systemVersion),
             .init("Phone", Self.hardwareModel),
-            .init("Screen Time access", authorizationLabel),
-            .init("Monitoring", monitoringLabel),
-            .init("Last wake", AppGroup.journal.lastThresholdAt().map { $0.formatted(Date.ISO8601FormatStyle(timeZone: .current)) } ?? "none yet"),
-            .init("Waiting to upload", "\(Uploader.backlogCount())"),
-            .init("Parent phone nearby", nearby.summary),
+            .init("Family", config.family.map { $0.isOwner ? "owner" : "joined" } ?? "not joined"),
         ]
+        switch config.role {
+        case .kid:
+            details += [
+                .init("Screen Time access", authorizationLabel),
+                .init("Monitoring", monitoringLabel),
+                .init("Last wake", AppGroup.journal.lastThresholdAt().map { $0.formatted(format) } ?? "none yet"),
+                .init("Waiting to upload", "\(Uploader.backlogCount())"),
+                .init("Parent phone nearby", nearby.summary),
+            ]
+        case .parent:
+            details += [
+                .init("Kids", "\(data.kids.count)"),
+                .init("Waiting for the internet", "\(PendingSaves.count) changes"),
+                .init("Kids' phones nearby", nearby.summary),
+            ]
+        case .unset:
+            break
+        }
         return details
     }
 

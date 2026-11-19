@@ -114,6 +114,7 @@ struct KidHomeView: View {
                 }
             }
             .navigationTitle("ScreenThyme")
+            .bugButton()
             .sheet(item: $ask) { AskForTimeView(ask: $0.ask) }
             .onChange(of: scenePhase, initial: true) {
                 if scenePhase == .active, let taken = ShieldContext.Ask.take() { ask = AskSheet(ask: taken) }

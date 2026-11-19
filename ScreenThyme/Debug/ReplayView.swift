@@ -79,6 +79,7 @@ struct ReplayView: View {
             }
         }
         .navigationTitle("Replay")
+        .bugButton()
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             do {
                 let url = try result.get()

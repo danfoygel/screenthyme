@@ -46,7 +46,7 @@ public struct GitHubIssues: Sendable {
         let path = Self.path(of: screenshot, in: report)
         var put = request("PUT", "contents/\(path)")
         put.httpBody = try JSONEncoder().encode([
-            "message": "Bug report from \(report.kidName): \(screenshot)",
+            "message": "Bug report from \(report.reporter): \(screenshot)",
             "content": data.base64EncodedString(),
         ])
         let (body, response) = try await transport(put)
@@ -72,7 +72,7 @@ public struct GitHubIssues: Sendable {
     }
 
     public static func title(of report: BugReport) -> String {
-        "\(report.kidName): \(report.summary)"
+        "\(report.reporter): \(report.summary)"
     }
 
     public static func body(of report: BugReport) -> String {
@@ -83,14 +83,14 @@ public struct GitHubIssues: Sendable {
             report.uploaded[name].map { "![Screenshot \(index + 1)](\(rawURL($0)))" }
         }
         if !images.isEmpty { parts.append(images.joined(separator: "\n")) }
-        let rows = [BugReport.Detail("Kid", report.kidName)] + report.details
+        let rows = [BugReport.Detail("From", report.reporter)] + report.details
         parts.append((["| | |", "|---|---|"] + rows.map { "| \(cell($0.label)) | \(cell($0.value)) |" })
             .joined(separator: "\n"))
         if !report.log.isEmpty {
             let log = report.log.map { $0.replacingOccurrences(of: "````", with: "'''") }.joined(separator: "\n")
             parts.append("<details><summary>Recent log</summary>\n\n````\n\(log)\n````\n</details>")
         }
-        parts.append("<sub>Filed by ScreenThyme on \(report.kidName)'s phone · report \(report.id.uuidString)</sub>")
+        parts.append("<sub>Filed by ScreenThyme on \(report.reporter)'s phone · report \(report.id.uuidString)</sub>")
         return parts.joined(separator: "\n\n")
     }
 

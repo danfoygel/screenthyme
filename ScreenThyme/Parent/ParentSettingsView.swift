@@ -60,7 +60,7 @@ struct ParentSettingsView: View {
                 Section {
                     NavigationLink("Bug reports") { IssueTrackerView() }
                 } footer: {
-                    Text("Kids can report a problem from their phone, with screenshots. It becomes an issue on GitHub.")
+                    Text("The bug at the top right of every screen reports a problem, on kids' phones and here. It becomes an issue on GitHub.")
                 }
                 Section {
                     Button("Allow notifications") { Task { await Notifier.requestPermission() } }
@@ -70,6 +70,7 @@ struct ParentSettingsView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
+            .bugButton()
             .sheet(item: Binding(get: { share.map(IdentifiedShare.init) }, set: { share = $0?.share })) { item in
                 CloudSharingView(share: item.share)
             }
@@ -212,6 +213,7 @@ struct KidSettingsView: View {
             }
         }
         .navigationTitle(kid.displayName)
+        .bugButton()
         .sheet(item: $editing) { rule in
             RuleEditor(rule: rule, items: model.data.items(for: kid.id)) { saved in
                 Task { await model.save(saved) }
@@ -288,6 +290,7 @@ struct RuleEditor: View {
                 }
             }
             .navigationTitle(rule.condition.summary)
+            .bugButton()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -334,6 +337,7 @@ struct TrackedItemsView: View {
             }
         }
         .navigationTitle("\(kid.displayName)'s apps")
+        .bugButton()
     }
 }
 

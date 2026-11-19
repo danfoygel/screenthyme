@@ -144,8 +144,9 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - The nearby link (PLAN.md §17) runs only while the app is open, over Wi-Fi (Bonjour) and Bluetooth (L2CAP) at once:
   kid phones listen, parent phones dial. It needs the family's `LinkKey` record, fetched once with the internet.
   Records sent nearby keep their CloudKit ids. Its events go to Application Support/nearby-diagnostics.txt.
-- **Kids' bug reports go to a private GitHub repo, never this public one** (PLAN.md §18). The kid's phone files them
-  itself with the token in the family zone's `IssueTracker` record (Settings › Bug reports on a parent's phone);
-  screenshots are committed under `reports/` in that repo, since GitHub's API can't attach images to issues.
+- **Bug reports go to a private GitHub repo, never this public one** (PLAN.md §18). Each phone files its own with the
+  token in the family zone's `IssueTracker` record (Settings › Bug reports on a parent's phone); screenshots are
+  committed under `reports/` in that repo, since GitHub's API can't attach images to issues. A new screen gets
+  `.bugButton()` beside its `navigationTitle`.
 - A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change, so phones re-fetch.
 - Record names are `<Type>.<uuid>`, saved with `.allKeys`, so every upload is idempotent.

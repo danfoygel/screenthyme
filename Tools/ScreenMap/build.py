@@ -160,7 +160,7 @@ k.node("scan", 2, 5, "Apple's app picker", "FamilyActivityPicker", "Select All A
 k.node("self", 2, 6, "Apple's app picker", "FamilyActivityPicker", "Select ScreenThyme only", kind="apple")
 k.node("camera", 2, 7, "Match with camera", "CameraPairingView", "a parent's phone reads codes")
 k.node("pairing", 2, 8, "Match by screenshot", "TokenPairingView", "after data access")
-k.node("report", 2, 9.5, "Report a problem", "BugReportView", "words, screenshots; filed on GitHub")
+k.node("report", 2, 9.5, "Report a problem", "BugReportView", "also the bug, top right of\nevery screen (a sheet)", h=72)
 k.node("debug", 2, 11.25, "Debug", "KidDebugView")
 k.node("test", 2, 15, "Test mode", "TestModeView", "only with test mode on")
 
@@ -227,6 +227,7 @@ p.node("sharing", 2, 7, "Share the family", "UICloudSharingController", "family 
 p.node("notif", 2, 8, "Notifications prompt", "Apple's permission alert", kind="apple")
 p.node("test", 2, 9, "Test mode", "TestModeView", "only with test mode on")
 p.node("issues", 2, 10, "Bug reports", "IssueTrackerView", "GitHub repository and token")
+p.node("report", 2, 11, "Report a problem", "BugReportView", "the bug, top right of\nevery screen", kind="sheet", h=72)
 
 p.node("timeline", 3, 0.5, "Timeline", "KidTimelineView", "zoom, Options menu")
 p.node("history", 3, 2, "Change history", "PolicyHistoryView", "every policy save and answer")

@@ -86,6 +86,7 @@ struct PolicyView: View {
             }
         }
         .navigationTitle("Screen Time")
+        .bugButton()
         .toolbar {
             if let draft, draft != stored {
                 ToolbarItem(placement: .confirmationAction) {
@@ -213,6 +214,7 @@ struct DowntimeEditor: View {
                 }
             }
             .navigationTitle("Downtime")
+            .bugButton()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -271,6 +273,7 @@ struct LimitEditor: View {
                 }
             }
             .navigationTitle("App Limit")
+            .bugButton()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -333,6 +336,7 @@ struct GroupEditor: View {
                 }
             }
             .navigationTitle("Group")
+            .bugButton()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -409,6 +413,7 @@ struct ItemSelectionView: View {
         }
         .searchable(text: $search)
         .navigationTitle(title)
+        .bugButton()
     }
 
     private func row(_ item: TrackedItem) -> some View {
@@ -496,6 +501,7 @@ struct RestrictionsView: View {
             }
         }
         .navigationTitle("Content & Privacy")
+        .bugButton()
     }
 
     enum WebMode: CaseIterable {
@@ -558,6 +564,7 @@ struct DomainListView: View {
             }
         }
         .navigationTitle(title)
+        .bugButton()
     }
 }
 

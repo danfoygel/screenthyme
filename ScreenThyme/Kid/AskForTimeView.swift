@@ -91,6 +91,7 @@ struct AskForTimeView: View {
                 }
             }
             .navigationTitle("Ask for more time")
+            .bugButton()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
