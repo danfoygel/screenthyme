@@ -27,7 +27,7 @@ extension AppModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
                 guard let self, nearby.isRunning else { return }
-                // Fresher numbers for a parent watching: the extension samples only every 2 minutes of use.
+                // Fresher numbers for a parent watching: the extension samples only every minute of use.
                 if isKid, !nearby.peers.isEmpty, Date().timeIntervalSince(lastSample) >= 60 {
                     lastSample = Date()
                     await sampleNow()
