@@ -146,6 +146,12 @@ final class ScreenTour: XCTestCase {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
         } else { print("TOUR missing a timeline block") }
         back()
+        // The day's Apps row ("Roblox, 1 h 5 min"), not the timeline's block.
+        if tap("Roblox,") {
+            snap("p-appDetails")
+            back()
+        }
+        scrollTop()
 
         tap("Rules and health")
         snap("p-kidSettings")
@@ -218,6 +224,10 @@ final class ScreenTour: XCTestCase {
         tap("Kid")
         Thread.sleep(forTimeInterval: 2)
         snap("k-home")
+        if tap("Apps") {
+            snap("k-apps")
+            back()
+        }
         tap("Report a problem")
         snap("k-report")
         back()

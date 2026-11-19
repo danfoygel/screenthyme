@@ -19,6 +19,7 @@ struct IngestBatch: Sendable {
     var policyChanges: [PolicyChange] = []
     var requests: [TimeRequest] = []
     var grants: [TimeGrant] = []
+    var extraMinutes: [ExtraMinuteUse] = []
     var linkKeys: [LinkKey] = []
     var deletedRecordNames: [String] = []
 
@@ -38,6 +39,7 @@ struct IngestBatch: Sendable {
         case PolicyChange.recordType: PolicyChange.decode(record).map { policyChanges.append($0) }
         case TimeRequest.recordType: TimeRequest.decode(record).map { requests.append($0) }
         case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
+        case ExtraMinuteUse.recordType: ExtraMinuteUse.decode(record).map { extraMinutes.append($0) }
         case LinkKey.recordType: LinkKey.decode(record).map { linkKeys.append($0) }
         default: break
         }
@@ -47,7 +49,7 @@ struct IngestBatch: Sendable {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
-            && linkKeys.isEmpty && deletedRecordNames.isEmpty
+            && extraMinutes.isEmpty && linkKeys.isEmpty && deletedRecordNames.isEmpty
     }
 }
 
@@ -57,7 +59,7 @@ struct IngestBatch: Sendable {
 final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: an older (or unreadable) snapshot triggers a full re-fetch.
-        static let currentVersion = 4
+        static let currentVersion = 5
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -72,6 +74,7 @@ final class FamilyData {
         var policyChanges: [UUID: PolicyChange] = [:]
         var requests: [UUID: TimeRequest] = [:]
         var grants: [UUID: TimeGrant] = [:]
+        var extraMinutes: [UUID: ExtraMinuteUse] = [:]
         /// Where builds before link-key.json kept the nearby link's secret; read once, to move it.
         var linkKey: LinkKey?
     }
@@ -93,6 +96,8 @@ final class FamilyData {
     var pings: [UUID: Ping] { snapshot.pings }
     var requests: [UUID: TimeRequest] { snapshot.requests }
     var grants: [UUID: TimeGrant] { snapshot.grants }
+    /// "One more minute" taken on kids' block pages.
+    var extraMinutes: [UUID: ExtraMinuteUse] { snapshot.extraMinutes }
     /// The nearby link's secret (PLAN.md §17), in its own file: a build from a branch without the link rewrites the
     /// snapshot without the fields it doesn't know, which dropped it once. Fetched by name when missing
     /// (`LinkKeyService`).
@@ -167,6 +172,7 @@ final class FamilyData {
         for change in batch.policyChanges { snapshot.policyChanges[change.id] = change }
         for request in batch.requests { snapshot.requests[request.id] = request }
         for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
+        for use in batch.extraMinutes { snapshot.extraMinutes[use.id] = use }
         if let key = batch.linkKeys.last, key != linkKey { saveLinkKey(key) }
         for heartbeat in batch.heartbeats where heartbeat.at > (snapshot.heartbeats[heartbeat.kidID]?.at ?? .distantPast) {
             snapshot.heartbeats[heartbeat.kidID] = heartbeat
@@ -229,6 +235,7 @@ final class FamilyData {
         snapshot.policyChanges = snapshot.policyChanges.filter { $0.value.kidID != kid }
         snapshot.requests = snapshot.requests.filter { $0.value.kidID != kid }
         snapshot.grants = snapshot.grants.filter { $0.value.kidID != kid }
+        snapshot.extraMinutes = snapshot.extraMinutes.filter { $0.value.kidID != kid }
         snapshot.lastFireAt[kid] = nil
         fireStore.forget(kid: kid)
         sampleStore.forget(kid: kid)

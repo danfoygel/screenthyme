@@ -78,20 +78,27 @@ enum Enforcer {
             guard !state.grants.contains(where: { $0.grant.requestID == grant.requestID }) else { return }
             let baseline = grant.itemID.flatMap { usage[$0] } ?? 0
             state.grants.append(AppliedGrant(grant: grant, appliedAt: now, baselineSeconds: baseline, windowStart: windowStart))
+            try? AppGroup.grantHistory.append(grant)
             try? AppGroup.journal.append(.note("grant \(grant.approved ? "approved" : "declined"): \(grant.minutes.map { "\($0) min" } ?? "rest of day")"))
         }
     }
 
     /// "One more minute" from a block page: lets `itemID` (or with none, what `reason` blocks) through for the kid
-    /// phone's chosen number of minutes, once a day. False when it was already taken.
+    /// phone's chosen number of minutes, once a day, and queues a note of it for the parents. False when it was
+    /// already taken.
     @discardableResult
     static func takeExtraMinute(itemID: UUID?, reason: BlockReason, now: Date = Date()) -> Bool {
-        let minutes = SharedConfig.load().extraMinuteLength
+        let config = SharedConfig.load()
+        let minutes = config.extraMinuteLength
         var taken = false
         reconcile(now: now) { state in
             guard state.canTakeExtraMinute(itemID: itemID, reason: reason) else { return }
             state.extraMinutes.append(ExtraMinute(itemID: itemID, reason: reason, at: now, minutes: minutes))
             taken = true
+        }
+        if taken, let kid = config.kid {
+            try? AppGroup.extraMinuteUses.append(ExtraMinuteUse(kidID: kid.id, itemID: itemID, reason: reason, at: now,
+                                                                minutes: minutes))
         }
         try? AppGroup.journal.append(.note(taken ? "one more minute (\(minutes) min): \(reason)" : "one more minute already used: \(reason)"))
         return taken

@@ -94,6 +94,11 @@ enum AppGroup {
     static var requests: JSONLinesFile<TimeRequest> { JSONLinesFile(url: container.appending(path: "Outbox/requests.jsonl")) }
     static var requestsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/requests-uploaded.jsonl")) }
     static var newItemsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/items-uploaded.jsonl")) }
+    /// Every "one more minute" taken (`ExtraMinuteUse`), for the parents and the app's details.
+    static var extraMinuteUses: JSONLinesFile<ExtraMinuteUse> { JSONLinesFile(url: container.appending(path: "Outbox/extra-minutes.jsonl")) }
+    static var extraMinuteUsesLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/extra-minutes-uploaded.jsonl")) }
+    /// Every parent's answer this phone applied; the enforcement state keeps only today's.
+    static var grantHistory: JSONLinesFile<TimeGrant> { JSONLinesFile(url: container.appending(path: "grants.jsonl")) }
 
     static func loadRules() -> LocalRules? {
         guard let data = try? Data(contentsOf: rulesURL) else { return nil }
