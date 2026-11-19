@@ -29,6 +29,16 @@ struct AppDetailsView: View {
                 }
             }
             usageSection(usage, details: details, data: data, name: AppCatalog.shared.name(of: shown, in: data.items))
+            if usage.last30Days > 0 {
+                Section {
+                    UsageHeatmapView(heatmap: UsageHeatmap.build(today: today, now: Date(), samples: data.samples,
+                                                                 counts: { details.ids.contains($0.itemID) }))
+                } header: {
+                    Text("When")
+                } footer: {
+                    Text(UsageHeatmapView.footer)
+                }
+            }
             groupsSection(details, data: data)
             downtimeSection(details, data: data)
             limitsSection(details, data: data)
