@@ -239,6 +239,9 @@ final class ScreenTour: XCTestCase {
         tap("Raw usage")
         snap("k-raw")
         back()
+        tap("Places (location test)")
+        snap("k-places")
+        back()
         if tap("Export day as trace"), tap("Share") { Thread.sleep(forTimeInterval: 1.5); snap("k-share") }
     }
 

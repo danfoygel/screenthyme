@@ -60,6 +60,9 @@ struct KidDebugView: View {
                     RawUsageView(items: items, samples: { day in AppGroup.samples.readAll().filter { $0.day == day } }, day: day)
                 }
             }
+            Section("Location") {
+                NavigationLink("Places (location test)") { PlacesTestView() }
+            }
             Section("Upload") {
                 LabeledContent("Waiting", value: "\(Uploader.backlogCount())")
                 Button("Sample and upload now") {

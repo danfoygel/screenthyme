@@ -36,6 +36,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         BackgroundRefresh.register()
         UNUserNotificationCenter.current().delegate = self
         application.registerForRemoteNotifications()
+        if SharedConfig.load().role == .kid {
+            // A relaunch for a geofence crossing or a visit has no scene: pick the event up here.
+            PlaceWatcher.shared.start()
+        }
         return true
     }
 
