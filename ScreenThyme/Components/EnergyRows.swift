@@ -34,6 +34,7 @@ struct EnergyHistoryView: View {
             }
         }
         .navigationTitle("Battery use")
+        .bugButton()
     }
 }
 

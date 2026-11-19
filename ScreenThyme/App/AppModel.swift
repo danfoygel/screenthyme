@@ -14,6 +14,8 @@ final class AppModel {
     let data = FamilyData()
     /// Family phones nearby, for when there's no internet (PLAN.md §17).
     let nearby = NearbyLink()
+    /// This phone's reports of problems, until filed on GitHub (PLAN.md §18).
+    let bugReports = BugReportQueue()
     @ObservationIgnored var nearbyTicker: Task<Void, Never>?
     /// Matching by a parent's camera (PLAN.md §15.6, `AppModel+Nearby`). Kid: what the pairing screen shows, and the
     /// codes parents' phones read. Parent: each kid's pairing screen.
@@ -87,6 +89,7 @@ final class AppModel {
         case .unset:
             break
         }
+        await bugReports.send(store: store)
     }
 
     func handlePush() async {
@@ -101,6 +104,7 @@ final class AppModel {
             await sendHeartbeat(.backgroundRefresh)
         }
         await refresh()
+        await bugReports.send(store: store)
     }
 
     /// Fetches zone changes and reacts: kids pick up rules and answer pings; parents notify and check health.

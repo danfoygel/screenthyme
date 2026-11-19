@@ -150,6 +150,13 @@ extension LinkKey: CloudRecordable {
     var ownerKidID: UUID { id }
 }
 
+/// Where kids' phones file bug reports (PLAN.md §18): one per family, under a fixed name; belongs to no kid.
+extension IssueTracker: CloudRecordable {
+    static let recordType = "IssueTracker"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { id }
+}
+
 /// Saves to the family zone. Used by the app and (for uploads) the monitor extension.
 struct CloudStore: Sendable {
     static let zoneName = "Family"

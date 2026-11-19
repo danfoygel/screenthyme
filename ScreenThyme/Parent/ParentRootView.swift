@@ -38,6 +38,7 @@ struct ParentHomeView: View {
                 }
             }
             .navigationTitle("Kids")
+            .bugButton()
             .refreshable { await model.refresh() }
             .overlay {
                 if model.data.kids.isEmpty && model.config.family != nil {
@@ -183,6 +184,7 @@ struct KidDayView: View {
             }
         }
         .navigationTitle(kid.displayName)
+        .bugButton()
         .refreshable { await model.refresh() }
     }
 }
@@ -217,6 +219,7 @@ struct AlertsView: View {
                 }
             }
             .navigationTitle("Alerts")
+            .bugButton()
             .refreshable { await model.refresh() }
             .overlay {
                 if alerts.isEmpty { ContentUnavailableView("No alerts", systemImage: "bell.slash") }

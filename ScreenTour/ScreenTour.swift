@@ -199,6 +199,14 @@ final class ScreenTour: XCTestCase {
             tap("Cancel")
         }
 
+        tab("Settings")
+        tap("Bug reports")
+        snap("p-issues")
+        back()
+        tap("Report a problem")
+        Thread.sleep(forTimeInterval: 1)
+        snap("p-report")
+        tap("Done")
         tab("Alerts")
         snap("p-alerts")
     }
@@ -210,6 +218,9 @@ final class ScreenTour: XCTestCase {
         tap("Kid")
         Thread.sleep(forTimeInterval: 2)
         snap("k-home")
+        tap("Report a problem")
+        snap("k-report")
+        back()
         tap("Test mode")
         snap("k-test")
         back()

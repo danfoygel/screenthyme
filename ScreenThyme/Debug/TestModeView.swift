@@ -76,5 +76,6 @@ struct TestModeView: View {
             }
         }
         .navigationTitle("Test mode")
+        .bugButton()
     }
 }

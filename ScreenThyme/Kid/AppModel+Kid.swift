@@ -45,6 +45,12 @@ extension AppModel {
         }
     }
 
+    var monitoringLabel: String {
+        guard let epoch = config.epoch else { return "not started" }
+        let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
+        return epoch.activityNames.allSatisfy(active.contains) ? "on" : "stopped (open the app to restart)"
+    }
+
     /// Registers the wake alarm for a (new or current) epoch and publishes it.
     func startMonitoring() {
         guard let kid = config.kid else { return }

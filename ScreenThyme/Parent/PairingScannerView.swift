@@ -40,6 +40,7 @@ struct PairingScannerView: View {
         }
         .padding()
         .navigationTitle("Match \(kid.displayName)'s apps")
+        .bugButton()
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.success, trigger: sent.count)
         .onAppear { model.pairingPeers[kid.id]?.result = nil }
