@@ -2,10 +2,10 @@ import Foundation
 
 /// What the data says about a stretch of the day: how well use in it can be placed in time.
 public enum Coverage: Sendable, Hashable {
-    /// The wake alarm checked in on time: use here is placed to within one check-in (2 minutes of use).
+    /// The wake alarm checked in on time: use here is placed to within one check-in (a minute of use).
     case placed
-    /// Under 2 minutes of use since the previous check-in, or the wake alarm would have fired; that little use
-    /// isn't drawn.
+    /// Under 2 minutes of use since the previous check-in, or the wake alarm would have fired (it wakes every
+    /// minute of use, every 2 before Nov 2026); that little use isn't drawn.
     case quiet
     /// Apple counted 2 or more minutes of use here, but no wake came: the alarm wasn't running.
     case blind
@@ -35,12 +35,13 @@ enum CheckIns {
 
     /// Wake events closer together than this are one delivery.
     static let deliveryGap: TimeInterval = 30
-    /// A delivery adding at most this many minutes is an on-time wake (one step of the alarm, or two).
+    /// A delivery adding at most this many minutes is an on-time wake (a few steps of the alarm).
     static let onTimeMinutes = 4
     /// A wake and the fetch it ran, this close together, are one check-in.
     static let checkInGap: TimeInterval = 10
-    /// One step of the wake alarm (`RollingLadder.step`): less use than this between check-ins is quiet.
-    static let step: TimeInterval = 120
+    /// Less use than this between check-ins is quiet: two steps of the wake alarm, one on days recorded at the
+    /// old 2-minute steps.
+    static let quietLimit: TimeInterval = 120
 
     static func stretches(_ input: DayInput) -> [Stretch] {
         // Deliveries and the minutes each adds (replays of minutes already seen add none).
@@ -87,7 +88,7 @@ enum CheckIns {
             let onTime = added > 0 && added <= onTimeMinutes
             let placed = onTime ? min(Double(added) * 60, end.timeIntervalSince(start)) : 0
             let counted = samples.filter { !input.websites.contains($0.itemID) }.reduce(0) { $0 + $1.seconds }
-            let rest: Coverage = added > onTimeMinutes ? .burst : counted - placed >= step ? .blind : .quiet
+            let rest: Coverage = added > onTimeMinutes ? .burst : counted - placed >= quietLimit ? .blind : .quiet
             stretches.append(Stretch(start: start, end: end, placed: placed, rest: rest, samples: samples))
             start = end
         }

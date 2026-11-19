@@ -11,7 +11,7 @@ public struct RollingLadder: Sendable {
     /// Highest minute a day can have.
     public static let maxMinute = 1440
 
-    public init(step: Int = 2, lookahead: Int = 10) {
+    public init(step: Int = 1, lookahead: Int = 20) {
         self.step = step
         self.lookahead = lookahead
     }

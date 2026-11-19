@@ -268,7 +268,7 @@ struct LimitEditor: View {
                     Text("Apps, websites, categories and groups")
                 } footer: {
                     if limit.allApps {
-                        Text("Everything but Always Allowed, ScreenThyme and Phone. Checked every 2 minutes of use.")
+                        Text("Everything but Always Allowed, ScreenThyme and Phone. Checked every minute of use.")
                     }
                 }
             }

@@ -184,7 +184,7 @@ Rules are edited on the parent device and synced to the kid device. They are eva
 | Rule | How it works |
 |---|---|
 | **Quiet hours** (bedtime, school) | A total fire inside the window → "Phone in use during bedtime" within about 1 min. Updated with the app name once it crosses a threshold. Throttled, with a "still using" alert every N min. |
-| **Daily threshold** (whole phone or one app) | Checked at each wake against today's total or Apple's per-app seconds, so it fires within one 2-minute wake of the limit. |
+| **Daily threshold** (whole phone or one app) | Checked at each wake against today's total or Apple's per-app seconds, so it fires within one wake (a minute of use) of the limit. |
 | **Long session** | The extension tracks the current in-use run (from total fires) and Apple's per-app seconds within it. The run passes N min → alert naming the dominant app. |
 | **New app** | An app or website never seen on this phone before (by bundle ID or domain) → alert. |
 | **Staleness / tamper** | Evaluated on the **parent** device. See §4.7. |
@@ -402,6 +402,11 @@ Parents see it under the kid's Health settings, as mWh and, for known batteries,
 Not counted: work iOS does for us in its own processes (Screen Time's usage tracking, CloudKit's network transfers
 through the system's sync daemon), and anything a process uses after its last sample.
 
+Measured Nov 15–19, 2026 at 2-minute wakes: the monitor extension used 2–6 J a day on each kid phone (6–37 mJ per
+callback), about 0.02% of an iPhone SE's charge; the app used 10–190 J. Wakes come only while the phone is in use,
+when the screen draws far more. So the wake alarm moved to **one wake per minute of use, 20 thresholds registered**
+(the same 20-minute window, so re-registrations stay as rare). Check the next days' reports against these.
+
 ## 11. Findings from the first device run (Nov 14, 2026, iOS 26.6, adult phone, `.individual`)
 
 **S1(b), scale: passed.**
@@ -537,12 +542,12 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   limits' apps, websites and categories, minus always allowed). iOS shows the union of the stores.
 - DeviceActivity activities (≤ 20 in total): the wake alarm `st.<epoch8>.tot`; one per Downtime window `dt.<id8>`
   (split `.a`/`.b` when it wraps midnight); one per limit `lim.<id8>` with one event at its budget (limit plus grants)
-  over the limit's tokens. Interval starts and ends and limit fires call the Enforcer. **Every 2-minute wake also
+  over the limit's tokens. Interval starts and ends and limit fires call the Enforcer. **Every wake (each minute of use) also
   reconciles**, so a missed callback corrects itself within one wake of use.
 - **All-apps limits** count Apple's per-app use, less Always Allowed, ScreenThyme and Phone (websites only to subtract
   allowed ones: they also count toward Safari), and shield `.all(except: allowed)` in the `limits` store, like
-  Downtime. They get no `lim.` activity: an event over all activity can't leave out Always Allowed, so the 2-minute
-  wakes reconcile them. Their shield names only a category, so one more minute or a request is for the whole phone.
+  Downtime. They get no `lim.` activity: an event over all activity can't leave out Always Allowed, so the wakes
+  reconcile them. Their shield names only a category, so one more minute or a request is for the whole phone.
 - `Roller.registerAll` no longer stops every activity, only the wake alarm's.
 - Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
   "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" opens ScreenThyme (§15.4), or
@@ -605,7 +610,7 @@ past 1 the menu item reads "N more minutes". "Ask for more time" then opens a su
   The extension compiles the Enforcer and `UsageSnapshot` (today's use, without Apple's data or SwiftUI).
 - Shielded again by the activity `om.end`: schedules count whole minutes and last at least 15, so it is a ~16-minute
   interval whose end warning falls at the first whole minute after the extra time ends. The
-  monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
+  monitor's `intervalWillEndWarning` ends what is due and reconciles. Any wake after the minute also
   reshields it.
 - No alert to parents; the journal notes each one. Each is also kept as an `ExtraMinuteUse` (App Group
   `Outbox/extra-minutes.jsonl`), uploaded like requests and sent nearby, so an app's details show it on parents'

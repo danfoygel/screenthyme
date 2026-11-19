@@ -19,21 +19,22 @@ struct RollingLadderTests {
     let ladder = RollingLadder()
 
     @Test func wakesEveryStep() {
-        #expect(ladder.thresholds(after: 0) == [2, 4, 6, 8, 10, 12, 14, 16, 18, 20])
-        #expect(ladder.thresholds(after: 77) == Array(stride(from: 78, through: 96, by: 2)))
-        #expect(ladder.thresholds(after: 1437) == [1438, 1440])
-        #expect(RollingLadder(step: 1, lookahead: 3).thresholds(after: 5) == [6, 7, 8])
+        #expect(ladder.thresholds(after: 0) == Array(1...20))
+        #expect(ladder.thresholds(after: 77) == Array(78...97))
+        #expect(ladder.thresholds(after: 1437) == [1438, 1439, 1440])
+        #expect(RollingLadder(step: 2, lookahead: 3).thresholds(after: 5) == [6, 8, 10])
     }
 
     @Test func probesHalveTowardZero() {
-        #expect(ladder.probes(below: 200) == [2, 72, 136, 168, 184, 192, 196, 198])
-        #expect(ladder.probes(below: 5) == [1, 2, 3])
-        #expect(ladder.probes(below: 2).isEmpty)
+        #expect(ladder.probes(below: 200) == [1, 72, 136, 168, 184, 192, 196, 198, 199])
+        #expect(ladder.probes(below: 5) == [1, 3, 4])
+        #expect(ladder.probes(below: 1).isEmpty)
         #expect(ladder.probes(below: 0).isEmpty)
+        #expect(RollingLadder(step: 2, lookahead: 10).probes(below: 200) == [2, 72, 136, 168, 184, 192, 196, 198])
     }
 
     @Test func refillsAtHalfWindow() {
-        #expect(!ladder.needsRefill(crossed: 4, registeredUpTo: 20))
+        #expect(!ladder.needsRefill(crossed: 9, registeredUpTo: 20))
         #expect(ladder.needsRefill(crossed: 10, registeredUpTo: 20))
     }
 

@@ -303,7 +303,7 @@ enum Enforcer {
             }
             let tokens = Tokens(items: items)
             // An all-apps limit has no event: one over all activity would count Always Allowed and exempt apps too.
-            // The wake alarm's 2-minute wakes reconcile it instead.
+            // The wake alarm's wakes (every minute of use) reconcile it instead.
             for limit in policy.limits where limit.enabled && !limit.allApps {
                 guard let budget = plan.budgets[limit.id] else { continue }
                 let name = limitPrefix + short(limit.id)

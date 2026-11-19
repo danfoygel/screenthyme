@@ -4,10 +4,10 @@ import ThymeCore
 
 /// Keeps a kid phone's rules, policy and answers to its requests current without relying on silent pushes, which
 /// iOS rations (PLAN.md §14, §15). The monitor extension fetches `RuleSet.<kid>` and `Policy.<kid>` by name at every
-/// wake (every 2 minutes of use; `interval` only skips back-to-back wakes), and `TimeGrant.<request>` for open requests.
-/// A parent's change reaches a phone in use within about 2 minutes.
+/// wake (every minute of use; `interval` only skips back-to-back wakes), and `TimeGrant.<request>` for open requests.
+/// A parent's change reaches a phone in use within about a minute.
 enum KidSync {
-    static let interval: TimeInterval = 90
+    static let interval: TimeInterval = 45
 
     static func refreshIfDue(config: SharedConfig, now: Date = Date(), force: Bool = false) async {
         guard let family = config.family, let kid = config.kid else { return }

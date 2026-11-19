@@ -164,7 +164,7 @@ struct KidDayView: View {
             Section {
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start(), tint: kid.color)
             } footer: {
-                Text("Apple counts each app's use between two of the phone's check-ins (every 2 minutes of use); each block puts that count on the minutes just before an on-time check-in. Fainter means the app was in use for only part of that time. Tap a block for times.")
+                Text("Apple counts each app's use between two of the phone's check-ins (every minute of use); each block puts that count on the minutes just before an on-time check-in. Fainter means the app was in use for only part of that time. Tap a block for times.")
             }
             Section {
                 UsageHeatmapView(heatmap: UsageHeatmap.build(today: DayKey(Date()), now: Date(),
