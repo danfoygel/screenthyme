@@ -848,3 +848,29 @@ phone later uploads the alert.
   nearby link too, after a push (`refresh()` → `KidSync.savePolicy`). The app now enforces off the main thread
   (`Enforcer.offMain`). Monitoring checks (`DeviceActivityCenter().activities`) still run on it.
 - Still to check: peer-to-peer Wi-Fi with no network joined, and an offline request → approval → the app unblocking.
+
+## 18. Bug reports from a kid's phone (Nov 18, 2026)
+
+A kid opens **Report a problem** on the home screen, writes what happened and adds up to five pictures from Photos
+(`PhotosPicker`, no photo-library permission). The kid's own phone files it as a GitHub issue; the kid needs no GitHub
+account. This repository is public, so the issues go to a **private** repository: a kid's words and screenshots
+(names, usage) must not be published.
+
+- **Where:** a parent enters the repository (`owner/name`) and a fine-grained token in Settings › Bug reports. It is
+  saved as `IssueTracker.<fixed id>` in the family zone and fetched by name each time a kid's phone files
+  (`IssueTrackerService`). Every phone in the family can read the token, as it can read the zone; scope it to that
+  one repository, with Issues and Contents read and write, so a leak can only file issues and add files there.
+- **Screenshots:** GitHub's API can't attach images to an issue. Each picture is shrunk to at most 2000 px as JPEG
+  (which also drops its location metadata), committed under `reports/<day>-<id8>/` with the Contents API, and shown
+  in the issue from its page (`…/blob/<branch>/<path>?raw=true`), which renders only for people with access.
+- **The issue:** title `<kid>: <first line>`; body: the kid's words, the screenshots, a table (kid, time sent, app
+  version, when the build was made, iOS, phone model, Screen Time access, monitoring, last wake, upload backlog, nearby
+  parent phone) and yesterday's and today's journal notes, collapsed. Logic and formatting are in
+  `ThymeCore/BugReport` (`GitHubIssues`, unit-tested with a fake transport).
+- **Queue:** reports wait in the app's Application Support (`BugReportQueue`, `BugReports/`), sent at once, then at
+  every launch, background refresh and visit to the screen, until filed. Each upload is saved as it succeeds, so a retry
+  skips screenshots already committed (a 422 on one already there is answered by fetching it). Filing stops at the
+  first failure; the kid sees why ("Waiting for the internet", "Waiting for a parent to set up bug reports", GitHub's
+  message). Screenshots are deleted once filed; the last 20 filed reports stay listed as "Sent".
+- **Not covered:** parents' phones can't file reports; a report whose issue was opened but whose answer was lost is
+  filed again on retry (a duplicate issue).

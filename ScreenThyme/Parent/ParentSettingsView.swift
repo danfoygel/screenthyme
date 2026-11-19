@@ -58,6 +58,11 @@ struct ParentSettingsView: View {
                     Text("With ScreenThyme open on both phones and Wi-Fi on, a kid's phone nearby sends its usage and requests for more time straight to this one, and gets your answers back, with no internet needed.")
                 }
                 Section {
+                    NavigationLink("Bug reports") { IssueTrackerView() }
+                } footer: {
+                    Text("Kids can report a problem from their phone, with screenshots. It becomes an issue on GitHub.")
+                }
+                Section {
                     Button("Allow notifications") { Task { await Notifier.requestPermission() } }
                     Button("Re-install push subscriptions") { Task { await model.reinstallSubscriptions() } }
                 }

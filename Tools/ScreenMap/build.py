@@ -160,11 +160,12 @@ k.node("scan", 2, 5, "Apple's app picker", "FamilyActivityPicker", "Select All A
 k.node("self", 2, 6, "Apple's app picker", "FamilyActivityPicker", "Select ScreenThyme only", kind="apple")
 k.node("camera", 2, 7, "Match with camera", "CameraPairingView", "a parent's phone reads codes")
 k.node("pairing", 2, 8, "Match by screenshot", "TokenPairingView", "after data access")
+k.node("report", 2, 9.5, "Report a problem", "BugReportView", "words, screenshots; filed on GitHub")
 k.node("debug", 2, 11.25, "Debug", "KidDebugView")
 k.node("test", 2, 15, "Test mode", "TestModeView", "only with test mode on")
 
 k.node("choose", 3, 3, "Apple's app picker", "FamilyActivityPicker", "Choose the app", kind="apple")
-k.node("photos", 3, 8, "Photos picker", "PhotosPicker", "up to 10 screenshots", kind="apple")
+k.node("photos", 3, 8, "Photos picker", "PhotosPicker", "screenshots", kind="apple")
 k.node("day", 3, 9.25, "‹date›", "UsageCalendar", "the day as a calendar")
 k.node("s4", 3, 10.25, "Data access (S4)", "DataAccessView")
 k.node("apple", 3, 11.25, "Apple's numbers", "AppleReportView", "ThymeReport extension")
@@ -188,10 +189,12 @@ k.edge("home", "scan", "Scan apps", kind="apple")
 k.edge("home", "self", "Choose ScreenThyme", kind="apple")
 k.edge("home", "camera", "Match with a\nparent's camera")
 k.edge("home", "pairing", "Match apps by\nscreenshot")
+k.edge("home", "report", "Report a problem")
 k.edge("home", "debug", "Debug")
 k.edge("home", "test", "Test mode")
 k.edge("ask", "choose", "Choose the app", kind="apple")
 k.edge("pairing", "photos", "Import screenshots", kind="apple")
+k.edge("report", "photos", "Add screenshots", kind="apple")
 k.edge("debug", "day", "Day timeline")
 k.edge("debug", "s4", "Data access test")
 k.edge("debug", "apple", "Apple's report")
@@ -223,6 +226,7 @@ p.node("kidDay", 2, 2, "‹kid›", "KidDayView", "one day: totals, apps, sites"
 p.node("sharing", 2, 7, "Share the family", "UICloudSharingController", "family owner only", kind="apple")
 p.node("notif", 2, 8, "Notifications prompt", "Apple's permission alert", kind="apple")
 p.node("test", 2, 9, "Test mode", "TestModeView", "only with test mode on")
+p.node("issues", 2, 10, "Bug reports", "IssueTrackerView", "GitHub repository and token")
 
 p.node("timeline", 3, 0.5, "Timeline", "KidTimelineView", "zoom, Options menu")
 p.node("history", 3, 2, "Change history", "PolicyHistoryView", "every policy save and answer")
@@ -257,6 +261,7 @@ p.edge("kids", "kidDay", "tap a kid's card")
 p.edge("settings", "sharing", "Invite parent or kid", kind="apple")
 p.edge("settings", "notif", "Allow notifications", kind="apple")
 p.edge("settings", "test", "Test mode")
+p.edge("settings", "issues", "Bug reports")
 p.edge("settings", "kidSettings", "Kids › ‹kid›", sp=12, dp=12, lpos=None)
 p.edge("kidDay", "timeline", "Day timeline")
 p.edge("kidDay", "history", "Change history")
@@ -303,7 +308,7 @@ WHY.update({
     ("k", "auth2"): "Apple's Screen Time approval prompt. It needs a real phone and a parent's approval.",
     ("k", "scan"): "The same Apple picker as Choose the app, headed Select All Apps & Categories. Its button appears only after data access, which the Simulator can't grant.",
     ("k", "self"): "The same Apple picker as Choose the app, headed Select ScreenThyme only. Its button appears only after data access, which the Simulator can't grant.",
-    ("k", "photos"): "Apple's photo picker, for the screenshots. Its button stays off until apps have been scanned.",
+    ("k", "photos"): "Apple's photo picker, for screenshots to match apps by or to add to a bug report.",
     ("k", "popover"): "The kid's Debug timeline is empty in the Simulator (no Screen Time data), so there's no block to tap.",
     ("k", "apple"): "Apple's report extension draws nothing in the Simulator.",
     ("k", "camera"): "Its link appears only after data access, which the Simulator can't grant.",
@@ -314,7 +319,7 @@ WHY.update({
 })
 
 kid_svg = k.render("Kid mode screen flow: Welcome leads to the ScreenThyme home screen, which links to the kid's Screen Time lists, "
-                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Debug and Test mode; the block page outside the app also opens Ask for more time.")
+                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug and Test mode; the block page outside the app also opens Ask for more time.")
 parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts and Settings; a kid's day leads to the timeline, "
                       "change history, camera matching and rules and health, which leads to the Screen Time editor and its sheets and item picker.")
 

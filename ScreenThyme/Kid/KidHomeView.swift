@@ -1,4 +1,3 @@
-import DeviceActivity
 import FamilyControls
 import SwiftUI
 import ThymeCore
@@ -20,11 +19,16 @@ struct KidHomeView: View {
                     Text("This phone shares app usage with your parents.")
                 }
                 KidScreenTimeSection()
+                Section {
+                    NavigationLink("Report a problem") { BugReportView() }
+                } footer: {
+                    Text("Something not working right? Tell us, and add screenshots if they help.")
+                }
                 Section("Status") {
                     LabeledContent("Kid", value: model.config.kid?.displayName ?? "—")
                     LabeledContent("Screen Time access", value: model.authorizationLabel)
                     LabeledContent("Family", value: familyStatus)
-                    LabeledContent("Monitoring", value: monitoringStatus)
+                    LabeledContent("Monitoring", value: model.monitoringLabel)
                     LabeledContent("Apps seen", value: "\(AppGroup.loadItems().count)")
                     LabeledContent("Last wake", value: AppGroup.journal.lastThresholdAt().map(Format.relative) ?? "none yet")
                     LabeledContent("Waiting to upload", value: "\(Uploader.backlogCount())")
@@ -133,12 +137,6 @@ struct KidHomeView: View {
     private var familyStatus: String {
         guard let family = model.config.family else { return "not joined" }
         return family.isOwner ? "owner (this account)" : "joined"
-    }
-
-    private var monitoringStatus: String {
-        guard let epoch = model.config.epoch else { return "not started" }
-        let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
-        return epoch.activityNames.allSatisfy(active.contains) ? "on" : "stopped (open the app to restart)"
     }
 }
 
