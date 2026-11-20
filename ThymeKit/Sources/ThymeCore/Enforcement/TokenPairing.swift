@@ -451,8 +451,8 @@ public enum TokenPairing {
         /// matched to them).
         public var toMatch: [TrackedItem] = []
         /// An import since they turned up didn't match them, and the scan has added nothing since: the scan doesn't
-        /// list them. Apple's picker on a kid's phone left out some apps, even searched for by name and after a
-        /// restart, so a new scan may not help; limits count them only through their category or all apps.
+        /// list them. "All Apps & Categories" leaves some of Apple's apps out (Safari), which a search in the picker
+        /// finds; limits count them only through their category or all apps.
         public var toScan: [TrackedItem] = []
 
         public init() {}

@@ -477,8 +477,9 @@ struct AppDetailsData {
         state.extraMinutes = family.extraMinutes.values.filter { $0.kidID == kid && DayKey($0.at) == today }
             .map { ExtraMinute(itemID: $0.itemID, reason: $0.reason, at: $0.at, minutes: $0.minutes) }
         let usage = AppDetails.usage(samples, items: items)
+        let mirrored = family.webMirrored(kid: kid, items: items, today: today)
         return EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                       exempt: Enforcer.exemptItems(items))
+                                       exempt: Enforcer.exemptItems(items).union(mirrored))
     }
 
     static func kid() -> AppDetailsData {

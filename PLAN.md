@@ -714,13 +714,20 @@ like this:
   Those matches counted, so `unmatched` rounds skipped those apps and nothing could be blocked by name. Now only
   scanned items with a token count as matches (`TokenPairing.matchedIDs`); a tokenless item's match says its app needs
   a match round, not a scan (`TokenPairing.unmatched`).
-- **Apple's picker leaves some apps out** (Nov 19, kid's phone): the scan stayed at 81 apps. Apps installed after the
-  first scan (Depop, Urban Outfitters, Amazon) and some older ones (NYTimes, NYT Cooking, Fitness) were used, but the
-  picker listed only their websites, even when searched for by name and after a restart. Not known why (perhaps its
-  list comes from App & Website Activity, which data access turns off). They get no token: Downtime and category or
-  all-apps limits cover them, nothing by name. Parents see them as "Not in the app scan". Ask for more time's picker
-  gave Safari's token, which the scan never had, and the next scan dropped it: a scan now drops only tokens the last
-  scan picked, and a token picked again goes back to its item, match and all.
+- **"Apps" that are websites** (Nov 19, kid's phone): Depop, Urban Outfitters, Amazon, NYTimes and NYT Cooking had
+  use, but no scan or match found them, and the picker listed only their websites, even searched for by name. None was
+  installed (`devicectl device info apps --include-all-apps`): every minute of theirs fell inside Safari's in the same
+  interval (`2.0` beside Safari's `2.0`), and Apple listed no website for those shops. Apple's data reports a website's
+  time under its App Store app's bundle ID too, so it counted twice in all-apps totals. `WebMirror` finds them: no live
+  match and 95% of the last 7 days inside Safari's. The Sampler keeps a tally (`web-mirror.json`); all-apps limits and
+  parents' "Apps (Apple's count)" leave them out (through `exempt`), and so does the unmatched list. Category limits
+  still count them: Safari isn't in the shop's category, and it's the only record of the shop.
+- **Apple's apps need a search:** "All Apps & Categories" leaves out Safari (and maybe Find My, Clock, Fitness), but the
+  picker lists it when searched for by name; ticking it adds it to the scan. Ask for more time's picker gave Safari's
+  token too, and the next scan dropped it: a scan now drops only tokens the last scan picked, and a token picked again
+  goes back to its item, match and all.
+- **Apps nothing blocks** (Phone, Settings, Compass, the Screen Time unlock screen; `BuiltInApps.unblockable`) are left
+  out of the unmatched list: a token wouldn't block them.
 - **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
   debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
   was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment

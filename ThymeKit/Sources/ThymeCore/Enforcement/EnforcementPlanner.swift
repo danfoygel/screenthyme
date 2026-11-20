@@ -158,7 +158,8 @@ public enum EnforcementPlanner {
     /// - Parameters:
     ///   - usage: seconds used today per app or website item (Apple's data).
     ///   - endingWindows: Downtime windows whose final interval just ended (DeviceActivity can call a moment early).
-    ///   - exempt: apps never blocked (ScreenThyme itself, Phone), whose use all-apps limits don't count.
+    ///   - exempt: apps whose use all-apps limits don't count: those never blocked (ScreenThyme itself, Phone), and
+    ///     those whose use is Safari's on their website (`WebMirror`).
     public static func plan(policy: Policy, items: [UUID: TrackedItem], usage: [UUID: Double], state: EnforcementDayState,
                             now: Date, endingWindows: Set<UUID> = [], exempt: Set<UUID> = [],
                             calendar: Calendar = .current) -> EnforcementPlan {

@@ -135,8 +135,11 @@ extension AppModel {
     func unmatchedApps(for kid: Kid) -> TokenPairing.Unmatched {
         guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return TokenPairing.Unmatched() }
         let today = DayKey(Date())
+        let items = data.items(for: kid.id)
+        // Not those whose use is Safari's on their website: they aren't installed, so no scan lists them.
         let used = Set((0..<TokenPairing.days).flatMap { data.samples(kid: kid.id, day: today.adding(days: -$0)) }.map(\.itemID))
-        var unmatched = TokenPairing.unmatched(Array(data.items(for: kid.id).values), lastImport: last, used: used)
+            .subtracting(data.webMirrored(kid: kid.id, items: items, today: today))
+        var unmatched = TokenPairing.unmatched(Array(items.values), lastImport: last, used: used)
         unmatched.toMatch.sort { $0.firstSeen > $1.firstSeen }
         unmatched.toScan.sort { $0.firstSeen > $1.firstSeen }
         return unmatched
@@ -197,3 +200,12 @@ extension HealthIssue {
 }
 
 @MainActor private var testRulesHandled = false
+
+extension FamilyData {
+    /// A kid's apps whose use in the week to `today` was Safari's on their website (`WebMirror`), from the kid's samples.
+    func webMirrored(kid: UUID, items: [UUID: TrackedItem], today: DayKey) -> Set<UUID> {
+        var mirror = WebMirror()
+        for days in 0..<WebMirror.days { mirror.add(samples(kid: kid, day: today.adding(days: -days)), items: items) }
+        return mirror.mirrored(items: items, today: today)
+    }
+}
