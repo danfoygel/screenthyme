@@ -161,23 +161,24 @@ k.node("self", 2, 6, "Apple's app picker", "FamilyActivityPicker", "Select Scree
 k.node("camera", 2, 7, "Match with camera", "CameraPairingView", "a parent's phone reads codes")
 k.node("pairing", 2, 8, "Match by screenshot", "TokenPairingView", "after data access")
 k.node("report", 2, 9.5, "Report a problem", "BugReportView", "also the bug, top right of\nevery screen (a sheet)", h=72)
-k.node("debug", 2, 11.25, "Debug", "KidDebugView")
+k.node("debug", 2, 11.75, "Debug", "KidDebugView")
 k.node("apps", 2, 13, "Apps", "KidAppsView", "used in the last 30 days")
-k.node("test", 2, 15, "Test mode", "TestModeView", "only with test mode on")
+k.node("test", 2, 16, "Test mode", "TestModeView", "only with test mode on")
 
 k.node("appDetails", 3, 1, "‹app›", "AppDetailsView", "groups, limits, use, requests")
 k.node("choose", 3, 3, "Apple's app picker", "FamilyActivityPicker", "Choose the app", kind="apple")
 k.node("photos", 3, 8, "Photos picker", "PhotosPicker", "screenshots", kind="apple")
-k.node("day", 3, 9.25, "‹date›", "UsageCalendar", "the day as a calendar")
-k.node("s4", 3, 10.25, "Data access (S4)", "DataAccessView")
-k.node("apple", 3, 11.25, "Apple's numbers", "AppleReportView", "ThymeReport extension")
-k.node("raw", 3, 12.25, "Raw usage", "RawUsageView")
-k.node("share", 3, 13.25, "Share sheet", "ShareLink", "after Export day as trace", kind="apple")
-k.node("replay", 3, 14.5, "Replay", "ReplayView")
-k.node("toParent", 3, 15.5, "Parent mode  ›", kind="mode")
+k.node("perms", 3, 9.25, "Permissions", "PermissionsView", "this phone's answers")
+k.node("day", 3, 10.25, "‹date›", "UsageCalendar", "the day as a calendar")
+k.node("s4", 3, 11.25, "Data access (S4)", "DataAccessView")
+k.node("apple", 3, 12.25, "Apple's numbers", "AppleReportView", "ThymeReport extension")
+k.node("raw", 3, 13.25, "Raw usage", "RawUsageView")
+k.node("share", 3, 14.25, "Share sheet", "ShareLink", "after Export day as trace", kind="apple")
+k.node("replay", 3, 15.5, "Replay", "ReplayView")
+k.node("toParent", 3, 16.5, "Parent mode  ›", kind="mode")
 
-k.node("popover", 4, 9.25, "Block details", "UsageCalendar popover", kind="popover")
-k.node("auth2", 4, 10.25, "Screen Time access", "Apple's approval prompt", kind="apple")
+k.node("popover", 4, 10.25, "Block details", "UsageCalendar popover", kind="popover")
+k.node("auth2", 4, 11.25, "Screen Time access", "Apple's approval prompt", kind="apple")
 
 k.edge("welcome", "home", "Set up as kid's phone", kind="mode")
 k.edge("shield", "ask", "Ask for more time\n(iOS 26.5+ opens the app)", kind="outside", sp=-30 + 0, dp=-11, at="src",
@@ -201,6 +202,7 @@ k.edge("home", "test", "Test mode")
 k.edge("ask", "choose", "Choose the app", kind="apple")
 k.edge("pairing", "photos", "Import screenshots", kind="apple")
 k.edge("report", "photos", "Add screenshots", kind="apple")
+k.edge("debug", "perms", "Permissions")
 k.edge("debug", "day", "Day timeline")
 k.edge("debug", "s4", "Data access test")
 k.edge("debug", "apple", "Apple's report")
@@ -210,10 +212,11 @@ k.edge("test", "replay", "Replay tool")
 k.edge("test", "toParent", "Role: Parent", kind="mode")
 k.edge("day", "popover", "tap a block", kind="sheet")
 k.edge("s4", "auth2", "Request\nauthorization again", kind="apple")
-# Debug's own link to Match by screenshot: straight up the column
+# Debug's own link to Match by screenshot: straight up the column, labelled in the gap under Report a problem
 dx = k.nodes["debug"]["x"] + 30
+rp = k.nodes["report"]
 k.edge("debug", "pairing", "Match scanned apps\nby screenshot", pts=[(dx, k.nodes["debug"]["y"]), (dx, k.nodes["pairing"]["y"] + H)],
-       lpos=(dx + 10, (k.nodes["debug"]["y"] + k.nodes["pairing"]["y"] + H) / 2 + 10, "start"))
+       lpos=(dx + 10, (rp["y"] + rp["h"] + k.nodes["debug"]["y"]) / 2 + 10, "start"))
 
 # the block page's edge: a straight line at the ask sheet's upper port
 sh, ask = k.nodes["shield"], k.nodes["ask"]
@@ -234,6 +237,7 @@ p.node("notif", 2, 8, "Notifications prompt", "Apple's permission alert", kind="
 p.node("test", 2, 9, "Test mode", "TestModeView", "only with test mode on")
 p.node("issues", 2, 10, "Bug reports", "IssueTrackerView", "GitHub repository and token")
 p.node("report", 2, 11, "Report a problem", "BugReportView", "the bug, top right of\nevery screen", kind="sheet", h=72)
+p.node("perms", 2, 12.25, "Permissions", "PermissionsView", "this phone's, each kid's")
 
 p.node("timeline", 3, 0.5, "Timeline", "KidTimelineView", "zoom, Options menu")
 p.node("history", 3, 2, "Change history", "PolicyHistoryView", "every policy save and answer")
@@ -270,6 +274,7 @@ p.edge("settings", "sharing", "Invite parent or kid", kind="apple")
 p.edge("settings", "notif", "Allow notifications", kind="apple")
 p.edge("settings", "test", "Test mode")
 p.edge("settings", "issues", "Bug reports")
+p.edge("settings", "perms", "Permissions")
 p.edge("settings", "kidSettings", "Kids › ‹kid›", sp=12, dp=12, lpos=None)
 p.edge("kidDay", "timeline", "Day timeline")
 p.edge("kidDay", "history", "Change history")

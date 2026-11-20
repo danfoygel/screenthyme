@@ -183,11 +183,15 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var lastFireAt: Date?
     /// The phone's charge, 0–1, when the heartbeat was sent; nil if iOS didn't say.
     public var batteryLevel: Double?
-    /// Switches in Settings the kid can turn off for ScreenThyme and the app can't lock; nil from older builds
-    /// (and cellular data when CoreTelephony didn't say).
+    /// Switches in Settings the kid can turn off for ScreenThyme and the app can't lock (`DevicePermission`); nil from
+    /// older builds, and when the phone couldn't tell (CoreTelephony hadn't said, iCloud was busy, the nearby link
+    /// hadn't run yet).
     public var backgroundRefresh: PermissionState?
     public var cellularData: PermissionState?
     public var bluetooth: PermissionState?
+    /// As the nearby link last found it: iOS says only when the link tries, while the app is open.
+    public var localNetwork: PermissionState?
+    public var iCloud: PermissionState?
     public var lowPowerMode: Bool?
     /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
     /// since (`TokenPairing.unmatched`). Nil before the first match, and from older builds.
@@ -197,7 +201,8 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
                 activeActivities: [String], expectedActivities: [String], appVersion: String,
                 backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
                 backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
-                bluetooth: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
+                bluetooth: PermissionState? = nil, localNetwork: PermissionState? = nil, iCloud: PermissionState? = nil,
+                lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -212,6 +217,8 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.backgroundRefresh = backgroundRefresh
         self.cellularData = cellularData
         self.bluetooth = bluetooth
+        self.localNetwork = localNetwork
+        self.iCloud = iCloud
         self.lowPowerMode = lowPowerMode
         self.lastTokenPairing = lastTokenPairing
     }

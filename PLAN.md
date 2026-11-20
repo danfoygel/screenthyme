@@ -204,7 +204,10 @@ All alerts are recorded in the timeline, so the alert feed and the timeline matc
   - backlog size
   - app version
   - the Settings switches the kid can turn off for ScreenThyme and no app can lock: Background App Refresh, cellular
-    data, Bluetooth, and Low Power Mode (`DevicePermissions`). The kid app uses no notifications, so they aren't one
+    data, Local Network (as the nearby link last found it: no API says), Bluetooth, iCloud (signed in, on for
+    ScreenThyme), and Low Power Mode (`DevicePermission`, read by `DevicePermissions`). The kid app uses no
+    notifications or camera, so they aren't among them. Debug → Permissions lists every permission with this phone's
+    answers, and on a parent's phone what each kid's phone last reported
 - **Parent-side checks:**
   - authorization not approved → **immediate alert**
   - missing activities → **immediate alert**, and the kid app re-registers on its next launch

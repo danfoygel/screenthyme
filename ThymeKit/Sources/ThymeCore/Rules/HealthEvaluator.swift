@@ -29,34 +29,8 @@ public enum HealthIssue: Sendable, Hashable {
         case let .activitiesMissing(names): "\(names.count) monitoring schedule(s) missing"
         case let .stale(since): "Offline since \(since.formatted(date: .omitted, time: .shortened))"
         case let .backlog(count): "\(count) events waiting to upload"
-        case let .permissionDenied(permission): "\(permission.title) is off for ScreenThyme"
+        case let .permissionDenied(permission): permission.offSummary
         case .lowPowerMode: "Low Power Mode is on: updates may be late"
-        }
-    }
-}
-
-/// The Settings switches a heartbeat reports.
-public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
-    /// Pings and background heartbeats. Capture and shields run in the extensions and don't need it.
-    case backgroundRefresh
-    /// Uploads away from Wi-Fi.
-    case cellularData
-    /// The nearby link when Wi-Fi is off (PLAN.md §17).
-    case bluetooth
-
-    public var title: String {
-        switch self {
-        case .backgroundRefresh: "Background App Refresh"
-        case .cellularData: "Cellular data"
-        case .bluetooth: "Bluetooth"
-        }
-    }
-
-    public func state(in heartbeat: Heartbeat) -> PermissionState? {
-        switch self {
-        case .backgroundRefresh: heartbeat.backgroundRefresh
-        case .cellularData: heartbeat.cellularData
-        case .bluetooth: heartbeat.bluetooth
         }
     }
 }
