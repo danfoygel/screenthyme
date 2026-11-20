@@ -718,7 +718,9 @@ like this:
   first scan (Depop, Urban Outfitters, Amazon) and some older ones (NYTimes, NYT Cooking, Fitness) were used, but the
   picker listed only their websites, even when searched for by name and after a restart. Not known why (perhaps its
   list comes from App & Website Activity, which data access turns off). They get no token: Downtime and category or
-  all-apps limits cover them, nothing by name. Parents see them as "Not in the app scan".
+  all-apps limits cover them, nothing by name. Parents see them as "Not in the app scan". Ask for more time's picker
+  gave Safari's token, which the scan never had, and the next scan dropped it: a scan now drops only tokens the last
+  scan picked, and a token picked again goes back to its item, match and all.
 - **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
   debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
   was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment
