@@ -39,9 +39,16 @@ public enum TokenPairing {
             .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
+    /// The items from Apple's data that a scanned item with a token is matched to. A scanned item a later scan dropped
+    /// can't shield its app, so its match doesn't count: a scan can re-issue every token (it did on a kid's phone, all
+    /// at once), and those apps must be matched again, to the new tokens.
+    public static func matchedIDs(_ items: [TrackedItem]) -> Set<UUID> {
+        Set(items.compactMap { $0.isScanned && $0.tokenData != nil ? $0.match : nil })
+    }
+
     /// Apps, websites and categories some scanned item is matched to.
     static func matched(_ items: [TrackedItem]) -> Set<Identifier> {
-        let matches = Set(items.compactMap { $0.isScanned ? $0.match : nil })
+        let matches = matchedIDs(items)
         return Set(items.filter { matches.contains($0.id) }.map { Identifier(kind: $0.kind, identifier: $0.identifier) })
     }
 
@@ -438,13 +445,15 @@ public enum TokenPairing {
     }
 
     /// Apps from Apple's data that no scanned item is matched to and that turned up after the last import (all of them,
-    /// before the first): another import may match them. Websites are left out: browsing turns up new domains all the
-    /// time, mostly embedded ones the scan doesn't list.
+    /// before the first, or when the scan has added tokens since): another import may match them. Websites are left
+    /// out: browsing turns up new domains all the time, mostly embedded ones the scan doesn't list.
     public static func toMatch(_ items: [TrackedItem], lastImport: Date?) -> [TrackedItem] {
-        let matched = Set(items.compactMap(\.match))
+        let matched = matchedIDs(items)
+        // A scanned item keeps the date it was first picked.
+        let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
+        let since = lastImport.flatMap { lastImport in lastScan.map { $0 > lastImport } == true ? nil : lastImport }
         return items.filter { item in
-            item.kind == .app && !item.isScanned && !matched.contains(item.id)
-                && lastImport.map { item.firstSeen > $0 } ?? true
+            item.kind == .app && !item.isScanned && !matched.contains(item.id) && since.map { item.firstSeen > $0 } ?? true
         }
     }
 

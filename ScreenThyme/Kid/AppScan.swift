@@ -21,7 +21,8 @@ enum AppScan {
     }
 
     /// Saves the picks as items (new or changed ones go to the outbox) and enforces with them. Items no longer picked
-    /// lose their token, so shields and parents' pickers drop them.
+    /// lose their token and their match, so shields and parents' pickers drop them. A pick can re-issue every token (one
+    /// did on a kid's phone): those apps then need a new match round, to their new tokens.
     static func save(_ saved: Saved, kid: Kid, now: Date = Date()) {
         AppGroup.save(saved, to: url)
         var picked: [TrackedItem] = []
@@ -48,13 +49,17 @@ enum AppScan {
                 changed.append(item)
             }
             let ids = Set(picked.map(\.id))
+            var unmatched = 0
             for (id, item) in known where item.isScanned && item.tokenData != nil && !ids.contains(id) {
+                if item.match != nil { unmatched += 1 }
                 known[id]?.tokenData = nil
+                known[id]?.match = nil
                 changed.append(known[id]!)
             }
             AppGroup.saveItems(Array(known.values))
             try? AppGroup.newItems.append(contentsOf: changed)
-            try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"))
+            try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"
+                + (unmatched > 0 ? ", \(unmatched) matches dropped" : "")))
         }
         Task {
             await Enforcer.offMain { Enforcer.reconcile(now: now) }

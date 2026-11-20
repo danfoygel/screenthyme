@@ -254,6 +254,36 @@ struct TokenPairingTests {
         #expect(TokenPairing.toMatch(items, lastImport: nil).map(\.identifier) == ["com.old", "com.new"])
     }
 
+    /// A scan re-issued every token: the old scanned items lost theirs but kept their matches. Their apps are matched
+    /// again, to the new tokens: drawn in `unmatched` mode and counted to match, though the phone saw them long ago.
+    @Test func matchesOfDroppedTokensDoNotCount() throws {
+        let lastImport = Date(timeIntervalSince1970: 1_800_000_000)
+        var app = data("com.app")
+        app.firstSeen = lastImport.addingTimeInterval(-86_400)
+        var dropped = scanned("old")
+        dropped.tokenData = nil
+        dropped.match = app.id
+        var rescanned = scanned("new")
+        rescanned.firstSeen = lastImport.addingTimeInterval(60)
+        let items = [app, dropped, rescanned]
+
+        #expect(TokenPairing.matchedIDs(items).isEmpty)
+        #expect(TokenPairing.order(items, mode: .unmatched).map(\.id) == [rescanned.id])
+        let seen: Set = [TokenPairing.Identifier(kind: .app, identifier: "com.app")]
+        #expect(TokenPairing.drawn(seen, items: items, mode: .unmatched) == seen)
+        #expect(TokenPairing.toMatch(items, lastImport: lastImport).map(\.id) == [app.id])
+
+        let order = TokenPairing.order(items, mode: .unmatched)
+        let drawn = codes(order: order, truth: [rescanned.id: app], items: items, mode: .unmatched)
+        let resolution = TokenPairing.resolve(drawn, order: order, known: items)
+        #expect(resolution.pairs == [.init(scanned: rescanned.id, kind: .app, identifier: "com.app")])
+
+        // Matched again: nothing left to match.
+        var after = items
+        _ = TokenPairing.apply(resolution.pairs, to: &after, kid: kid)
+        #expect(TokenPairing.toMatch(after, lastImport: lastImport.addingTimeInterval(120)).isEmpty)
+    }
+
     @Test func anotherItemMatchedToThePairedAppLosesItsMatch() {
         // Watching use matched `guess` to com.game; the reports show com.game is `game`'s token.
         let game = scanned("game")
