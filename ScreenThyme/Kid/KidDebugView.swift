@@ -16,6 +16,9 @@ struct KidDebugView: View {
         let entries = AppGroup.journal.entries(on: day)
         Form {
             Section {
+                NavigationLink("Permissions") { PermissionsView() }
+            }
+            Section {
                 HStack {
                     Button { day = day.adding(days: -1) } label: { Image(systemName: "chevron.left") }
                     Spacer()

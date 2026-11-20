@@ -63,6 +63,7 @@ struct ParentSettingsView: View {
                     Text("The bug at the top right of every screen reports a problem, on kids' phones and here. It becomes an issue on GitHub.")
                 }
                 Section {
+                    NavigationLink("Permissions") { PermissionsView() }
                     Button("Allow notifications") { Task { await Notifier.requestPermission() } }
                     Button("Re-install push subscriptions") { Task { await model.reinstallSubscriptions() } }
                 }

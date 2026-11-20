@@ -122,7 +122,9 @@ extension AppModel {
     }
 
     func sendHeartbeat(_ source: HeartbeatSource) async {
-        guard isKid, let kid = config.kid, let store, let heartbeat = makeHeartbeat(source) else { return }
+        guard isKid, let kid = config.kid, let store else { return }
+        await DevicePermissions.refresh()
+        guard let heartbeat = makeHeartbeat(source) else { return }
         // Today's energy goes with every heartbeat, so a ping always brings fresh numbers.
         EnergyMeter.record(.app, isCallback: false)
         let energy = EnergyMeter.report(kid: kid, day: DayKey(Date()))
@@ -152,6 +154,8 @@ extension AppModel {
                          backgroundRefresh: DevicePermissions.backgroundRefresh,
                          cellularData: DevicePermissions.cellularData,
                          bluetooth: DevicePermissions.bluetooth,
+                         localNetwork: DevicePermissions.localNetwork,
+                         iCloud: DevicePermissions.iCloud,
                          lowPowerMode: DevicePermissions.lowPowerMode,
                          lastTokenPairing: TokenPairingView.lastImport())
     }

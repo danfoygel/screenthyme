@@ -67,11 +67,11 @@ final class AppModel {
         isLaunching = true
         defer { isLaunching = false }
         BackgroundRefresh.schedule()
+        DevicePermissions.prepare()
         await migrateToWakeAlarm()
         await ensureSubscriptions()
         switch config.role {
         case .kid:
-            DevicePermissions.prepare()
             await ensureMonitoring()
             await sampleNow()
             await Enforcer.offMain {
