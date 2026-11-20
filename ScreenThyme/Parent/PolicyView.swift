@@ -51,6 +51,10 @@ struct PolicyView: View {
                                 case let extra?: Text("\(Format.minutes(extra)) extra today")
                                 case nil: Text("No limit for the rest of today")
                                 }
+                                let forApps = Set(today.filter { $0.approved && $0.reason == .limit(limit.id) }.compactMap(\.itemID))
+                                if !forApps.isEmpty {
+                                    Text("More time today for \(Self.names(forApps, items: items, groups: []))")
+                                }
                             }
                         }
                     }
@@ -60,7 +64,7 @@ struct PolicyView: View {
             } header: {
                 Text("App Limits")
             } footer: {
-                Text("Always Allowed apps, ScreenThyme and Phone don't count toward limits. Extra time is what a parent gave today, when \(kid.displayName) asked for more.")
+                Text("Always Allowed apps, ScreenThyme and Phone don't count toward limits. Extra time is what a parent gave today, when \(kid.displayName) asked for more; time asked from one app is for that app only.")
             }
             Section {
                 ForEach(policy.groups) { group in

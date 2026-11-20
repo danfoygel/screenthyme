@@ -141,7 +141,7 @@ public struct AppDetails: Sendable {
         guard policy.enabled, !isExempt else { return nil }
         let reach = ids.union(categoryIDs)
         return policy.resolved.limits.first { limit in
-            plan.exhaustedLimits.contains(limit.id)
+            plan.exhaustedLimits.contains(limit.id) && (plan.limitPasses[limit.id] ?? []).isDisjoint(with: reach)
                 && (limit.allApps ? plan.allAppsLimited && !isAlwaysAllowed : !plan.limitedItems.isDisjoint(with: reach))
         }
     }
@@ -228,13 +228,15 @@ public struct AppDetails: Sendable {
     }
 
     /// Requests for more time and one more minute since `since` that reach the app, newest first: for the app or its
-    /// category, for time on a limit that counts it (whichever app the kid asked from), and for the whole phone during
-    /// Downtime that covers it. One more minute on a limit lets through only the app pressed, or for an all-apps limit
-    /// the whole phone.
+    /// category, and those that name nothing: for a limit that counts it (an all-apps limit's category shield), or for
+    /// the whole phone during Downtime that covers it. Time asked from another app lets only that app through. One more
+    /// minute on a limit lets through only the app pressed, or for an all-apps limit the whole phone.
     public func requests(_ requests: [TimeRequest], grants: [TimeGrant], extraMinutes: [ExtraMinuteUse],
                          since: Date) -> [Request] {
         let answers = Dictionary(grants.map { ($0.requestID, $0) }, uniquingKeysWith: { a, b in a.at > b.at ? a : b })
-        let asked = requests.filter { $0.at >= since && reaches($0.reason, itemID: $0.itemID, limit: { _ in true }) }
+        let asked = requests.filter { request in
+            request.at >= since && reaches(request.reason, itemID: request.itemID, limit: { _ in request.itemID == nil })
+        }
             .map { Request.asked($0, answers[$0.id]) }
         let minutes = extraMinutes.filter { $0.at >= since && reaches($0.reason, itemID: $0.itemID, limit: \.allApps) }
             .map(Request.extraMinute)

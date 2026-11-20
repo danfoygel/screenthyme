@@ -324,7 +324,7 @@ struct RequestRow: View {
                 Spacer()
                 Text(Format.relative(request.at)).font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason).")
+            Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason)\(forItemOnly(item)).")
             if let note = request.note {
                 Text("\u{201C}\(note)\u{201D}").italic()
             }
@@ -346,6 +346,12 @@ struct RequestRow: View {
 
     private var reason: String {
         Self.describe(request.reason, itemID: request.itemID, policy: model.data.policy(for: request.kidID))
+    }
+
+    /// A limit's time asked from an app (or a category's shield) lets only that through.
+    private func forItemOnly(_ item: TrackedItem?) -> String {
+        guard case .limit = request.reason, let item else { return "" }
+        return item.kind == .category ? ", for this category only" : ", for this app only"
     }
 
     /// "during Bedtime", "over the Games limit".

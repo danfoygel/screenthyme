@@ -241,7 +241,8 @@ public struct TimeRequest: Codable, Sendable, Hashable, Identifiable {
 }
 
 /// A parent's answer, saved as `TimeGrant.<request id>` so the kid's phone can fetch it by name.
-/// For a limit, `minutes` are added to that limit today. For Downtime, the item (or with no item, the whole phone) is
+/// For a limit, the item is let through it for `minutes` of its use (with no item, `minutes` are added to the limit
+/// today); for the rest of today when `minutes == nil`. For Downtime, the item (or with no item, the whole phone) is
 /// exempt for `minutes` of use or of the clock, or until the window ends when `minutes == nil`.
 public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID { requestID }

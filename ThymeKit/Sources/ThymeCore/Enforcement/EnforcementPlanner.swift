@@ -104,15 +104,19 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
     public var downtimeExceptions: Set<UUID> = []
     /// Every Downtime window for some apps that's on, unless paused or all let through.
     public var scopedDowntime: [ScopedDowntime] = []
-    /// Limit id → today's budget in minutes (limit plus grants); nil budget means unlimited today.
+    /// Limit id → today's budget in minutes (limit plus grants that name no app); nil budget means unlimited today.
     public var budgets: [UUID: Int] = [:]
     /// Limit id → minutes used today.
     public var used: [UUID: Int] = [:]
     public var exhaustedLimits: Set<UUID> = []
-    /// Items of exhausted limits, minus Always Allowed (categories stay categories).
+    /// Items of exhausted limits, minus Always Allowed and what grants let through (categories stay categories).
     public var limitedItems: Set<UUID> = []
     /// An all-apps limit is exhausted: everything but Always Allowed is shielded.
     public var allAppsLimited = false
+    /// Exhausted limit id → the apps (or categories) a parent's grant lets through it, while the grant has time left.
+    public var limitPasses: [UUID: Set<UUID>] = [:]
+    /// Passes every exhausted limit that counts them lets through: left out of limits' category and all-apps shields.
+    public var limitExceptions: Set<UUID> = []
     /// Always blocked items, minus blocked-item grants.
     public var blockedItems: Set<UUID> = []
     /// Always Allowed items, also exempt from exhausted limits.
@@ -133,6 +137,8 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
         exhaustedLimits = try container.decodeIfPresent(Set<UUID>.self, forKey: .exhaustedLimits) ?? []
         limitedItems = try container.decodeIfPresent(Set<UUID>.self, forKey: .limitedItems) ?? []
         allAppsLimited = try container.decodeIfPresent(Bool.self, forKey: .allAppsLimited) ?? false
+        limitPasses = try container.decodeIfPresent([UUID: Set<UUID>].self, forKey: .limitPasses) ?? [:]
+        limitExceptions = try container.decodeIfPresent(Set<UUID>.self, forKey: .limitExceptions) ?? []
         blockedItems = try container.decodeIfPresent(Set<UUID>.self, forKey: .blockedItems) ?? []
         alwaysAllowed = try container.decodeIfPresent(Set<UUID>.self, forKey: .alwaysAllowed) ?? []
         extraMinuteEnds = try container.decodeIfPresent(Date.self, forKey: .extraMinuteEnds)
@@ -212,7 +218,8 @@ public enum EnforcementPlanner {
             if !scoped.items.isEmpty { plan.scopedDowntime.append(scoped) }
         }
 
-        // Limits.
+        // Limits. A grant that names an app (or a category) lets only that through the limit, for its minutes of use; one
+        // that names nothing (an all-apps limit's category shield) raises the limit for everything it counts.
         let weekday = calendar.component(.weekday, from: now)
         for limit in policy.limits where limit.enabled {
             let used = Int((limit.allApps
@@ -224,11 +231,24 @@ public enum EnforcementPlanner {
             plan.budgets[limit.id] = budget
             if used >= budget || limitFires[limit.id] == budget {
                 plan.exhaustedLimits.insert(limit.id)
+                let passes = Set(grants.filter { $0.grant.reason == .limit(limit.id) && isLeft($0, usage: usage, now: now) }
+                    .compactMap(\.grant.itemID))
+                if !passes.isEmpty { plan.limitPasses[limit.id] = passes }
                 if limit.allApps {
                     plan.allAppsLimited = true
                 } else {
-                    plan.limitedItems.formUnion(limit.items.subtracting(policy.alwaysAllowed))
+                    plan.limitedItems.formUnion(limit.items.subtracting(policy.alwaysAllowed).subtracting(passes))
                 }
+            }
+        }
+        // What every used-up limit that counts it lets through: categories and "all apps" shields leave these out.
+        let exhausted = policy.limits.filter { plan.exhaustedLimits.contains($0.id) }
+        for (limitID, passes) in plan.limitPasses {
+            for item in passes where exhausted.allSatisfy({ other in
+                other.id == limitID || plan.limitPasses[other.id]?.contains(item) == true
+                    || !Self.counts(other, item: item, items: items, alwaysAllowed: policy.alwaysAllowed)
+            }) {
+                plan.limitExceptions.insert(item)
             }
         }
         // One more minute lets the pressed item through every exhausted limit; the limit stays used up. An all-apps
@@ -253,10 +273,22 @@ public enum EnforcementPlanner {
         return plan
     }
 
-    /// Minutes parents' approved `grants` add to limit `limitID`; nil when one gave the rest of the day.
+    /// Whether `limit` counts `item` (an app, website or category, or a scanned one through its match): it's in the
+    /// limit, in a category the limit holds, or the limit is for all apps. Always Allowed items count toward none.
+    static func counts(_ limit: AppLimit, item: UUID, items: [UUID: TrackedItem], alwaysAllowed: Set<UUID>) -> Bool {
+        let ids = Set([item, items[item]?.match].compactMap { $0 })
+        guard ids.isDisjoint(with: alwaysAllowed) else { return false }
+        if limit.allApps || !limit.items.isDisjoint(with: ids) { return true }
+        let categories = categoryNames(limit.items, items: items)
+        let own = ids.compactMap { items[$0] }.compactMap { $0.kind == .category ? $0.identifier : $0.category }
+        return own.contains(where: categories.contains)
+    }
+
+    /// Minutes parents' approved `grants` add to limit `limitID`; nil when one gave the rest of the day. Only grants
+    /// that name nothing raise the limit: one for an app lets that app through instead.
     public static func extraMinutes(for limitID: UUID, grants: some Sequence<TimeGrant>) -> Int? {
         var total = 0
-        for grant in grants where grant.approved && grant.reason == .limit(limitID) {
+        for grant in grants where grant.approved && grant.reason == .limit(limitID) && grant.itemID == nil {
             guard let minutes = grant.minutes else { return nil }
             total += minutes
         }
