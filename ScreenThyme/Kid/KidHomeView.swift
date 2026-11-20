@@ -58,7 +58,7 @@ struct KidHomeView: View {
                         }
                     }
                     if model.config.epoch == nil {
-                        Button("Start monitoring") { model.startMonitoring() }
+                        Button("Start monitoring") { Task { await model.startMonitoring() } }
                             .disabled(!model.hasDataAccess)
                     }
                     Button("Upload now") {

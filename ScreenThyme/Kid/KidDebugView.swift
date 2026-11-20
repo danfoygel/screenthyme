@@ -35,7 +35,7 @@ struct KidDebugView: View {
                         LabeledContent("iOS counts less by", value: "\(activity.offset) min")
                     }
                 }
-                Button("Re-register") { model.startMonitoring() }
+                Button("Re-register") { Task { await model.startMonitoring() } }
                 Button("Stop monitoring", role: .destructive) { model.stopMonitoring() }
             }
             Section("Today as parents see it") {
