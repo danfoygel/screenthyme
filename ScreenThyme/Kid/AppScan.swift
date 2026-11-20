@@ -21,7 +21,8 @@ enum AppScan {
     }
 
     /// Saves the picks as items (new or changed ones go to the outbox) and enforces with them. Items no longer picked
-    /// lose their token, so shields and parents' pickers drop them.
+    /// lose their token, so shields and parents' pickers drop them; they keep their match, so policies naming them
+    /// follow the app to its new token (`Policy.followingNewTokens`).
     static func save(_ saved: Saved, kid: Kid, now: Date = Date()) {
         AppGroup.save(saved, to: url)
         var picked: [TrackedItem] = []
@@ -44,6 +45,9 @@ enum AppScan {
             for item in picked where known[item.id]?.tokenData != item.tokenData {
                 var item = item
                 item.firstSeen = known[item.id]?.firstSeen ?? now
+                // A token picked again keeps its match and nickname.
+                item.match = known[item.id]?.match
+                item.nickname = known[item.id]?.nickname
                 known[item.id] = item
                 changed.append(item)
             }

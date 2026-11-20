@@ -51,7 +51,8 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     public var category: String?
     public var nickname: String?
     public var firstSeen: Date
-    /// For a scanned item: the item from Apple's data for the same app, learned from screenshots (`TokenPairing`).
+    /// For a scanned item: the item from Apple's data for the same app, learned from screenshots (`TokenPairing`). One
+    /// that lost its token (a later scan gave its app a new one) keeps it, to say what it was.
     public var match: UUID?
 
     public init(kidID: UUID, kind: ItemKind, identifier: String, name: String? = nil, tokenData: Data? = nil,
@@ -73,6 +74,10 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
 
     /// From the app scan: has a token for shields, but no usage in Apple's data (that has bundle IDs, no tokens).
     public var isScanned: Bool { identifier.hasPrefix(Self.scannedPrefix) }
+
+    /// The match of a scanned item that still has its token: only those stand for their app. Others are left over from
+    /// an earlier scan (`Policy.followingNewTokens`).
+    public var liveMatch: UUID? { isScanned && tokenData != nil ? match : nil }
 
     public static func id(kid: UUID, kind: ItemKind, identifier: String) -> UUID {
         Replay.stableUUID("item", kid.uuidString, kind.rawValue, identifier)

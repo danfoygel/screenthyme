@@ -483,7 +483,7 @@ struct AppDetailsData {
 
     static func kid() -> AppDetailsData {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let stored = AppGroup.loadPolicy()
+        let stored = AppGroup.loadPolicy()?.followingNewTokens(items: items)
         let samples = Dictionary(grouping: AppGroup.samples.readAll(), by: \.day)
         // Answers applied before the history file existed are still in today's state.
         var grants = Dictionary(AppGroup.grantHistory.readAll().map { ($0.requestID, $0) }, uniquingKeysWith: { a, _ in a })

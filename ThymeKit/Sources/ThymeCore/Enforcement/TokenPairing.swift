@@ -39,14 +39,14 @@ public enum TokenPairing {
             .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
-    /// Apps, websites and categories some scanned item is matched to.
+    /// Apps, websites and categories some scanned item with a token is matched to.
     static func matched(_ items: [TrackedItem]) -> Set<Identifier> {
-        let matches = Set(items.compactMap { $0.isScanned ? $0.match : nil })
+        let matches = Set(items.compactMap(\.liveMatch))
         return Set(items.filter { matches.contains($0.id) }.map { Identifier(kind: $0.kind, identifier: $0.identifier) })
     }
 
-    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item is matched to already
-    /// (a second scanned token for a matched app would take its match away).
+    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item with a token is matched
+    /// to already (a second scanned token for a matched app would take its match away).
     public static func drawn(_ seen: Set<Identifier>, items: [TrackedItem], mode: Mode) -> Set<Identifier> {
         mode == .all ? seen : seen.subtracting(matched(items))
     }
@@ -398,7 +398,7 @@ public enum TokenPairing {
 
     /// Sets each paired scanned item's match to the item for its bundle ID, domain or category name. That item's id comes from the
     /// kid and the identifier; one this phone hasn't seen yet is created. Another scanned item matched to the same app
-    /// or website loses its match.
+    /// or website loses its match; one without a token keeps it, to say what it was.
     public static func apply(_ pairs: some Sequence<Pair>, to items: inout [TrackedItem], kid: UUID, now: Date = Date())
         -> Outcome {
         var outcome = Outcome()
@@ -428,7 +428,7 @@ public enum TokenPairing {
             changed.insert(index)
         }
         for (index, item) in items.enumerated() where item.isScanned && item.kidID == kid {
-            guard let match = item.match, let owner = paired[match], owner != index else { continue }
+            guard let match = item.liveMatch, let owner = paired[match], owner != index else { continue }
             items[index].match = nil
             changed.insert(index)
             outcome.cleared += 1
@@ -437,7 +437,7 @@ public enum TokenPairing {
         return outcome
     }
 
-    /// Apps from Apple's data that no scanned item is matched to, by what would match them.
+    /// Apps from Apple's data that no scanned item with a token is matched to, by what would match them.
     public struct Unmatched: Sendable, Equatable {
         /// Another import may match them: they turned up since the last one (all of them, before the first), or the
         /// app scan has added apps since.
@@ -453,7 +453,7 @@ public enum TokenPairing {
     /// are iOS's own processes, which no scan lists (`BuiltInApps.isSystemProcess`).
     /// - Parameter used: the apps to count, those used lately; nil counts them all. A deleted app stays unmatched.
     public static func unmatched(_ items: [TrackedItem], lastImport: Date?, used: Set<UUID>? = nil) -> Unmatched {
-        let matched = Set(items.compactMap(\.match))
+        let matched = Set(items.compactMap(\.liveMatch))
         // When the scan last added an app: a scanned item keeps the date it was first picked.
         let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
         var result = Unmatched()

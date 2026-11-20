@@ -246,7 +246,8 @@ struct KidDayView: View {
     /// and answers.
     private func limitsReached(_ ids: [UUID], items: [UUID: TrackedItem]) -> [UUID: AppDetails.Status] {
         let end = day.end().addingTimeInterval(-1)
-        guard let policy = model.data.storedPolicy(for: kid.id, at: end), policy.enabled else { return [:] }
+        guard let policy = model.data.storedPolicy(for: kid.id, at: end)?.followingNewTokens(items: items), policy.enabled
+        else { return [:] }
         let plan = AppDetailsData.parentPlan(model.data, kid: kid.id, items: items, policy: policy, now: end)
         let exempt = Enforcer.exemptItems(items)
         var result: [UUID: AppDetails.Status] = [:]

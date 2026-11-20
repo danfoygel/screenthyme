@@ -104,9 +104,10 @@ final class FamilyData {
     private(set) var linkKey: LinkKey?
     @ObservationIgnored private let linkKeyURL = URL.applicationSupportDirectory.appending(path: "link-key.json")
 
-    /// The kid's policy, or an empty one to start editing.
+    /// The kid's policy, or an empty one to start editing. Apps the kid's phone gave new tokens are named by those
+    /// (`Policy.followingNewTokens`), so a save stores them.
     func policy(for kid: UUID) -> Policy {
-        snapshot.policies[kid] ?? Policy(kidID: kid)
+        snapshot.policies[kid]?.followingNewTokens(items: snapshot.items) ?? Policy(kidID: kid)
     }
 
     func storedPolicy(for kid: UUID) -> Policy? {
