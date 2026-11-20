@@ -92,21 +92,69 @@ struct EnforcementTests {
         #expect(result.exhaustedLimits == [limit.id])
     }
 
-    @Test func limitGrantsRaiseTheBudget() {
-        let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30, weekdayMinutes: [7: 60])
-        let request = TimeRequest(kidID: kid, itemID: instagram.id, reason: .limit(limit.id), minutes: 15, at: at(12, 0))
+    func applied(_ reason: BlockReason, _ item: UUID?, minutes: Int?, approved: Bool = true, at date: Date,
+                 baseline: Double = 0) -> AppliedGrant {
+        let request = TimeRequest(kidID: kid, itemID: item, reason: reason, minutes: minutes, at: date)
+        return AppliedGrant(grant: TimeGrant(request: request, approved: approved, minutes: minutes, at: date, by: "Parent"),
+                            appliedAt: date, baselineSeconds: baseline)
+    }
+
+    @Test func limitGrantsWithoutAnAppRaiseTheBudget() {
+        let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 30, weekdayMinutes: [7: 60])
         var state = EnforcementDayState(day: testDay)
-        state.limitFires[limit.id] = 60  // Saturday's budget
-        state.grants = [AppliedGrant(grant: TimeGrant(request: request, approved: true, minutes: 15, at: at(12, 1), by: "Parent"),
-                                     appliedAt: at(12, 1))]
+        state.grants = [applied(.limit(limit.id), nil, minutes: 15, at: at(12, 1))]
         let result = plan(Policy(kidID: kid, limits: [limit]), usage: [instagram.id: 61 * 60.0], state: state, at: at(12, 2))
-        #expect(result.budgets[limit.id] == 75)
+        #expect(result.budgets[limit.id] == 75)  // Saturday's 60 + 15
         #expect(result.exhaustedLimits.isEmpty)
         // A declined request changes nothing.
-        state.grants = [AppliedGrant(grant: TimeGrant(request: request, approved: false, minutes: nil, at: at(12, 1), by: "Parent"),
-                                     appliedAt: at(12, 1))]
+        state.grants = [applied(.limit(limit.id), nil, minutes: nil, approved: false, at: at(12, 1))]
         #expect(plan(Policy(kidID: kid, limits: [limit]), usage: [instagram.id: 61 * 60.0], state: state, at: at(12, 2))
-            .exhaustedLimits == [limit.id])
+            .allAppsLimited)
+    }
+
+    /// Time asked from one app lets only that app through, for its minutes of use; the limit stays used up.
+    @Test func limitGrantForAnAppLetsOnlyThatAppThrough() {
+        let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 60)
+        let policy = Policy(kidID: kid, limits: [limit])
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [applied(.limit(limit.id), instagram.id, minutes: 60, at: at(12, 0), baseline: 40 * 60)]
+        var usage = [instagram.id: 40 * 60.0, snapchat.id: 25 * 60.0]
+        let given = plan(policy, usage: usage, state: state, at: at(12, 1))
+        #expect(given.budgets[limit.id] == 60)
+        #expect(given.allAppsLimited)
+        #expect(given.limitPasses == [limit.id: [instagram.id]])
+        #expect(given.limitExceptions == [instagram.id])
+        // Instagram's use still counts; its hour runs out after an hour of its own use.
+        usage[instagram.id] = 99 * 60.0
+        #expect(plan(policy, usage: usage, state: state, at: at(13, 0)).used[limit.id] == 124)
+        #expect(plan(policy, usage: usage, state: state, at: at(13, 0)).limitExceptions == [instagram.id])
+        usage[instagram.id] = 100 * 60.0
+        let over = plan(policy, usage: usage, state: state, at: at(13, 1))
+        #expect(over.limitPasses.isEmpty && over.limitExceptions.isEmpty)
+    }
+
+    @Test func limitGrantForAnAppStaysBlockedByOtherUsedUpLimits() {
+        let allApps = AppLimit(name: "All apps", items: [], allApps: true, minutes: 60)
+        let socialLimit = AppLimit(name: "Social", items: [social.id], minutes: 30)
+        let instagramLimit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
+        let usage = [instagram.id: 40 * 60.0, snapchat.id: 25 * 60.0]
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [applied(.limit(instagramLimit.id), instagram.id, minutes: 15, at: at(12, 0), baseline: 40 * 60)]
+        // Only its own limit: Instagram comes off that limit's shields.
+        let alone = plan(Policy(kidID: kid, limits: [instagramLimit]), usage: usage, state: state, at: at(12, 1))
+        #expect(alone.exhaustedLimits == [instagramLimit.id])
+        #expect(alone.limitedItems.isEmpty)
+        #expect(alone.limitExceptions == [instagram.id])
+        // Social (its category) and All apps are used up too, and didn't give it time: it stays blocked.
+        let all = Policy(kidID: kid, limits: [allApps, socialLimit, instagramLimit])
+        let blocked = plan(all, usage: usage, state: state, at: at(12, 1))
+        #expect(blocked.limitPasses == [instagramLimit.id: [instagram.id]])
+        #expect(blocked.limitedItems == [social.id])
+        #expect(blocked.limitExceptions.isEmpty)
+        // Once each of them gives it time, it gets through.
+        state.grants += [applied(.limit(allApps.id), instagram.id, minutes: 15, at: at(12, 0), baseline: 40 * 60),
+                         applied(.limit(socialLimit.id), instagram.id, minutes: 15, at: at(12, 0), baseline: 40 * 60)]
+        #expect(plan(all, usage: usage, state: state, at: at(12, 1)).limitExceptions == [instagram.id])
     }
 
     @Test func extraMinutesAddUpApprovedGrantsForTheLimit() {

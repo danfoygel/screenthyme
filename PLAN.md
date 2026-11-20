@@ -528,8 +528,10 @@ Targets are TrackedItems with tokens: the app scan's apps, websites and categori
 have bundle IDs but no tokens, so they can't be shielded.
 
 Ask for more time: the kid's **TimeRequest** (item, reason, 15 min / 1 h / rest of day) becomes an Alert (banner on
-parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, the grant adds
-minutes to that limit today. For Downtime, it pauses Downtime on the whole phone for that many minutes of the clock, or
+parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, a grant that names an app (or
+a category) lets only that through the limit for its minutes of use: the limit stays used up for everything else, its
+category and all-apps shields leave the app out, and its use still counts. One that names nothing (an all-apps limit's
+category shield) adds minutes to that limit today. For Downtime, it pauses Downtime on the whole phone for that many minutes of the clock, or
 until the window ends (a press on a category shield can't say which app, §15.3).
 
 ### 15.2 Kid phone
@@ -586,8 +588,8 @@ category ids) for the app, which shows `AskForTimeView`:
 - From a limit or Blocked page the app is known. From a Downtime page only the category is, so the kid picks the app
   in Apple's picker (names, icons, search); its token matches a scanned item, or becomes one.
 - How much (15 min, 1 hour, until Downtime ends or the rest of today) and an optional note for the parents.
-- The request names the app: a Downtime grant lets that app through (`.all(except:)`), not the whole phone. With no
-  app chosen, Downtime pauses for the whole phone.
+- The request names the app: a Downtime or limit grant lets that app through (`.all(except:)`), not the whole phone
+  or everything the limit counts. With no app chosen, Downtime pauses for the whole phone.
 - The screen uploads the request and checks for the answer every 5 s while open. ScreenThyme is exempt from
   Downtime through the scan's ScreenThyme pick.
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's

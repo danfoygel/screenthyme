@@ -177,15 +177,19 @@ enum Enforcer {
         limited.domains.subtract(allowed.domains)
         if plan.limitedItems.isEmpty && !plan.allAppsLimited { limits.clearAllSettings() }
         shieldOneByOne(limited, over: "limits")
+        // What's allowed, and what parents' grants let through every used-up limit that counts it.
+        var limitExceptions = tokens.split(tokens.expandingCategories(plan.limitExceptions))
+        limitExceptions.apps.formUnion(allowed.apps)
+        limitExceptions.domains.formUnion(allowed.domains)
         if plan.allAppsLimited {
             // Like Downtime: every category but what's allowed.
-            limits.shield.applicationCategories = .all(except: Tokens.capped(allowed.apps))
-            limits.shield.webDomainCategories = .all(except: Tokens.capped(allowed.domains))
+            limits.shield.applicationCategories = .all(except: Tokens.capped(limitExceptions.apps))
+            limits.shield.webDomainCategories = .all(except: Tokens.capped(limitExceptions.domains))
         } else {
             limits.shield.applicationCategories = limited.categories.isEmpty ? nil
-                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.apps))
+                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(limitExceptions.apps))
             limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
-                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.domains))
+                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(limitExceptions.domains))
         }
     }
 
