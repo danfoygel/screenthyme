@@ -50,6 +50,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return configuration
     }
 
+    /// The same token serves CloudKit's pushes and bug fixes' (`BugReportQueue.pushToken`).
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        AppModel.shared.bugReports.pushToken = deviceToken.map { String(format: "%02x", $0) }.joined()
+    }
+
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
         await AppModel.shared.handlePush()

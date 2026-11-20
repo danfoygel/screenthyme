@@ -28,6 +28,7 @@ ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was 
                      "One more minute" runs the Enforcer itself (PLAN.md §15.5)
 ScreenTour/          UI test, Simulator only: the screen map's screenshots
 Tools/ScreenMap/     the screen map (kid and parent screen flows, published to GitHub Pages); see its README
+Tools/BugPush/       the bug repository's workflow that pushes "fixed" to the reporter's phone; see its README
 ```
 
 - **`ScreenThyme.xcodeproj` and the Info.plist / .entitlements files are generated and git-ignored.** Change `project.yml`, then `xcodegen generate`. Run it after adding or removing files.
