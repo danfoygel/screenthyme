@@ -191,9 +191,17 @@ struct KidDayView: View {
                 Text("All apps. " + UsageHeatmapView.footer)
             }
             Section("Apps") {
-                ForEach(used.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, usage in
+                let apps = used.filter { items[$0.key]?.kind != .domain }
+                let shielded = day == DayKey(Date()) ? timeShielded(apps.map(\.key), items: items)
+                    : limitsReached(apps.map(\.key), items: items)
+                ForEach(apps, id: \.key) { id, usage in
                     ItemDetailsLink(item: items[id]) {
-                        LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                        LabeledContent {
+                            HStack(spacing: 6) {
+                                TimeShieldIcon(status: shielded[id])
+                                Text(Format.minutes(usage.minutes)).monospacedDigit()
+                            }
+                        } label: { ItemName(item: items[id]) }
                     }
                 }
             }
@@ -214,6 +222,40 @@ struct KidDayView: View {
         .navigationTitle(kid.displayName)
         .bugButton()
         .refreshable { await model.refresh() }
+    }
+
+    /// The apps Downtime or a limit shields now, as worked out from what has synced, with why.
+    private func timeShielded(_ ids: [UUID], items: [UUID: TrackedItem]) -> [UUID: AppDetails.Status] {
+        let policy = model.data.policy(for: kid.id)
+        guard policy.enabled else { return [:] }
+        let plan = AppDetailsData.parentPlan(model.data, kid: kid.id, items: items, policy: policy)
+        let exempt = Enforcer.exemptItems(items)
+        var result: [UUID: AppDetails.Status] = [:]
+        for id in ids {
+            guard let item = items[id] else { continue }
+            let status = AppDetails(item: item, items: items, policy: policy, exempt: exempt).status(in: plan, policy: policy)
+            switch status {
+            case .downtime, .limit: result[id] = status
+            default: break
+            }
+        }
+        return result
+    }
+
+    /// On an earlier day, the apps that went over a limit, by the policy in force at the day's end and that day's use
+    /// and answers.
+    private func limitsReached(_ ids: [UUID], items: [UUID: TrackedItem]) -> [UUID: AppDetails.Status] {
+        let end = day.end().addingTimeInterval(-1)
+        guard let policy = model.data.storedPolicy(for: kid.id, at: end), policy.enabled else { return [:] }
+        let plan = AppDetailsData.parentPlan(model.data, kid: kid.id, items: items, policy: policy, now: end)
+        let exempt = Enforcer.exemptItems(items)
+        var result: [UUID: AppDetails.Status] = [:]
+        for id in ids {
+            guard let item = items[id], let limit = AppDetails(item: item, items: items, policy: policy, exempt: exempt)
+                .limitReached(in: plan, policy: policy) else { continue }
+            result[id] = .limit(name: limit.name)
+        }
+        return result
     }
 }
 

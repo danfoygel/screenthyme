@@ -113,6 +113,12 @@ final class FamilyData {
         snapshot.policies[kid]
     }
 
+    /// The kid's policy as it was at `date`, from the change history; nil before the first.
+    func storedPolicy(for kid: UUID, at date: Date) -> Policy? {
+        PolicyChange.policy(at: date, changes: snapshot.policyChanges.values.filter { $0.kidID == kid },
+                            current: storedPolicy(for: kid))
+    }
+
     /// Saved policies and answered requests for more time, oldest first.
     func policyHistory(for kid: UUID) -> [PolicyHistoryEntry] {
         let changes = snapshot.policyChanges.values.filter { $0.kidID == kid }.map(PolicyHistoryEntry.change)
