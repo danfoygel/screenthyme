@@ -459,7 +459,8 @@ public enum TokenPairing {
     }
 
     /// Websites are left out: browsing turns up new domains all the time, mostly embedded ones the scan doesn't list. So
-    /// are iOS's own processes, which no scan lists (`BuiltInApps.isSystemProcess`).
+    /// are iOS's own processes, which no scan lists (`BuiltInApps.isSystemProcess`), and apps nothing can block
+    /// (`BuiltInApps.unblockable`).
     /// - Parameter used: the apps to count, those used lately; nil counts them all. A deleted app stays unmatched.
     public static func unmatched(_ items: [TrackedItem], lastImport: Date?, used: Set<UUID>? = nil) -> Unmatched {
         let matched = matchedIDs(items)
@@ -468,7 +469,8 @@ public enum TokenPairing {
         let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
         var result = Unmatched()
         for item in items where item.kind == .app && !item.isScanned && !matched.contains(item.id)
-            && !BuiltInApps.isSystemProcess(item.identifier) && used.map({ $0.contains(item.id) }) ?? true {
+            && !BuiltInApps.isSystemProcess(item.identifier) && !BuiltInApps.unblockable.contains(item.identifier)
+            && used.map({ $0.contains(item.id) }) ?? true {
             if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true,
                !reissued.contains(item.id) {
                 result.toScan.append(item)

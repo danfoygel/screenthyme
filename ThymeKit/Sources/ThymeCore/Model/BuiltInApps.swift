@@ -38,6 +38,13 @@ public enum BuiltInApps {
         "com.apple.webapp": "Web app",
     ]
 
+    /// Apps iOS lets through every shield: `dmd` logged Phone, Settings and Compass as "unblockable" on a kid's phone
+    /// (PLAN.md §16), and the Screen Time unlock screen is iOS's own. A token wouldn't block them, so no scan or match
+    /// needs to find them.
+    public static let unblockable: Set<String> = [
+        "com.apple.mobilephone", "com.apple.Preferences", "com.apple.compass", "com.apple.ScreenTimeUnlock",
+    ]
+
     /// iOS's own processes that turn up in Apple's usage data, such as the screenshot editor
     /// (com.apple.ScreenshotServicesService), the call screen and the Face ID prompt: no app scan lists them.
     public static func isSystemProcess(_ bundleID: String) -> Bool {

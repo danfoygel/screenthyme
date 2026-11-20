@@ -247,10 +247,11 @@ struct TokenPairingTests {
         let newMatched = seen("com.matched", after: true)
         let site = seen("new.example.com", .domain, after: true)
         let screenshot = seen("com.apple.ScreenshotServicesService", after: true)
+        let settings = seen("com.apple.Preferences", after: false)  // unblockable: no token would block it
         var scannedApp = scanned("s")
         scannedApp.firstSeen = lastImport.addingTimeInterval(-120)
         scannedApp.match = newMatched.id
-        let items = [old, new, newMatched, site, screenshot, scannedApp]
+        let items = [old, new, newMatched, site, screenshot, settings, scannedApp]
 
         let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
         #expect(unmatched.toMatch.map(\.identifier) == ["com.new"])
