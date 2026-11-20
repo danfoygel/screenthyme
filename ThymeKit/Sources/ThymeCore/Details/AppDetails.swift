@@ -131,11 +131,19 @@ public struct AppDetails: Sendable {
         where !downtime.items.isDisjoint(with: reach) && downtime.exceptions.isDisjoint(with: reach) {
             return .downtime(name: downtime.name, until: downtime.interval.end)
         }
-        for limit in policy.resolved.limits where plan.exhaustedLimits.contains(limit.id) {
-            let limited = limit.allApps ? plan.allAppsLimited && !isAlwaysAllowed : !plan.limitedItems.isDisjoint(with: reach)
-            if limited { return .limit(name: limit.name) }
-        }
+        if let limit = limitReached(in: plan, policy: policy) { return .limit(name: limit.name) }
         return plan.blockedItems.isDisjoint(with: reach) ? .open : .blocked
+    }
+
+    /// The first used-up limit in `plan` that shields the app, whatever Downtime does. A plan for the last moment of an
+    /// earlier day gives the limit the app went over that day.
+    public func limitReached(in plan: EnforcementPlan, policy: Policy) -> AppLimit? {
+        guard policy.enabled, !isExempt else { return nil }
+        let reach = ids.union(categoryIDs)
+        return policy.resolved.limits.first { limit in
+            plan.exhaustedLimits.contains(limit.id)
+                && (limit.allApps ? plan.allAppsLimited && !isAlwaysAllowed : !plan.limitedItems.isDisjoint(with: reach))
+        }
     }
 
     // MARK: - Usage

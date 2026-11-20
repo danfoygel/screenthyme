@@ -26,6 +26,18 @@ struct PolicyChangeTests {
         #expect(describe(edits[1]).details == ["Added YouTube"])
     }
 
+    @Test func policyInForceAtATime() {
+        let first = Policy(kidID: kid, blocked: [roblox])
+        let current = Policy(kidID: kid, blocked: [games])
+        let changes = [PolicyChange(kidID: kid, at: at(12, 0), by: "Dad", before: first, after: Policy(kidID: kid, blocked: [youtube])),
+                       PolicyChange(kidID: kid, at: at(9, 0), by: "Mom", before: nil, after: first)]
+        #expect(PolicyChange.policy(at: at(8, 0), changes: changes, current: current) == nil)
+        #expect(PolicyChange.policy(at: at(10, 0), changes: changes, current: current) == first)
+        #expect(PolicyChange.policy(at: at(11, 59), changes: changes, current: current) == first)
+        #expect(PolicyChange.policy(at: at(12, 0), changes: changes, current: current) == current)
+        #expect(PolicyChange.policy(at: at(8, 0), changes: [], current: current) == current)
+    }
+
     @Test func unchangedPolicyHasNoEdits() {
         let policy = Policy(kidID: kid, downtime: [DowntimeWindow(name: "Bedtime", startMinute: 1290, endMinute: 420)],
                             blocked: [roblox])
