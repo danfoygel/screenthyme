@@ -160,6 +160,16 @@ enum Sampler {
             }
         }
 
+        // Apps whose use is Safari's on their website: the first time, from every sample so far.
+        var mirror = AppGroup.load(WebMirror.self, from: AppGroup.webMirrorURL) ?? {
+            var mirror = WebMirror()
+            mirror.add(AppGroup.samples.readAll(), items: known)
+            return mirror
+        }()
+        mirror.add(result.samples, items: known)
+        mirror.prune(today: day)
+        AppGroup.save(mirror, to: AppGroup.webMirrorURL)
+
         try? AppGroup.samples.append(contentsOf: result.samples)
         let changedItems = known.values.filter { item in
             firstEver || changed.contains(item.id) || result.newItems.contains { $0.id == item.id }

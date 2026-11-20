@@ -34,15 +34,28 @@ public enum BuiltInApps {
         "com.apple.tv": "TV",
         "com.apple.VoiceMemos": "Voice Memos",
         "com.apple.weather": "Weather",
-        // Every Home Screen web app.
-        "com.apple.webapp": "Web app",
+        webApp: "Web app",
     ]
 
+    /// Apps iOS lets through every shield: `dmd` logged Phone, Settings and Compass as "unblockable" on a kid's phone
+    /// (PLAN.md §16), and the Screen Time unlock screen is iOS's own. A token wouldn't block them, so no scan or match
+    /// needs to find them.
+    public static let unblockable: Set<String> = [
+        "com.apple.mobilephone", "com.apple.Preferences", "com.apple.compass", "com.apple.ScreenTimeUnlock",
+    ]
+
+    /// Every Home Screen web app, under one bundle ID: no scan lists it as an app, and its site is a website item.
+    public static let webApp = "com.apple.webapp"
+
     /// iOS's own processes that turn up in Apple's usage data, such as the screenshot editor
-    /// (com.apple.ScreenshotServicesService), the call screen and the Face ID prompt: no app scan lists them.
+    /// (com.apple.ScreenshotServicesService), the call screen, the Face ID prompt, the print dialog
+    /// (com.apple.printcenter), Apple Pay's sheet (com.apple.ServicesPaymentAngel) and permission prompts
+    /// (com.apple.ContactsUI.LimitedAccessPromptView): no app scan lists them.
     public static func isSystemProcess(_ bundleID: String) -> Bool {
         guard bundleID.hasPrefix("com.apple."), names[bundleID] == nil else { return false }
-        let name = bundleID.split(separator: ".").last?.lowercased() ?? ""
-        return name == "springboard" || ["service", "services", "ui"].contains { name.hasSuffix($0) }
+        let parts = bundleID.dropFirst("com.apple.".count).split(separator: ".").map { $0.lowercased() }
+        guard let name = parts.last else { return false }
+        return ["springboard", "printcenter"].contains(name)
+            || parts.contains { part in ["service", "services", "ui", "agent", "angel"].contains { part.hasSuffix($0) } }
     }
 }

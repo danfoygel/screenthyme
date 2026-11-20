@@ -707,6 +707,28 @@ like this:
   since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
   websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
   has no token: scan again first.
+- **A rescan can re-issue every token** (Nov 19, kid's phone): the scan's tokens share their first encrypted bytes,
+  and those bytes changed between Nov 16 and Nov 19 with no new grant in the journal (a shield's token that evening had
+  the new ones too). Old tokens still worked in report filters, but a rescan returned the same apps under new tokens
+  (`189 picked, 371 changed`): new, unmatched items, while the old ones lost their tokens and kept their matches.
+  Those matches counted, so `unmatched` rounds skipped those apps and nothing could be blocked by name. Now only
+  scanned items with a token count as matches (`TokenPairing.matchedIDs`); a tokenless item's match says its app needs
+  a match round, not a scan (`TokenPairing.unmatched`).
+- **"Apps" that are websites** (Nov 19, kid's phone): Depop, Urban Outfitters, Amazon, NYTimes and NYT Cooking had
+  use, but no scan or match found them, and the picker listed only their websites, even searched for by name. None was
+  installed (`devicectl device info apps --include-all-apps`): every minute of theirs fell inside Safari's in the same
+  interval (`2.0` beside Safari's `2.0`), and Apple listed no website for those shops. Apple's data reports a website's
+  time under its App Store app's bundle ID too, so it counted twice in all-apps totals. `WebMirror` finds them: no live
+  match and 95% of the last 7 days inside Safari's, or inside another app's with 2 minutes or more in the week (Amazon's
+  minutes also fell inside Libby's, whose in-app browser opens amazon.com for Kindle books). The Sampler keeps a tally (`web-mirror.json`); all-apps limits and
+  parents' "Apps (Apple's count)" leave them out (through `exempt`), and so does the unmatched list. Category limits
+  still count them: Safari isn't in the shop's category, and it's the only record of the shop.
+- **Apple's apps need a search:** "All Apps & Categories" leaves out Safari (and maybe Find My, Clock, Fitness), but the
+  picker lists it when searched for by name; ticking it adds it to the scan. Ask for more time's picker gave Safari's
+  token too, and the next scan dropped it: a scan now drops only tokens the last scan picked, and a token picked again
+  goes back to its item, match and all.
+- **Apps nothing blocks** (Phone, Settings, Compass, the Screen Time unlock screen; `BuiltInApps.unblockable`) are left
+  out of the unmatched list: a token wouldn't block them.
 - **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
   debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
   was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment
