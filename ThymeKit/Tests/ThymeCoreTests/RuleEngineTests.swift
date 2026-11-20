@@ -129,6 +129,29 @@ struct HealthEvaluatorTests {
             == [.permissionDenied(.cellularData), .lowPowerMode])
         #expect(HealthIssue.permissionDenied(.cellularData).isUrgent)
         #expect(!HealthIssue.lowPowerMode.isUrgent)
+        latest.lowPowerMode = false
+        latest.cellularData = .allowed
+        latest.localNetwork = .denied
+        latest.iCloud = .denied
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc)
+            == [.permissionDenied(.backgroundRefresh), .permissionDenied(.localNetwork), .permissionDenied(.iCloud)])
+    }
+
+    @Test func permissionCatalogue() {
+        for permission in DevicePermission.allCases {
+            let used = permission.purpose(onKidPhone: true) != nil || permission.purpose(onKidPhone: false) != nil
+            // Each is used by some phone, or says why not; and a used one says where to turn it on.
+            #expect(used != (permission.notUsedReason != nil))
+            #expect(used == (permission.settingsPath != nil))
+        }
+        // Heartbeats carry exactly what a kid's phone needs, but Screen Time, which is `authStatus`.
+        let all: PermissionState = .denied
+        let heartbeat = Heartbeat(kidID: testKid.id, at: at(10, 0), source: .launch, authStatus: "", activeActivities: [],
+                                  expectedActivities: [], appVersion: "", backlogCount: 0, lastFireAt: nil,
+                                  backgroundRefresh: all, cellularData: all, bluetooth: all, localNetwork: all, iCloud: all)
+        let reported = DevicePermission.allCases.filter { $0.state(in: heartbeat) != nil }
+        let kidNeeds = DevicePermission.allCases.filter { $0.purpose(onKidPhone: true) != nil && $0 != .screenTime }
+        #expect(reported == kidNeeds)
     }
 
     @Test func accessLossAlertsOncePerLoss() {

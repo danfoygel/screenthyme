@@ -175,6 +175,13 @@ final class NearbyLink {
         case let .waiting(error), let .failed(error): status = Self.status(for: error)
         default: break
         }
+        sawLocalNetwork(ready: state == .ready)
+    }
+
+    /// A ready listener or browser means Local Network is on; iOS's refusal shows as `Status.denied`.
+    private func sawLocalNetwork(ready: Bool) {
+        if ready { DevicePermissions.saw(localNetwork: .allowed) }
+        if status == .denied { DevicePermissions.saw(localNetwork: .denied) }
     }
 
     // MARK: - Wi-Fi, parent: find kid phones and dial
@@ -198,6 +205,7 @@ final class NearbyLink {
                     }
                 default: break
                 }
+                self.sawLocalNetwork(ready: state == .ready)
             }
         }
         browser.browseResultsChangedHandler = { [weak self] results, _ in
