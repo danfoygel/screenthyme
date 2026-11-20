@@ -109,6 +109,20 @@ struct EnforcementTests {
             .exhaustedLimits == [limit.id])
     }
 
+    @Test func extraMinutesAddUpApprovedGrantsForTheLimit() {
+        let limit = UUID()
+        func grant(_ reason: BlockReason, approved: Bool = true, _ minutes: Int?) -> TimeGrant {
+            TimeGrant(request: TimeRequest(kidID: kid, itemID: nil, reason: reason, minutes: minutes, at: at(12, 0)),
+                      approved: approved, minutes: minutes, at: at(12, 1), by: "Parent")
+        }
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: []) == 0)
+        let grants = [grant(.limit(limit), 15), grant(.limit(limit), 60), grant(.limit(UUID()), 30),
+                      grant(.limit(limit), approved: false, nil), grant(.downtime(UUID()), nil)]
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: grants) == 75)
+        // The rest of the day.
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: grants + [grant(.limit(limit), nil)]) == nil)
+    }
+
     @Test func downtimeGrantLastsForItsMinutesOfUse() {
         let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
         let request = TimeRequest(kidID: kid, itemID: instagram.id, reason: .downtime(window.id), minutes: 15, at: at(21, 0))

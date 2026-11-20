@@ -227,15 +227,29 @@ public struct AppDetails: Sendable {
         }
     }
 
-    /// Requests for more time and one more minute for the app or its category since `since`, newest first.
+    /// Requests for more time and one more minute since `since` that reach the app, newest first: for the app or its
+    /// category, for time on a limit that counts it (whichever app the kid asked from), and for the whole phone during
+    /// Downtime that covers it. One more minute on a limit lets through only the app pressed, or for an all-apps limit
+    /// the whole phone.
     public func requests(_ requests: [TimeRequest], grants: [TimeGrant], extraMinutes: [ExtraMinuteUse],
                          since: Date) -> [Request] {
-        let reach = ids.union(categoryIDs)
         let answers = Dictionary(grants.map { ($0.requestID, $0) }, uniquingKeysWith: { a, b in a.at > b.at ? a : b })
-        let asked = requests.filter { $0.at >= since && $0.itemID.map(reach.contains) == true }
+        let asked = requests.filter { $0.at >= since && reaches($0.reason, itemID: $0.itemID, limit: { _ in true }) }
             .map { Request.asked($0, answers[$0.id]) }
-        let minutes = extraMinutes.filter { $0.at >= since && $0.itemID.map(reach.contains) == true }.map(Request.extraMinute)
+        let minutes = extraMinutes.filter { $0.at >= since && reaches($0.reason, itemID: $0.itemID, limit: \.allApps) }
+            .map(Request.extraMinute)
         return (asked + minutes).sorted { ($0.at, $0.id.uuidString) > ($1.at, $1.id.uuidString) }
+    }
+
+    /// Whether a request for `reason` reaches the app: it names the app or its category, it's for a limit that counts
+    /// the app and `limit` accepts, or it's for the whole phone during Downtime that covers the app.
+    private func reaches(_ reason: BlockReason, itemID: UUID?, limit accepts: (AppLimit) -> Bool) -> Bool {
+        if let itemID, ids.contains(itemID) || categoryIDs.contains(itemID) { return true }
+        switch reason {
+        case let .limit(id): return limits.contains { $0.limit.id == id && accepts($0.limit) }
+        case let .downtime(id): return itemID == nil && downtime.contains { $0.window.id == id }
+        case .blocked: return false
+        }
     }
 
     /// The parents' alert rules for this app's daily use.

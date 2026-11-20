@@ -215,13 +215,12 @@ public enum EnforcementPlanner {
         // Limits.
         let weekday = calendar.component(.weekday, from: now)
         for limit in policy.limits where limit.enabled {
-            let extra = grants.filter { $0.grant.reason == .limit(limit.id) }.map(\.grant.minutes)
             let used = Int((limit.allApps
                 ? totalSeconds(items: items, usage: usage, excluding: policy.alwaysAllowed.union(exempt))
                 : seconds(of: limit.items, items: items, usage: usage, excluding: policy.alwaysAllowed)) / 60)
             plan.used[limit.id] = used
-            guard !extra.contains(nil) else { continue }  // the rest of today
-            let budget = limit.minutes(on: weekday) + extra.compactMap { $0 }.reduce(0, +)
+            guard let extra = Self.extraMinutes(for: limit.id, grants: grants.map(\.grant)) else { continue }  // the rest of today
+            let budget = limit.minutes(on: weekday) + extra
             plan.budgets[limit.id] = budget
             if used >= budget || limitFires[limit.id] == budget {
                 plan.exhaustedLimits.insert(limit.id)
@@ -252,6 +251,16 @@ public enum EnforcementPlanner {
             if isLeft(applied, usage: usage, now: now) { plan.blockedItems.remove(item) }
         }
         return plan
+    }
+
+    /// Minutes parents' approved `grants` add to limit `limitID`; nil when one gave the rest of the day.
+    public static func extraMinutes(for limitID: UUID, grants: some Sequence<TimeGrant>) -> Int? {
+        var total = 0
+        for grant in grants where grant.approved && grant.reason == .limit(limitID) {
+            guard let minutes = grant.minutes else { return nil }
+            total += minutes
+        }
+        return total
     }
 
     /// Seconds used by `targets`: apps and websites directly, categories through their apps and websites, each once.
