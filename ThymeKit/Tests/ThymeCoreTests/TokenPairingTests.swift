@@ -248,10 +248,11 @@ struct TokenPairingTests {
         let site = seen("new.example.com", .domain, after: true)
         let screenshot = seen("com.apple.ScreenshotServicesService", after: true)
         let settings = seen("com.apple.Preferences", after: false)  // unblockable: no token would block it
+        let webApps = seen(BuiltInApps.webApp, after: false)
         var scannedApp = scanned("s")
         scannedApp.firstSeen = lastImport.addingTimeInterval(-120)
         scannedApp.match = newMatched.id
-        let items = [old, new, newMatched, site, screenshot, settings, scannedApp]
+        let items = [old, new, newMatched, site, screenshot, settings, webApps, scannedApp]
 
         let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
         #expect(unmatched.toMatch.map(\.identifier) == ["com.new"])
@@ -275,6 +276,14 @@ struct TokenPairingTests {
         #expect(BuiltInApps.isSystemProcess("com.apple.InCallService"))
         #expect(BuiltInApps.isSystemProcess("com.apple.CoreAuthUI"))
         #expect(BuiltInApps.isSystemProcess("com.apple.springboard"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.printcenter"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.ServicesPaymentAngel"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.CoreServicesUIAgent"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.ContactsUI.LimitedAccessPromptView"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.findmy"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.Preview"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.DocumentsApp"))
+        #expect(!BuiltInApps.isSystemProcess(BuiltInApps.webApp))
         #expect(!BuiltInApps.isSystemProcess("com.apple.mobilesafari"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.Pages"))
         #expect(!BuiltInApps.isSystemProcess("com.uo.StoreLocator"))
