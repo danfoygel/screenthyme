@@ -124,6 +124,8 @@ struct KidHomeView: View {
             .onChange(of: scenePhase, initial: true) {
                 if scenePhase == .active, let taken = ShieldContext.Ask.take() { ask = AskSheet(ask: taken) }
             }
+            // Names and icons for the apps and websites this phone has used, as on a parent's phone.
+            .task { await AppCatalog.shared.lookUp(AppGroup.loadItems()) }
             .refreshable {
                 await model.sampleNow()
                 await model.flush()

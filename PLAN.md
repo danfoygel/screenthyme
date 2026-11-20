@@ -718,7 +718,7 @@ like this:
   counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps
   limits nor let their apps through Downtime. `.all(except:)` takes apps only, so an allowed category lets through
   the scanned apps matched to its apps; unmatched apps stay shielded.
-- Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
+- Parents' and kids' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
   name, and scanned categories by their match's. Unmatched ones are listed apart, by `Label` only.
 
