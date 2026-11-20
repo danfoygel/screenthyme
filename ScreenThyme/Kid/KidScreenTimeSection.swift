@@ -13,7 +13,7 @@ struct KidScreenTimeSection: View {
     var body: some View {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         Section("Screen Time") {
-            if let plan = applied?.plan, let policy = AppGroup.loadPolicy()?.resolved, policy.enabled {
+            if let plan = applied?.plan, let policy = AppGroup.loadPolicy()?.resolved(items: items), policy.enabled {
                 if let downtime = plan.downtime {
                     LabeledContent(downtime.name, value: "until \(Format.time(downtime.interval.end))")
                 }

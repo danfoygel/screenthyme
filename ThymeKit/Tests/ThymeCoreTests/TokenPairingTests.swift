@@ -246,12 +246,85 @@ struct TokenPairingTests {
         let new = seen("com.new", after: true)
         let newMatched = seen("com.matched", after: true)
         let site = seen("new.example.com", .domain, after: true)
+        let screenshot = seen("com.apple.ScreenshotServicesService", after: true)
+        let settings = seen("com.apple.Preferences", after: false)  // unblockable: no token would block it
+        let webApps = seen(BuiltInApps.webApp, after: false)
         var scannedApp = scanned("s")
+        scannedApp.firstSeen = lastImport.addingTimeInterval(-120)
         scannedApp.match = newMatched.id
-        let items = [old, new, newMatched, site, scannedApp]
+        let items = [old, new, newMatched, site, screenshot, settings, webApps, scannedApp]
 
-        #expect(TokenPairing.toMatch(items, lastImport: lastImport).map(\.identifier) == ["com.new"])
-        #expect(TokenPairing.toMatch(items, lastImport: nil).map(\.identifier) == ["com.old", "com.new"])
+        let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
+        #expect(unmatched.toMatch.map(\.identifier) == ["com.new"])
+        // The last import saw it and didn't match it: the scan hasn't added it.
+        #expect(unmatched.toScan.map(\.identifier) == ["com.old"])
+        #expect(TokenPairing.unmatched(items, lastImport: nil).toMatch.map(\.identifier) == ["com.old", "com.new"])
+        #expect(TokenPairing.unmatched(items, lastImport: nil).toScan.isEmpty)
+        // Only the apps used lately.
+        #expect(TokenPairing.unmatched(items, lastImport: lastImport, used: [new.id]).toScan.isEmpty)
+
+        // A scan since the last import adds a token: the next import may match every app.
+        var rescanned = scanned("r")
+        rescanned.firstSeen = lastImport.addingTimeInterval(120)
+        let afterScan = TokenPairing.unmatched(items + [rescanned], lastImport: lastImport)
+        #expect(afterScan.toMatch.map(\.identifier) == ["com.old", "com.new"])
+        #expect(afterScan.toScan.isEmpty)
+    }
+
+    @Test func systemProcessesAreTold() {
+        #expect(BuiltInApps.isSystemProcess("com.apple.ScreenshotServicesService"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.InCallService"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.CoreAuthUI"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.springboard"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.printcenter"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.ServicesPaymentAngel"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.CoreServicesUIAgent"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.ContactsUI.LimitedAccessPromptView"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.findmy"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.Preview"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.DocumentsApp"))
+        #expect(!BuiltInApps.isSystemProcess(BuiltInApps.webApp))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.mobilesafari"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.Pages"))
+        #expect(!BuiltInApps.isSystemProcess("com.uo.StoreLocator"))
+        #expect(!BuiltInApps.isSystemProcess("com.example.PushService"))
+    }
+
+    /// A scan re-issued every token: the old scanned items lost theirs but kept their matches. Their apps are matched
+    /// again, to the new tokens: drawn in `unmatched` mode and counted to match, though the phone saw them long ago and
+    /// an import ran after the scan. An app no scan lists needs a scan.
+    @Test func matchesOfDroppedTokensDoNotCount() throws {
+        let lastImport = Date(timeIntervalSince1970: 1_800_000_000)
+        var app = data("com.app")
+        app.firstSeen = lastImport.addingTimeInterval(-86_400)
+        var dropped = scanned("old")
+        dropped.tokenData = nil
+        dropped.match = app.id
+        var rescanned = scanned("new")
+        rescanned.firstSeen = lastImport.addingTimeInterval(-60)
+        var unlisted = data("com.unlisted")
+        unlisted.firstSeen = app.firstSeen
+        let items = [app, dropped, rescanned, unlisted]
+
+        #expect(TokenPairing.matchedIDs(items).isEmpty)
+        #expect(TokenPairing.order(items, mode: .unmatched).map(\.id) == [rescanned.id])
+        let seen: Set = [TokenPairing.Identifier(kind: .app, identifier: "com.app")]
+        #expect(TokenPairing.drawn(seen, items: items, mode: .unmatched) == seen)
+        let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
+        #expect(unmatched.toMatch.map(\.id) == [app.id])
+        #expect(unmatched.toScan.map(\.id) == [unlisted.id])
+
+        let order = TokenPairing.order(items, mode: .unmatched)
+        let drawn = codes(order: order, truth: [rescanned.id: app], items: items, mode: .unmatched)
+        let resolution = TokenPairing.resolve(drawn, order: order, known: items)
+        #expect(resolution.pairs == [.init(scanned: rescanned.id, kind: .app, identifier: "com.app")])
+
+        // Matched again: nothing left to match.
+        var after = items
+        _ = TokenPairing.apply(resolution.pairs, to: &after, kid: kid)
+        let left = TokenPairing.unmatched(after, lastImport: lastImport.addingTimeInterval(120))
+        #expect(left.toMatch.isEmpty)
+        #expect(left.toScan.map(\.id) == [unlisted.id])
     }
 
     @Test func anotherItemMatchedToThePairedAppLosesItsMatch() {
@@ -267,6 +340,36 @@ struct TokenPairingTests {
         #expect(outcome.cleared == 1)
         #expect(items[1].match == nil)
         #expect(Set(outcome.changed.map(\.id)) == [game.id, guess.id])
+    }
+
+    @Test func anItemThatLostItsTokenKeepsItsMatch() {
+        // A later scan gave Camera a new token: the old item lost its token, and the new one pairs to Camera.
+        let camera = data("com.apple.camera")
+        var old = scanned("old")
+        old.tokenData = nil
+        old.match = camera.id
+        let new = scanned("new")
+        var items = [old, new, camera]
+
+        let outcome = TokenPairing.apply([.init(scanned: new.id, kind: .app, identifier: "com.apple.camera")], to: &items, kid: kid)
+
+        #expect(outcome.added == 1)
+        #expect(outcome.cleared == 0)
+        #expect(items[0].match == camera.id)
+        #expect(outcome.changed.map(\.id) == [new.id])
+    }
+
+    @Test func onlyItemsWithATokenCountAsMatched() {
+        // Camera's old token is gone and its new one isn't paired yet: Camera still needs matching.
+        let camera = data("com.apple.camera")
+        var old = scanned("old")
+        old.tokenData = nil
+        old.match = camera.id
+        let items = [old, scanned("new"), camera]
+
+        #expect(old.liveMatch == nil)
+        #expect(TokenPairing.matched(items).isEmpty)
+        #expect(TokenPairing.unmatched(items, lastImport: nil).toMatch.map(\.identifier) == ["com.apple.camera"])
     }
 
     /// After a first round matched most apps, a new app's codes hold only its own hash: all of them fit one screen.

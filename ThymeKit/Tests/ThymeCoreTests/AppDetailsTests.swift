@@ -88,6 +88,29 @@ struct AppDetailsTests {
         #expect(details.status(in: EnforcementPlan(), policy: off) == .notEnforced)
     }
 
+    @Test func limitReachedLooksPastDowntime() {
+        let limit = AppLimit(name: "Games", items: [scannedGames.id], minutes: 30)
+        let all = AppLimit(name: "All", items: [], allApps: true, minutes: 60)
+        let bedtime = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60, endMinute: 7 * 60)
+        let policy = Policy(kidID: kid, downtime: [bedtime], limits: [limit, all])
+        let details = AppDetails(item: roblox, items: items, policy: policy)
+        func plan(_ seconds: Double) -> EnforcementPlan {
+            EnforcementPlanner.plan(policy: policy, items: items, usage: [roblox.id: seconds, scannedRoblox.id: seconds],
+                                    state: EnforcementDayState(day: testDay), now: at(23, 59, 59), calendar: utc)
+        }
+        // The day's last moment is in Bedtime, but the limit it went over still shows.
+        #expect(details.status(in: plan(31 * 60), policy: policy) == .downtime(name: "Bedtime", until: testDay.adding(days: 1, calendar: utc).start(in: utc).addingTimeInterval(7 * 3600)))
+        #expect(details.limitReached(in: plan(31 * 60), policy: policy)?.name == "Games")
+        #expect(details.limitReached(in: plan(61 * 60), policy: policy)?.name == "Games")
+        #expect(details.limitReached(in: plan(10 * 60), policy: policy) == nil)
+        // Messages isn't a game: only the all-apps limit reaches it.
+        let chat = AppDetails(item: messages, items: items, policy: policy)
+        #expect(chat.limitReached(in: plan(31 * 60), policy: policy) == nil)
+        #expect(chat.limitReached(in: plan(61 * 60), policy: policy)?.name == "All")
+        #expect(AppDetails(item: messages, items: items, policy: policy, exempt: [messages.id])
+            .limitReached(in: plan(61 * 60), policy: policy) == nil)
+    }
+
     @Test func usageAddsUpDaysAndAveragesReportedDaysBeforeToday() {
         let details = AppDetails(item: scannedRoblox, items: items, policy: Policy(kidID: kid))
         func sample(_ item: TrackedItem, _ day: DayKey, _ seconds: Double) -> UsageSample {
@@ -124,6 +147,36 @@ struct AppDetailsTests {
         let result = details.requests([asked, category, phone, old], grants: [grant], extraMinutes: [minute, other],
                                       since: at(-24 * 30, 0))
         #expect(result == [.extraMinute(minute), .asked(category, nil), .asked(asked, grant)])
+    }
+
+    @Test func requestsThatReachTheAppFromOtherApps() {
+        let allApps = AppLimit(name: "All apps", items: [], allApps: true, minutes: 120)
+        let social = AppLimit(name: "Social", items: [roblox.id, messages.id], minutes: 30)
+        let other = AppLimit(name: "Other", items: [messages.id], minutes: 30)
+        let bedtime = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60, endMinute: 7 * 60)
+        let policy = Policy(kidID: kid, downtime: [bedtime], limits: [allApps, social, other])
+        let details = AppDetails(item: roblox, items: items, policy: policy)
+        func asked(_ reason: BlockReason, _ item: UUID?, _ hour: Int) -> TimeRequest {
+            TimeRequest(kidID: kid, itemID: item, reason: reason, minutes: 60, at: at(hour, 0))
+        }
+        // More time on an all-apps limit that names no app, and for the whole phone during Bedtime, count; more time
+        // asked from Messages lets only Messages through, even on a limit that counts Roblox.
+        let all = asked(.limit(allApps.id), nil, 1)
+        let shared = asked(.limit(social.id), messages.id, 2)
+        let phone = asked(.downtime(bedtime.id), nil, 3)
+        let elsewhere = asked(.limit(other.id), messages.id, 4)
+        let messagesBedtime = asked(.downtime(bedtime.id), messages.id, 5)
+        // One more minute lets the whole phone through only for an all-apps limit.
+        let minuteAll = ExtraMinuteUse(kidID: kid, itemID: messages.id, reason: .limit(allApps.id), at: at(6, 0), minutes: 1)
+        let minuteShared = ExtraMinuteUse(kidID: kid, itemID: messages.id, reason: .limit(social.id), at: at(7, 0), minutes: 1)
+        let result = details.requests([all, shared, phone, elsewhere, messagesBedtime], grants: [],
+                                      extraMinutes: [minuteAll, minuteShared], since: at(-24, 0))
+        #expect(result == [.extraMinute(minuteAll), .asked(phone, nil), .asked(all, nil)])
+        // All-apps limits and Downtime for the whole phone don't reach an Always Allowed app.
+        var allowed = policy
+        allowed.alwaysAllowed = [roblox.id]
+        #expect(AppDetails(item: roblox, items: items, policy: allowed)
+            .requests([all, shared, phone], grants: [], extraMinutes: [minuteAll], since: at(-24, 0)).isEmpty)
     }
 
     @Test func alertRulesForTheApp() {

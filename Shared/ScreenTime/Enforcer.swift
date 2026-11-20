@@ -33,11 +33,12 @@ enum Enforcer {
             var state = loadState(now: now)
             change?(&state)
             AppGroup.save(state, to: AppGroup.enforcementStateURL)
-            let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                               endingWindows: endingWindows, exempt: exemptItems(items))
+                                               endingWindows: endingWindows,
+                                               exempt: exemptItems(items).union(webMirrored(items, now: now)))
             apply(plan, policy: policy, items: items)
             AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: Dictionary(policy.limits.map { ($0.id, $0.name) },
                                                                                   uniquingKeysWith: { a, _ in a })),
@@ -119,6 +120,11 @@ enum Enforcer {
     /// time and see the answer) and Phone.
     static let exemptBundleIDs: Set<String> = ["com.danfoygel.screenthyme", "com.apple.mobilephone"]
 
+    /// Apps whose use is Safari's on their website (`WebMirror`): all-apps limits count that time as Safari's.
+    static func webMirrored(_ items: [UUID: TrackedItem], now: Date = Date()) -> Set<UUID> {
+        AppGroup.load(WebMirror.self, from: AppGroup.webMirrorURL)?.mirrored(items: items, today: DayKey(now)) ?? []
+    }
+
     static func exemptItems(_ items: [UUID: TrackedItem]) -> Set<UUID> {
         Set(items.values.filter { $0.kind == .app && exemptBundleIDs.contains($0.identifier) }.map(\.id))
     }
@@ -177,15 +183,19 @@ enum Enforcer {
         limited.domains.subtract(allowed.domains)
         if plan.limitedItems.isEmpty && !plan.allAppsLimited { limits.clearAllSettings() }
         shieldOneByOne(limited, over: "limits")
+        // What's allowed, and what parents' grants let through every used-up limit that counts it.
+        var limitExceptions = tokens.split(tokens.expandingCategories(plan.limitExceptions))
+        limitExceptions.apps.formUnion(allowed.apps)
+        limitExceptions.domains.formUnion(allowed.domains)
         if plan.allAppsLimited {
             // Like Downtime: every category but what's allowed.
-            limits.shield.applicationCategories = .all(except: Tokens.capped(allowed.apps))
-            limits.shield.webDomainCategories = .all(except: Tokens.capped(allowed.domains))
+            limits.shield.applicationCategories = .all(except: Tokens.capped(limitExceptions.apps))
+            limits.shield.webDomainCategories = .all(except: Tokens.capped(limitExceptions.domains))
         } else {
             limits.shield.applicationCategories = limited.categories.isEmpty ? nil
-                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.apps))
+                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(limitExceptions.apps))
             limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
-                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(allowed.domains))
+                : .specific(Tokens.capped(limited.categories), except: Tokens.capped(limitExceptions.domains))
         }
     }
 
@@ -303,7 +313,7 @@ enum Enforcer {
             }
             let tokens = Tokens(items: items)
             // An all-apps limit has no event: one over all activity would count Always Allowed and exempt apps too.
-            // The wake alarm's 2-minute wakes reconcile it instead.
+            // The wake alarm's wakes (every minute of use) reconcile it instead.
             for limit in policy.limits where limit.enabled && !limit.allApps {
                 guard let budget = plan.budgets[limit.id] else { continue }
                 let name = limitPrefix + short(limit.id)

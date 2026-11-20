@@ -129,12 +129,20 @@ extension AppModel {
         do { try await publishRuleSet(for: rule.kidID) } catch { show(error) }
     }
 
-    /// Apps on the kid's phone that another match round may match (`TokenPairing.toMatch`): those that turned up since
-    /// the phone last matched, as its latest heartbeat says. None before its first match, which the kid's phone starts.
-    func appsToMatch(for kid: Kid) -> [TrackedItem] {
-        guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return [] }
-        return TokenPairing.toMatch(Array(data.items(for: kid.id).values), lastImport: last)
-            .sorted { $0.firstSeen > $1.firstSeen }
+    /// Apps used on the kid's phone lately that no scanned app is matched to (`TokenPairing.unmatched`), newest first: those
+    /// a match round may match, and those the app scan doesn't list. None before the phone's first match (its
+    /// latest heartbeat says when), which the kid's phone starts.
+    func unmatchedApps(for kid: Kid) -> TokenPairing.Unmatched {
+        guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return TokenPairing.Unmatched() }
+        let today = DayKey(Date())
+        let items = data.items(for: kid.id)
+        // Not those whose use is Safari's on their website: they aren't installed, so no scan lists them.
+        let used = Set((0..<TokenPairing.days).flatMap { data.samples(kid: kid.id, day: today.adding(days: -$0)) }.map(\.itemID))
+            .subtracting(data.webMirrored(kid: kid.id, items: items, today: today))
+        var unmatched = TokenPairing.unmatched(Array(items.values), lastImport: last, used: used)
+        unmatched.toMatch.sort { $0.firstSeen > $1.firstSeen }
+        unmatched.toScan.sort { $0.firstSeen > $1.firstSeen }
+        return unmatched
     }
 
     func healthIssues(for kid: Kid, now: Date = Date()) -> [HealthIssue] {
@@ -192,3 +200,12 @@ extension HealthIssue {
 }
 
 @MainActor private var testRulesHandled = false
+
+extension FamilyData {
+    /// A kid's apps whose use in the week to `today` was Safari's on their website (`WebMirror`), from the kid's samples.
+    func webMirrored(kid: UUID, items: [UUID: TrackedItem], today: DayKey) -> Set<UUID> {
+        var mirror = WebMirror()
+        for days in 0..<WebMirror.days { mirror.add(samples(kid: kid, day: today.adding(days: -days)), items: items) }
+        return mirror.mirrored(items: items, today: today)
+    }
+}

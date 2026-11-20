@@ -112,7 +112,7 @@ struct TokenPairingView: View {
         return (CGFloat(rows) * side + 20, wanted <= cell)  // and the caption
     }
 
-    /// When codes were last imported: apps first used after it are counted on the home screen (`TokenPairing.toMatch`).
+    /// When codes were last imported: apps first used after it are counted on the home screen (`TokenPairing.unmatched`).
     struct State: Codable {
         var importedAt: Date
     }

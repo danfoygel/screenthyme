@@ -39,14 +39,21 @@ public enum TokenPairing {
             .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
+    /// The items from Apple's data that a scanned item with a token is matched to. A scanned item a later scan dropped
+    /// can't shield its app, so its match doesn't count: a scan can re-issue every token (it did on a kid's phone, all
+    /// at once), and those apps must be matched again, to the new tokens.
+    public static func matchedIDs(_ items: [TrackedItem]) -> Set<UUID> {
+        Set(items.compactMap(\.liveMatch))
+    }
+
     /// Apps, websites and categories some scanned item is matched to.
     static func matched(_ items: [TrackedItem]) -> Set<Identifier> {
-        let matches = Set(items.compactMap { $0.isScanned ? $0.match : nil })
+        let matches = matchedIDs(items)
         return Set(items.filter { matches.contains($0.id) }.map { Identifier(kind: $0.kind, identifier: $0.identifier) })
     }
 
-    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item is matched to already
-    /// (a second scanned token for a matched app would take its match away).
+    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item with a token is matched
+    /// to already (a second scanned token for a matched app would take its match away).
     public static func drawn(_ seen: Set<Identifier>, items: [TrackedItem], mode: Mode) -> Set<Identifier> {
         mode == .all ? seen : seen.subtracting(matched(items))
     }
@@ -398,7 +405,7 @@ public enum TokenPairing {
 
     /// Sets each paired scanned item's match to the item for its bundle ID, domain or category name. That item's id comes from the
     /// kid and the identifier; one this phone hasn't seen yet is created. Another scanned item matched to the same app
-    /// or website loses its match.
+    /// or website loses its match; one without a token keeps it, to say what it was.
     public static func apply(_ pairs: some Sequence<Pair>, to items: inout [TrackedItem], kid: UUID, now: Date = Date())
         -> Outcome {
         var outcome = Outcome()
@@ -428,7 +435,7 @@ public enum TokenPairing {
             changed.insert(index)
         }
         for (index, item) in items.enumerated() where item.isScanned && item.kidID == kid {
-            guard let match = item.match, let owner = paired[match], owner != index else { continue }
+            guard let match = item.liveMatch, let owner = paired[match], owner != index else { continue }
             items[index].match = nil
             changed.insert(index)
             outcome.cleared += 1
@@ -437,15 +444,42 @@ public enum TokenPairing {
         return outcome
     }
 
-    /// Apps from Apple's data that no scanned item is matched to and that turned up after the last import (all of them,
-    /// before the first): another import may match them. Websites are left out: browsing turns up new domains all the
-    /// time, mostly embedded ones the scan doesn't list.
-    public static func toMatch(_ items: [TrackedItem], lastImport: Date?) -> [TrackedItem] {
-        let matched = Set(items.compactMap(\.match))
-        return items.filter { item in
-            item.kind == .app && !item.isScanned && !matched.contains(item.id)
-                && lastImport.map { item.firstSeen > $0 } ?? true
+    /// Apps from Apple's data that no scanned item with a token is matched to, by what would match them.
+    public struct Unmatched: Sendable, Equatable {
+        /// Another import may match them: they turned up since the last one (all of them, before the first), the
+        /// app scan has added apps since, or a scan re-issued their token (a scanned item without a token is still
+        /// matched to them).
+        public var toMatch: [TrackedItem] = []
+        /// An import since they turned up didn't match them, and the scan has added nothing since: the scan doesn't
+        /// list them. "All Apps & Categories" leaves some of Apple's apps out (Safari), which a search in the picker
+        /// finds; limits count them only through their category or all apps.
+        public var toScan: [TrackedItem] = []
+
+        public init() {}
+    }
+
+    /// Websites are left out: browsing turns up new domains all the time, mostly embedded ones the scan doesn't list. So
+    /// are iOS's own processes and Home Screen web apps, which no scan lists (`BuiltInApps.isSystemProcess`,
+    /// `BuiltInApps.webApp`), and apps nothing can block (`BuiltInApps.unblockable`).
+    /// - Parameter used: the apps to count, those used lately; nil counts them all. A deleted app stays unmatched.
+    public static func unmatched(_ items: [TrackedItem], lastImport: Date?, used: Set<UUID>? = nil) -> Unmatched {
+        let matched = matchedIDs(items)
+        let reissued = Set(items.compactMap { $0.isScanned && $0.tokenData == nil ? $0.match : nil })
+        // When the scan last added an app: a scanned item keeps the date it was first picked.
+        let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
+        var result = Unmatched()
+        for item in items where item.kind == .app && !item.isScanned && !matched.contains(item.id)
+            && !BuiltInApps.isSystemProcess(item.identifier) && !BuiltInApps.unblockable.contains(item.identifier)
+            && item.identifier != BuiltInApps.webApp
+            && used.map({ $0.contains(item.id) }) ?? true {
+            if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true,
+               !reissued.contains(item.id) {
+                result.toScan.append(item)
+            } else {
+                result.toMatch.append(item)
+            }
         }
+        return result
     }
 
     /// FNV-1a, 64-bit: stable across processes, unlike `Hasher`.

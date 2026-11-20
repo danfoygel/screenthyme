@@ -16,7 +16,9 @@ struct SelectedItemsView: View {
     var body: some View {
         let ids = selection?.wrappedValue ?? ids
         let catalog = AppCatalog.shared
+        let stale = Policy.staleItems(ids, items: items)
         let listed = ids.compactMap { items[$0] }.map { ($0, catalog.name(of: $0, in: items) ?? "") }
+        let live = listed.filter { !stale.contains($0.0.id) }
         let chosenGroups = groups.filter { ids.contains($0.id) }.sorted { $0.name < $1.name }
         List {
             if !chosenGroups.isEmpty {
@@ -25,12 +27,33 @@ struct SelectedItemsView: View {
                 }
             }
             ForEach([ItemKind.category, .app, .domain], id: \.self) { kind in
-                let group = listed.filter { $0.0.kind == kind }
+                let group = live.filter { $0.0.kind == kind }
                     .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
                 if !group.isEmpty {
                     Section(kind.pluralTitle) {
                         ForEach(group, id: \.0.id) { item in ItemDetailsLink(item: item.0) { ItemName(item: item.0) } }
                     }
+                }
+            }
+            let gone = listed.filter { stale.contains($0.0.id) }
+                .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+            if !gone.isEmpty {
+                Section {
+                    ForEach(gone, id: \.0.id) { item in
+                        staleRow(item.0)
+                            .swipeActions {
+                                if let selection {
+                                    Button("Remove", role: .destructive) { selection.wrappedValue.remove(item.0.id) }
+                                }
+                            }
+                    }
+                    if let selection, gone.count > 1 {
+                        Button("Remove these", role: .destructive) { selection.wrappedValue.subtract(stale) }
+                    }
+                } header: {
+                    Text("No longer on the phone")
+                } footer: {
+                    Text("Deleted, or left out of the latest app scan: these block and allow nothing.")
                 }
             }
             // Removed from this phone's items since the parent chose it.
@@ -53,6 +76,18 @@ struct SelectedItemsView: View {
         }
         .navigationDestination(isPresented: $editing) {
             if let selection { ItemSelectionView(title: title, items: items, groups: groups, selection: selection) }
+        }
+    }
+
+    /// A scanned item that lost its token goes by the app it was matched to, if any.
+    @ViewBuilder
+    private func staleRow(_ item: TrackedItem) -> some View {
+        if item.nickname != nil {
+            ItemName(item: item)
+        } else if let match = item.match.flatMap({ items[$0] }) {
+            ItemName(item: match)
+        } else {
+            Text("Unknown \(item.kind.title.lowercased())").foregroundStyle(.secondary)
         }
     }
 }

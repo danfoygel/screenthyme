@@ -1,6 +1,6 @@
 # ScreenThyme
 
-Family-only iPhone app: kids' phones capture per-app screen time (a Screen Time threshold alarm wakes the extension every 2 minutes of use; it reads Apple's per-app hourly data, iOS 26.4 data access); parents' phones show it within a minute or two. One app, two roles (kid / parent). The design, platform constraints and spike plan are in `PLAN.md`; read it before changing capture or reconstruction.
+Family-only iPhone app: kids' phones capture per-app screen time (a Screen Time threshold alarm wakes the extension every minute of use; it reads Apple's per-app hourly data, iOS 26.4 data access); parents' phones show it within a minute or two. One app, two roles (kid / parent). The design, platform constraints and spike plan are in `PLAN.md`; read it before changing capture or reconstruction.
 
 ## Project layout
 
@@ -8,7 +8,7 @@ Family-only iPhone app: kids' phones capture per-app screen time (a Screen Time 
 project.yml          XcodeGen spec — source of truth for the Xcode project
 ThymeKit/            local Swift package, product ThymeCore: pure logic, no Apple Screen Time/CloudKit imports
   Model/             records (Kid, TrackedItem, UsageFire, UsageSample, Heartbeat, AlertRecord, Rule, Ping, LadderEpoch), DayKey
-  Ladder/            RollingLadder (the 2-minute wake alarm), EventName encoding
+  Ladder/            RollingLadder (the 1-minute wake alarm), EventName encoding
   Journal/           append-only JSONL with flock + fsync, upload ledger
   Reconstruction/    total fires + samples → in-use strip, per-app blocks and totals, live status
   Rules/             RuleEngine (kid-side alerts), HealthEvaluator (parent-side)
@@ -91,8 +91,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 ## Gotchas
 
 - **Never register many events.** Thousands crashed Apple's `UsageTrackingAgent` on smaller phones (PLAN.md §12).
-  The wake alarm is one activity with 10 total-use events (`Shared/ScreenTime/Roller.swift`, `RollingLadder`),
-  re-registered by the extension when half are used and at midnight. A fresh registration adds about 8 probes below
+  The wake alarm is one activity with 20 total-use events (`Shared/ScreenTime/Roller.swift`, `RollingLadder`),
+  re-registered by the extension when half are used and at midnight. A fresh registration adds about 9 probes below
   today's total, because iOS can restart its count lower after a grant (PLAN.md §16). Per-app thresholds were removed once data access
   worked (PLAN.md §13; history before `a860884`).
 - **Data access** (`AuthorizationStatus.approvedWithDataAccess`, iOS 26.4) needs the

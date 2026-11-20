@@ -44,27 +44,43 @@ enum Roller {
     // MARK: - App
 
     /// Replaces all monitoring for `epochID`, continuing after today's known total, and journals a tracking start
-    /// (iOS replays already-passed thresholds as a catch-up).
+    /// (iOS replays already-passed thresholds as a catch-up). Blocks while iOS registers: call it off the main thread.
     static func registerAll(epochID: UUID, kid: Kid, now: Date = Date()) throws -> LadderEpoch {
         let center = DeviceActivityCenter()
         // Every activity but the Enforcer's (the retired token matcher's goes too). Never an empty list: that stops
         // everything.
         let old = center.activities.filter { !Enforcer.owns($0.rawValue) }
-        // The old state stays until the new registration replaces it: a registration that throws must not leave the
-        // alarm running with no state, which stops every roll and the midnight restart.
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let day = DayKey(now)
         let total = MonitorStateStore.load(day: day).totalMinute
         let activity = Activity(name: RollingLadder.activityName(epochID: epochID), day: day,
                                 calibration: LadderCalibration(base: total, registeredAt: now))
         try? AppGroup.journal.append(JournalEntry(kind: .trackingStart, activity: activity.name, at: now))
-        // Under the lock, the extension's callbacks for this registration (its interval start, the replays) wait for
-        // the new state. Without it, an old or missing state made the interval start re-register from 0 over ours,
-        // dropping the probes.
-        try AppGroup.withLock("roll") {
+        // The new state goes in first, so the extension's callbacks for this registration (its interval start, the
+        // replays) find it: an old or missing state made the interval start re-register from 0 over ours, dropping
+        // the probes. iOS is asked outside the lock, which those callbacks take: registering under it took 31 s
+        // every time (93 s once), with the app frozen.
+        // Probes find out whether iOS restarted today's count lower, as a new authorization grant can.
+        let previous = try AppGroup.withLock("roll") { () throws -> Data? in
+            let previous = try? Data(contentsOf: url)
+            var registered = activity
+            registered.upTo = ladder.thresholds(after: total).last ?? total
+            try JSONEncoder.thyme.encode(registered).write(to: url, options: .atomic)
+            return previous
+        }
+        do {
             if !old.isEmpty { center.stopMonitoring(old) }
-            // Probes find out whether iOS restarted today's count lower, as a new authorization grant can.
-            try register(activity, after: total, probes: ladder.probes(below: total), center: center)
+            try startMonitoring(activity.name, after: total, probes: ladder.probes(below: total), center: center)
+        } catch {
+            // A registration that throws leaves the state as it found it, not one for thresholds iOS never took.
+            AppGroup.withLock("roll") {
+                if let previous {
+                    try? previous.write(to: url, options: .atomic)
+                } else {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+            throw error
         }
         let active = center.activities.map(\.rawValue)
         let events = center.events(for: DeviceActivityName(activity.name)).count
@@ -163,10 +179,18 @@ enum Roller {
 
     // MARK: - Registration
 
-    /// Ladder events after `minute` and `probes`, all in iOS's minutes.
-    private static func register(_ activity: Activity, after minute: Int, probes: [Int] = [],
-                                 center: DeviceActivityCenter) throws {
+    /// Ladder events after `minute`, all in iOS's minutes, and the state that goes with them. The extension's, under
+    /// the "roll" lock: there it takes milliseconds, unlike the app's (`registerAll`).
+    private static func register(_ activity: Activity, after minute: Int, center: DeviceActivityCenter) throws {
         var activity = activity
+        activity.upTo = try startMonitoring(activity.name, after: minute, center: center)
+        try JSONEncoder.thyme.encode(activity).write(to: url, options: .atomic)
+    }
+
+    /// Ladder events after `minute` and `probes`, all in iOS's minutes. Returns the highest ladder threshold.
+    @discardableResult
+    private static func startMonitoring(_ name: String, after minute: Int, probes: [Int] = [],
+                                        center: DeviceActivityCenter) throws -> Int {
         let minutes = ladder.thresholds(after: minute)
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         for minute in minutes {
@@ -177,9 +201,8 @@ enum Roller {
             events[.init(EventName.probe(minute: probe))] = DeviceActivityEvent(
                 threshold: DateComponents(minute: probe), includesPastActivity: true)
         }
-        try center.startMonitoring(DeviceActivityName(activity.name), during: schedule, events: events)
-        activity.upTo = minutes.last ?? minute
-        try JSONEncoder.thyme.encode(activity).write(to: url, options: .atomic)
+        try center.startMonitoring(DeviceActivityName(name), during: schedule, events: events)
+        return minutes.last ?? minute
     }
 
     private static func save(_ activity: Activity) {

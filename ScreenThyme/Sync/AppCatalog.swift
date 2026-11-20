@@ -4,7 +4,7 @@ import Observation
 import ThymeCore
 import UIKit
 
-/// Real names and icons for the bundle IDs and domains in Apple's data (PLAN.md §15.6), cached on a parent's phone.
+/// Real names and icons for the bundle IDs and domains in Apple's data (PLAN.md §15.6), cached on each phone.
 /// Apps come from the App Store's public lookup, which knows most of Apple's own apps too (`BuiltInApps` keeps their
 /// short names); websites from the sites themselves. An app matched to a scanned item takes that item's icon, as the
 /// kid's phone draws it, before the store's (Settings and App Store aren't in the store); Settings, which the scan never
@@ -143,7 +143,7 @@ final class AppCatalog {
         return nil
     }
 
-    /// The parent's own copy of ScreenThyme's icon, for the kid's ScreenThyme (not in the store).
+    /// This phone's copy of ScreenThyme's icon (it isn't in the store).
     private static let ownIcon: UIImage? = {
         let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
         let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]

@@ -64,6 +64,53 @@ public struct Policy: Codable, Sendable, Hashable {
         return policy
     }
 
+    /// `resolved`, following new tokens first (`followingNewTokens`).
+    public func resolved(items: [UUID: TrackedItem]) -> Policy {
+        followingNewTokens(items: items).resolved
+    }
+
+    /// The policy with each scanned item that lost its token replaced by the scanned items with a token matched to the
+    /// same app, website or category: a later app scan gave it a new token, and Downtime, limits, Always Allowed,
+    /// Blocked and groups follow it there. One with no such item stays, for an app no longer on the kid's phone
+    /// (`staleItems`). Following twice changes nothing.
+    public func followingNewTokens(items: [UUID: TrackedItem]) -> Policy {
+        let stale = Self.staleItems(allItemIDs, items: items).compactMap { items[$0] }.filter { $0.match != nil }
+        guard !stale.isEmpty else { return self }
+        var live: [UUID: [UUID]] = [:]
+        for item in items.values { if let match = item.liveMatch { live[match, default: []].append(item.id) } }
+        var replacements: [UUID: [UUID]] = [:]
+        for item in stale {
+            guard let ids = live[item.match!]?.filter({ items[$0]?.kind == item.kind }), !ids.isEmpty else { continue }
+            replacements[item.id] = ids
+        }
+        guard !replacements.isEmpty else { return self }
+        func follow(_ ids: Set<UUID>) -> Set<UUID> {
+            Set(ids.flatMap { replacements[$0] ?? [$0] })
+        }
+        var policy = self
+        policy.alwaysAllowed = follow(alwaysAllowed)
+        policy.blocked = follow(blocked)
+        for index in policy.limits.indices { policy.limits[index].items = follow(limits[index].items) }
+        for index in policy.downtime.indices { policy.downtime[index].items = follow(downtime[index].items) }
+        for index in policy.groups.indices { policy.groups[index].items = follow(groups[index].items) }
+        return policy
+    }
+
+    /// Scanned items in `ids` that lost their token. In a policy that followed new tokens, they had none to follow: apps
+    /// no longer on the kid's phone, or not picked in the latest app scan. They block and allow nothing.
+    public static func staleItems(_ ids: Set<UUID>, items: [UUID: TrackedItem]) -> Set<UUID> {
+        ids.filter { id in items[id].map { $0.isScanned && $0.tokenData == nil } ?? false }
+    }
+
+    /// Every item id the policy names, in groups too.
+    var allItemIDs: Set<UUID> {
+        var ids = alwaysAllowed.union(blocked)
+        for limit in limits { ids.formUnion(limit.items) }
+        for window in downtime { ids.formUnion(window.items) }
+        for group in groups { ids.formUnion(group.items) }
+        return ids
+    }
+
     /// What `window` blocks, as items; nil for the whole phone.
     public func downtimeItems(_ window: DowntimeWindow) -> Set<UUID>? {
         window.isWholePhone ? nil : expandingGroups(window.items)
@@ -241,7 +288,8 @@ public struct TimeRequest: Codable, Sendable, Hashable, Identifiable {
 }
 
 /// A parent's answer, saved as `TimeGrant.<request id>` so the kid's phone can fetch it by name.
-/// For a limit, `minutes` are added to that limit today. For Downtime, the item (or with no item, the whole phone) is
+/// For a limit, the item is let through it for `minutes` of its use (with no item, `minutes` are added to the limit
+/// today); for the rest of today when `minutes == nil`. For Downtime, the item (or with no item, the whole phone) is
 /// exempt for `minutes` of use or of the clock, or until the window ends when `minutes == nil`.
 public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID { requestID }

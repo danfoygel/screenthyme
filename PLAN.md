@@ -184,7 +184,7 @@ Rules are edited on the parent device and synced to the kid device. They are eva
 | Rule | How it works |
 |---|---|
 | **Quiet hours** (bedtime, school) | A total fire inside the window → "Phone in use during bedtime" within about 1 min. Updated with the app name once it crosses a threshold. Throttled, with a "still using" alert every N min. |
-| **Daily threshold** (whole phone or one app) | Checked at each wake against today's total or Apple's per-app seconds, so it fires within one 2-minute wake of the limit. |
+| **Daily threshold** (whole phone or one app) | Checked at each wake against today's total or Apple's per-app seconds, so it fires within one wake (a minute of use) of the limit. |
 | **Long session** | The extension tracks the current in-use run (from total fires) and Apple's per-app seconds within it. The run passes N min → alert naming the dominant app. |
 | **New app** | An app or website never seen on this phone before (by bundle ID or domain) → alert. |
 | **Staleness / tamper** | Evaluated on the **parent** device. See §4.7. |
@@ -204,7 +204,10 @@ All alerts are recorded in the timeline, so the alert feed and the timeline matc
   - backlog size
   - app version
   - the Settings switches the kid can turn off for ScreenThyme and no app can lock: Background App Refresh, cellular
-    data, Bluetooth, and Low Power Mode (`DevicePermissions`). The kid app uses no notifications, so they aren't one
+    data, Local Network (as the nearby link last found it: no API says), Bluetooth, iCloud (signed in, on for
+    ScreenThyme), and Low Power Mode (`DevicePermission`, read by `DevicePermissions`). The kid app uses no
+    notifications or camera, so they aren't among them. Debug → Permissions lists every permission with this phone's
+    answers, and on a parent's phone what each kid's phone last reported
 - **Parent-side checks:**
   - authorization not approved → **immediate alert**
   - missing activities → **immediate alert**, and the kid app re-registers on its next launch
@@ -402,6 +405,11 @@ Parents see it under the kid's Health settings, as mWh and, for known batteries,
 Not counted: work iOS does for us in its own processes (Screen Time's usage tracking, CloudKit's network transfers
 through the system's sync daemon), and anything a process uses after its last sample.
 
+Measured Nov 15–19, 2026 at 2-minute wakes: the monitor extension used 2–6 J a day on each kid phone (6–37 mJ per
+callback), about 0.02% of an iPhone SE's charge; the app used 10–190 J. Wakes come only while the phone is in use,
+when the screen draws far more. So the wake alarm moved to **one wake per minute of use, 20 thresholds registered**
+(the same 20-minute window, so re-registrations stay as rare). Check the next days' reports against these.
+
 ## 11. Findings from the first device run (Nov 14, 2026, iOS 26.6, adult phone, `.individual`)
 
 **S1(b), scale: passed.**
@@ -523,8 +531,10 @@ Targets are TrackedItems with tokens: the app scan's apps, websites and categori
 have bundle IDs but no tokens, so they can't be shielded.
 
 Ask for more time: the kid's **TimeRequest** (item, reason, 15 min / 1 h / rest of day) becomes an Alert (banner on
-parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, the grant adds
-minutes to that limit today. For Downtime, it pauses Downtime on the whole phone for that many minutes of the clock, or
+parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, a grant that names an app (or
+a category) lets only that through the limit for its minutes of use: the limit stays used up for everything else, its
+category and all-apps shields leave the app out, and its use still counts. One that names nothing (an all-apps limit's
+category shield) adds minutes to that limit today. For Downtime, it pauses Downtime on the whole phone for that many minutes of the clock, or
 until the window ends (a press on a category shield can't say which app, §15.3).
 
 ### 15.2 Kid phone
@@ -537,12 +547,12 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   limits' apps, websites and categories, minus always allowed). iOS shows the union of the stores.
 - DeviceActivity activities (≤ 20 in total): the wake alarm `st.<epoch8>.tot`; one per Downtime window `dt.<id8>`
   (split `.a`/`.b` when it wraps midnight); one per limit `lim.<id8>` with one event at its budget (limit plus grants)
-  over the limit's tokens. Interval starts and ends and limit fires call the Enforcer. **Every 2-minute wake also
+  over the limit's tokens. Interval starts and ends and limit fires call the Enforcer. **Every wake (each minute of use) also
   reconciles**, so a missed callback corrects itself within one wake of use.
 - **All-apps limits** count Apple's per-app use, less Always Allowed, ScreenThyme and Phone (websites only to subtract
   allowed ones: they also count toward Safari), and shield `.all(except: allowed)` in the `limits` store, like
-  Downtime. They get no `lim.` activity: an event over all activity can't leave out Always Allowed, so the 2-minute
-  wakes reconcile them. Their shield names only a category, so one more minute or a request is for the whole phone.
+  Downtime. They get no `lim.` activity: an event over all activity can't leave out Always Allowed, so the wakes
+  reconcile them. Their shield names only a category, so one more minute or a request is for the whole phone.
 - `Roller.registerAll` no longer stops every activity, only the wake alarm's.
 - Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
   "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" opens ScreenThyme (§15.4), or
@@ -568,6 +578,12 @@ until the window ends (a press on a category shield can't say which app, §15.3)
 each an item with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). Parents pick them by `Label`, so
 no search or sorting. A second pick of ScreenThyme alone gives its own token, which Downtime and limits always let
 through (`exempt-tokens.json`). Apps installed later are covered by their category until the next scan.
+- **New tokens** (Nov 19): a rescan can re-issue every token (§15.6). Items it didn't pick lose their token but keep
+  their match, so they say what they were, and pairing a new token to the same app leaves it. Policies follow an app
+  to its new token (`Policy.followingNewTokens`: the scanned items with a token matched to the same app replace the
+  old one), on the kid's phone when it enforces and on parents' phones when they show or save the policy. Before
+  this, a kid's Always Allowed kept 5 old tokens that allowed nothing and showed as "App". Items with no new token to
+  follow show under "No longer on the phone", by their match's name, and parents can remove them.
 - Downtime shields every category except Always Allowed: no app list, so no cap.
 - Blocked apps and exhausted limits' apps are shielded one by one over `restrictions`/`limits` plus overflow stores
   `.2`…`.6` (50 each).
@@ -581,8 +597,8 @@ category ids) for the app, which shows `AskForTimeView`:
 - From a limit or Blocked page the app is known. From a Downtime page only the category is, so the kid picks the app
   in Apple's picker (names, icons, search); its token matches a scanned item, or becomes one.
 - How much (15 min, 1 hour, until Downtime ends or the rest of today) and an optional note for the parents.
-- The request names the app: a Downtime grant lets that app through (`.all(except:)`), not the whole phone. With no
-  app chosen, Downtime pauses for the whole phone.
+- The request names the app: a Downtime or limit grant lets that app through (`.all(except:)`), not the whole phone
+  or everything the limit counts. With no app chosen, Downtime pauses for the whole phone.
 - The screen uploads the request and checks for the answer every 5 s while open. ScreenThyme is exempt from
   Downtime through the scan's ScreenThyme pick.
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
@@ -605,7 +621,7 @@ past 1 the menu item reads "N more minutes". "Ask for more time" then opens a su
   The extension compiles the Enforcer and `UsageSnapshot` (today's use, without Apple's data or SwiftUI).
 - Shielded again by the activity `om.end`: schedules count whole minutes and last at least 15, so it is a ~16-minute
   interval whose end warning falls at the first whole minute after the extra time ends. The
-  monitor's `intervalWillEndWarning` ends what is due and reconciles. Any 2-minute wake after the minute also
+  monitor's `intervalWillEndWarning` ends what is due and reconciles. Any wake after the minute also
   reshields it.
 - No alert to parents; the journal notes each one. Each is also kept as an `ExtraMinuteUse` (App Group
   `Outbox/extra-minutes.jsonl`), uploaded like requests and sent nearby, so an app's details show it on parents'
@@ -649,8 +665,8 @@ like this:
   the order (the extension reads the App Group). Core Image draws nothing in the report extension (not even its
   software renderer), so the codes come from our own encoder (`QRCode`) and a `Canvas`. An identifier's number is the sum of its reports' bits. The kid
   takes 2 screenshots; the app reads them from the photo library with Vision and saves the matches. A pair
-  overrides a match from watching use, and another scanned item matched to the same app loses its match and is
-  watched again. Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
+  overrides a match from watching use, and another scanned item with a token matched to the same app loses its match
+  and is watched again (one without a token keeps it: §15.3, new tokens). Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
   filtered to every scanned item, one large code) spells out; a failed parity check (two scanned tokens for one app)
   is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the window, before
   tracking began) creates a bare item for it, so parents can name the match; it never counts as a new app. First run
@@ -700,6 +716,28 @@ like this:
   since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
   websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
   has no token: scan again first.
+- **A rescan can re-issue every token** (Nov 19, kid's phone): the scan's tokens share their first encrypted bytes,
+  and those bytes changed between Nov 16 and Nov 19 with no new grant in the journal (a shield's token that evening had
+  the new ones too). Old tokens still worked in report filters, but a rescan returned the same apps under new tokens
+  (`189 picked, 371 changed`): new, unmatched items, while the old ones lost their tokens and kept their matches.
+  Those matches counted, so `unmatched` rounds skipped those apps and nothing could be blocked by name. Now only
+  scanned items with a token count as matches (`TokenPairing.matchedIDs`); a tokenless item's match says its app needs
+  a match round, not a scan (`TokenPairing.unmatched`).
+- **"Apps" that are websites** (Nov 19, kid's phone): Depop, Urban Outfitters, Amazon, NYTimes and NYT Cooking had
+  use, but no scan or match found them, and the picker listed only their websites, even searched for by name. None was
+  installed (`devicectl device info apps --include-all-apps`): every minute of theirs fell inside Safari's in the same
+  interval (`2.0` beside Safari's `2.0`), and Apple listed no website for those shops. Apple's data reports a website's
+  time under its App Store app's bundle ID too, so it counted twice in all-apps totals. `WebMirror` finds them: no live
+  match and 95% of the last 7 days inside Safari's, or inside another app's with 2 minutes or more in the week (Amazon's
+  minutes also fell inside Libby's, whose in-app browser opens amazon.com for Kindle books). The Sampler keeps a tally (`web-mirror.json`); all-apps limits and
+  parents' "Apps (Apple's count)" leave them out (through `exempt`), and so does the unmatched list. Category limits
+  still count them: Safari isn't in the shop's category, and it's the only record of the shop.
+- **Apple's apps need a search:** "All Apps & Categories" leaves out Safari (and maybe Find My, Clock, Fitness), but the
+  picker lists it when searched for by name; ticking it adds it to the scan. Ask for more time's picker gave Safari's
+  token too, and the next scan dropped it: a scan now drops only tokens the last scan picked, and a token picked again
+  goes back to its item, match and all.
+- **Apps nothing blocks** (Phone, Settings, Compass, the Screen Time unlock screen; `BuiltInApps.unblockable`) are left
+  out of the unmatched list: a token wouldn't block them.
 - **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
   debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
   was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment
@@ -711,7 +749,7 @@ like this:
   counted nothing in our numbers (only its `lim.` event enforced it), and Always Allowed categories neither left all-apps
   limits nor let their apps through Downtime. `.all(except:)` takes apps only, so an allowed category lets through
   the scanned apps matched to its apps; unmatched apps stay shielded.
-- Parents' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
+- Parents' and kids' phones name apps from the App Store's public lookup (`itunes.apple.com/lookup?bundleId=`, cached in
   `app-catalog.json`) or `BuiltInApps`, with icons; the policy pickers sort and search scanned apps by their match's
   name, and scanned categories by their match's. Unmatched ones are listed apart, by `Label` only.
 

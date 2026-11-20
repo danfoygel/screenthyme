@@ -89,10 +89,19 @@ struct KidCard: View {
                 }
             }
             .font(.subheadline)
-            Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items))))").font(.subheadline.monospacedDigit())
-            let toMatch = model.appsToMatch(for: kid).count
-            if toMatch > 0 {
-                Label("\(toMatch) new \(toMatch == 1 ? "app" : "apps") to match", systemImage: "qrcode.viewfinder")
+            let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: DayKey(Date()))
+            Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items, excluding: mirrored))))")
+                .font(.subheadline.monospacedDigit())
+            let unmatched = model.unmatchedApps(for: kid)
+            if !unmatched.toMatch.isEmpty {
+                let count = unmatched.toMatch.count
+                Label("\(count) new \(count == 1 ? "app" : "apps") to match", systemImage: "qrcode.viewfinder")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if !unmatched.toScan.isEmpty {
+                let count = unmatched.toScan.count
+                Label("\(count) \(count == 1 ? "app" : "apps") not in the app scan", systemImage: "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -109,9 +118,11 @@ struct KidCard: View {
     }
 }
 
-/// Apple's total over apps only: websites also count as Safari's time.
-func appTotal(_ timeline: DayTimeline, _ items: [UUID: TrackedItem]) -> Int {
-    Int((timeline.items.filter { items[$0.key]?.kind != .domain }.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
+/// Apple's total over apps only: websites also count as Safari's time, and so do `mirrored` apps, whose use is Safari's on
+/// their website (`WebMirror`).
+func appTotal(_ timeline: DayTimeline, _ items: [UUID: TrackedItem], excluding mirrored: Set<UUID> = []) -> Int {
+    let apps = timeline.items.filter { items[$0.key]?.kind != .domain && !mirrored.contains($0.key) }
+    return Int((apps.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
 }
 
 struct KidDayView: View {
@@ -134,23 +145,31 @@ struct KidDayView: View {
                         .disabled(day >= DayKey(Date()))
                 }
                 .buttonStyle(.borderless)
-                LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items)))
+                let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: day)
+                LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items, excluding: mirrored)))
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
             }
-            let toMatch = model.appsToMatch(for: kid)
-            if !toMatch.isEmpty {
+            let unmatched = model.unmatchedApps(for: kid)
+            if !unmatched.toMatch.isEmpty {
+                let toMatch = unmatched.toMatch
                 Section {
                     NavigationLink { PairingScannerView(kid: kid) } label: {
                         Label("Match \(toMatch.count) new \(toMatch.count == 1 ? "app" : "apps") with camera",
                               systemImage: "qrcode.viewfinder")
                             .foregroundStyle(.orange)
                     }
-                    ForEach(toMatch.prefix(5)) { item in ItemName(item: item).font(.subheadline) }
-                    if toMatch.count > 5 {
-                        Text("and \(toMatch.count - 5) more").font(.subheadline).foregroundStyle(.secondary)
-                    }
+                    UnmatchedNames(items: toMatch)
                 } footer: {
-                    Text("Used on \(kid.displayName)'s phone since its last match, so limits don't count them yet. Apps installed since the last app scan need a new scan on that phone first.")
+                    Text("Used on \(kid.displayName)'s phone since its last match, so limits don't count them yet.")
+                }
+            }
+            if !unmatched.toScan.isEmpty {
+                Section {
+                    UnmatchedNames(items: unmatched.toScan)
+                } header: {
+                    Text("Not in the app scan")
+                } footer: {
+                    Text("Used this week, but the last match didn't find them in the app scan: \"All Apps & Categories\" leaves some apps out. On \(kid.displayName)'s phone, tap Scan apps, search for each one and tick it, then match again. Until then, Downtime and limits on their category or on all apps cover them, but nothing by name.")
                 }
             }
             Section {
@@ -164,7 +183,7 @@ struct KidDayView: View {
             Section {
                 TimelineLanes(timeline: timeline, items: items, dayStart: day.start(), tint: kid.color)
             } footer: {
-                Text("Apple counts each app's use between two of the phone's check-ins (every 2 minutes of use); each block puts that count on the minutes just before an on-time check-in. Fainter means the app was in use for only part of that time. Tap a block for times.")
+                Text("Apple counts each app's use between two of the phone's check-ins (every minute of use); each block puts that count on the minutes just before an on-time check-in. Fainter means the app was in use for only part of that time. Tap a block for times.")
             }
             Section {
                 UsageHeatmapView(heatmap: UsageHeatmap.build(today: DayKey(Date()), now: Date(),
@@ -177,9 +196,17 @@ struct KidDayView: View {
                 Text("All apps. " + UsageHeatmapView.footer)
             }
             Section("Apps") {
-                ForEach(used.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, usage in
+                let apps = used.filter { items[$0.key]?.kind != .domain }
+                let shielded = day == DayKey(Date()) ? timeShielded(apps.map(\.key), items: items)
+                    : limitsReached(apps.map(\.key), items: items)
+                ForEach(apps, id: \.key) { id, usage in
                     ItemDetailsLink(item: items[id]) {
-                        LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
+                        LabeledContent {
+                            HStack(spacing: 6) {
+                                TimeShieldIcon(status: shielded[id])
+                                Text(Format.minutes(usage.minutes)).monospacedDigit()
+                            }
+                        } label: { ItemName(item: items[id]) }
                     }
                 }
             }
@@ -200,6 +227,53 @@ struct KidDayView: View {
         .navigationTitle(kid.displayName)
         .bugButton()
         .refreshable { await model.refresh() }
+    }
+
+    /// The apps Downtime or a limit shields now, as worked out from what has synced, with why.
+    private func timeShielded(_ ids: [UUID], items: [UUID: TrackedItem]) -> [UUID: AppDetails.Status] {
+        let policy = model.data.policy(for: kid.id)
+        guard policy.enabled else { return [:] }
+        let plan = AppDetailsData.parentPlan(model.data, kid: kid.id, items: items, policy: policy)
+        let exempt = Enforcer.exemptItems(items)
+        var result: [UUID: AppDetails.Status] = [:]
+        for id in ids {
+            guard let item = items[id] else { continue }
+            let status = AppDetails(item: item, items: items, policy: policy, exempt: exempt).status(in: plan, policy: policy)
+            switch status {
+            case .downtime, .limit: result[id] = status
+            default: break
+            }
+        }
+        return result
+    }
+
+    /// On an earlier day, the apps that went over a limit, by the policy in force at the day's end and that day's use
+    /// and answers.
+    private func limitsReached(_ ids: [UUID], items: [UUID: TrackedItem]) -> [UUID: AppDetails.Status] {
+        let end = day.end().addingTimeInterval(-1)
+        guard let policy = model.data.storedPolicy(for: kid.id, at: end)?.followingNewTokens(items: items), policy.enabled
+        else { return [:] }
+        let plan = AppDetailsData.parentPlan(model.data, kid: kid.id, items: items, policy: policy, now: end)
+        let exempt = Enforcer.exemptItems(items)
+        var result: [UUID: AppDetails.Status] = [:]
+        for id in ids {
+            guard let item = items[id], let limit = AppDetails(item: item, items: items, policy: policy, exempt: exempt)
+                .limitReached(in: plan, policy: policy) else { continue }
+            result[id] = .limit(name: limit.name)
+        }
+        return result
+    }
+}
+
+/// The first few of a kid's unmatched apps, then how many more.
+private struct UnmatchedNames: View {
+    let items: [TrackedItem]
+
+    var body: some View {
+        ForEach(items.prefix(5)) { item in ItemName(item: item).font(.subheadline) }
+        if items.count > 5 {
+            Text("and \(items.count - 5) more").font(.subheadline).foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -256,7 +330,7 @@ struct RequestRow: View {
                 Spacer()
                 Text(Format.relative(request.at)).font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason).")
+            Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason)\(forItemOnly(item)).")
             if let note = request.note {
                 Text("\u{201C}\(note)\u{201D}").italic()
             }
@@ -278,6 +352,12 @@ struct RequestRow: View {
 
     private var reason: String {
         Self.describe(request.reason, itemID: request.itemID, policy: model.data.policy(for: request.kidID))
+    }
+
+    /// A limit's time asked from an app (or a category's shield) lets only that through.
+    private func forItemOnly(_ item: TrackedItem?) -> String {
+        guard case .limit = request.reason, let item else { return "" }
+        return item.kind == .category ? ", for this category only" : ", for this app only"
     }
 
     /// "during Bedtime", "over the Games limit".

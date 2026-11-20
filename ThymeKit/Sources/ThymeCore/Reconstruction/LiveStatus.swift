@@ -6,8 +6,8 @@ public struct LiveStatus: Sendable, Equatable {
     public var probableItem: UUID?
     public var lastActiveAt: Date?
 
-    /// A wake (total fire) younger than this means the phone is in use now: one step of 2 minutes plus slack.
-    public static let freshness: TimeInterval = 180
+    /// A wake (total fire) younger than this means the phone is in use now: one step of a minute plus slack.
+    public static let freshness: TimeInterval = 120
 
     public init(inUse: Bool, probableItem: UUID?, lastActiveAt: Date?) {
         self.inUse = inUse

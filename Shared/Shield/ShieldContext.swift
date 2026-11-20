@@ -7,10 +7,16 @@ import ThymeCore
 struct ShieldContext {
     let config = SharedConfig.load()
     let applied = AppGroup.load(AppliedPlan.self, from: AppGroup.enforcementURL)
-    /// Groups resolved to their items (`Policy.resolved`).
-    let policy = AppGroup.loadPolicy()?.resolved
-    let items = AppGroup.loadItems()
+    /// Groups resolved to their items, following new tokens (`Policy.resolved(items:)`).
+    let policy: Policy?
+    let items: [TrackedItem]
     let state = AppGroup.load(EnforcementDayState.self, from: AppGroup.enforcementStateURL)
+
+    init() {
+        let items = AppGroup.loadItems()
+        self.items = items
+        policy = AppGroup.loadPolicy()?.resolved(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }))
+    }
 
     /// A blocked app, website or category as the shield names it.
     struct Target {
@@ -88,7 +94,8 @@ struct ShieldContext {
         // A limit on the app itself first, then all-apps limits.
         let exhausted = (policy?.limits ?? []).filter { plan.exhaustedLimits.contains($0.id) }
             .sorted { ($0.allApps ? 1 : 0, $0.id.uuidString) < ($1.allApps ? 1 : 0, $1.id.uuidString) }
-        for limit in exhausted where limit.allApps ? plan.allAppsLimited : !limit.items.isDisjoint(with: ids) {
+        for limit in exhausted where (limit.allApps ? plan.allAppsLimited : !limit.items.isDisjoint(with: ids))
+            && (plan.limitPasses[limit.id] ?? []).isDisjoint(with: ids) {
             return .limit(limit.id)
         }
         if !plan.blockedItems.isDisjoint(with: ids) { return .blocked }

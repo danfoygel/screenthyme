@@ -78,6 +78,8 @@ enum AppGroup {
     static var exemptTokensURL: URL { container.appending(path: "exempt-tokens.json") }
     /// `Sampler`'s last fetch of Apple's per-hour, per-app totals, to take differences from.
     static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
+    /// Apps whose use is Safari's on their website (`WebMirror`): the `Sampler` adds to it, the `Enforcer` reads it.
+    static var webMirrorURL: URL { container.appending(path: "web-mirror.json") }
     /// Which scanned items screenshot matching pairs (`TokenPairing.Mode`): the app sets it, the report extension draws by it.
     static var tokenPairingModeURL: URL { container.appending(path: "token-pairing-mode.json") }
     static func tokenPairingMode() -> TokenPairing.Mode { load(TokenPairing.Mode.self, from: tokenPairingModeURL) ?? .unmatched }

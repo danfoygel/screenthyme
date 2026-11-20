@@ -16,6 +16,9 @@ struct KidDebugView: View {
         let entries = AppGroup.journal.entries(on: day)
         Form {
             Section {
+                NavigationLink("Permissions") { PermissionsView() }
+            }
+            Section {
                 HStack {
                     Button { day = day.adding(days: -1) } label: { Image(systemName: "chevron.left") }
                     Spacer()
@@ -35,7 +38,7 @@ struct KidDebugView: View {
                         LabeledContent("iOS counts less by", value: "\(activity.offset) min")
                     }
                 }
-                Button("Re-register") { model.startMonitoring() }
+                Button("Re-register") { Task { await model.startMonitoring() } }
                 Button("Stop monitoring", role: .destructive) { model.stopMonitoring() }
             }
             Section("Today as parents see it") {

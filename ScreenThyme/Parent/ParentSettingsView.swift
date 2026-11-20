@@ -63,6 +63,7 @@ struct ParentSettingsView: View {
                     Text("The bug at the top right of every screen reports a problem, on kids' phones and here. It becomes an issue on GitHub.")
                 }
                 Section {
+                    NavigationLink("Permissions") { PermissionsView() }
                     Button("Allow notifications") { Task { await Notifier.requestPermission() } }
                     Button("Re-install push subscriptions") { Task { await model.reinstallSubscriptions() } }
                 }
@@ -143,7 +144,7 @@ struct KidSettingsView: View {
                 }
                 if model.data.items(for: kid.id).values.contains(where: \.isScanned) {
                     NavigationLink { PairingScannerView(kid: kid) } label: {
-                        let count = model.appsToMatch(for: kid).count
+                        let count = model.unmatchedApps(for: kid).toMatch.count
                         LabeledContent("Match apps with camera", value: count == 0 ? "" : "\(count) new")
                             .foregroundStyle(count == 0 ? Color.primary : .orange)
                     }

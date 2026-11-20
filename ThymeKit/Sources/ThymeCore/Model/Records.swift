@@ -51,7 +51,8 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     public var category: String?
     public var nickname: String?
     public var firstSeen: Date
-    /// For a scanned item: the item from Apple's data for the same app, learned from screenshots (`TokenPairing`).
+    /// For a scanned item: the item from Apple's data for the same app, learned from screenshots (`TokenPairing`). One
+    /// that lost its token (a later scan gave its app a new one) keeps it, to say what it was.
     public var match: UUID?
 
     public init(kidID: UUID, kind: ItemKind, identifier: String, name: String? = nil, tokenData: Data? = nil,
@@ -73,6 +74,10 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
 
     /// From the app scan: has a token for shields, but no usage in Apple's data (that has bundle IDs, no tokens).
     public var isScanned: Bool { identifier.hasPrefix(Self.scannedPrefix) }
+
+    /// The match of a scanned item that still has its token: only those stand for their app. Others are left over from
+    /// an earlier scan (`Policy.followingNewTokens`).
+    public var liveMatch: UUID? { isScanned && tokenData != nil ? match : nil }
 
     public static func id(kid: UUID, kind: ItemKind, identifier: String) -> UUID {
         Replay.stableUUID("item", kid.uuidString, kind.rawValue, identifier)
@@ -178,21 +183,26 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var lastFireAt: Date?
     /// The phone's charge, 0–1, when the heartbeat was sent; nil if iOS didn't say.
     public var batteryLevel: Double?
-    /// Switches in Settings the kid can turn off for ScreenThyme and the app can't lock; nil from older builds
-    /// (and cellular data when CoreTelephony didn't say).
+    /// Switches in Settings the kid can turn off for ScreenThyme and the app can't lock (`DevicePermission`); nil from
+    /// older builds, and when the phone couldn't tell (CoreTelephony hadn't said, iCloud was busy, the nearby link
+    /// hadn't run yet).
     public var backgroundRefresh: PermissionState?
     public var cellularData: PermissionState?
     public var bluetooth: PermissionState?
+    /// As the nearby link last found it: iOS says only when the link tries, while the app is open.
+    public var localNetwork: PermissionState?
+    public var iCloud: PermissionState?
     public var lowPowerMode: Bool?
     /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
-    /// since (`TokenPairing.toMatch`). Nil before the first match, and from older builds.
+    /// since (`TokenPairing.unmatched`). Nil before the first match, and from older builds.
     public var lastTokenPairing: Date?
 
     public init(id: UUID = UUID(), kidID: UUID, at: Date, source: HeartbeatSource, authStatus: String,
                 activeActivities: [String], expectedActivities: [String], appVersion: String,
                 backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
                 backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
-                bluetooth: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
+                bluetooth: PermissionState? = nil, localNetwork: PermissionState? = nil, iCloud: PermissionState? = nil,
+                lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -207,6 +217,8 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.backgroundRefresh = backgroundRefresh
         self.cellularData = cellularData
         self.bluetooth = bluetooth
+        self.localNetwork = localNetwork
+        self.iCloud = iCloud
         self.lowPowerMode = lowPowerMode
         self.lastTokenPairing = lastTokenPairing
     }
