@@ -89,7 +89,7 @@ final class AppModel {
         case .unset:
             break
         }
-        await bugReports.send(store: store)
+        await bugReports.sync(store: store)
     }
 
     func handlePush() async {
@@ -104,7 +104,7 @@ final class AppModel {
             await sendHeartbeat(.backgroundRefresh)
         }
         await refresh()
-        await bugReports.send(store: store)
+        await bugReports.sync(store: store)
     }
 
     /// Fetches zone changes and reacts: kids pick up rules and answer pings; parents notify and check health.

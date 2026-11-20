@@ -6,6 +6,8 @@ import UIKit
 
 /// This phone's bug reports, a kid's or a parent's (PLAN.md §18), queued in Application Support with their screenshots
 /// until this phone files them on GitHub. Sent at once, then again at every launch and background refresh until they're filed.
+/// When one is fixed, the repository's workflow pushes a notification to this phone (`PushPhone`, `Tools/BugPush`); the
+/// list learns of it by looking the issues up.
 @MainActor @Observable
 final class BugReportQueue {
     /// Newest first.
@@ -16,6 +18,25 @@ final class BugReportQueue {
 
     /// Filed reports kept for the list; their screenshots are deleted once on GitHub.
     static let filedKept = 20
+    /// How often filed reports are looked up for a fix; launches and background refreshes come more often.
+    static let checkInterval: TimeInterval = 30 * 60
+    @ObservationIgnored private var checkedAt: Date?
+    /// This phone's APNs device token (hex), from the app delegate; saved to the repository when it changes.
+    @ObservationIgnored var pushToken: String? {
+        didSet { if pushToken != oldValue, let store = AppModel.shared.store { Task { await sync(store: store) } } }
+    }
+    /// The app's `aps-environment` (project.yml): every build is a development build.
+    static let pushEnvironment = "development"
+    /// Names this phone in its reports and its push token's file in the repository.
+    static let phoneID: UUID = {
+        let key = "bugReportPhoneID"
+        if let saved = UserDefaults.standard.string(forKey: key).flatMap(UUID.init) { return saved }
+        let id = UUID()
+        UserDefaults.standard.set(id.uuidString, forKey: key)
+        return id
+    }()
+    /// The token last saved to the repository.
+    private static let savedTokenKey = "bugReportSavedPushToken"
     @ObservationIgnored private let directory = URL.applicationSupportDirectory.appending(path: "BugReports")
     private var listURL: URL { directory.appending(path: "reports.json") }
 
@@ -25,7 +46,8 @@ final class BugReportQueue {
 
     func add(text: String, screenshots: [Data], reporter: String, kidID: UUID?, details: [BugReport.Detail],
              log: [String]) throws {
-        var report = BugReport(kidID: kidID, reporter: reporter, at: Date(), text: text, details: details, log: log)
+        var report = BugReport(kidID: kidID, reporter: reporter, at: Date(), text: text, details: details, log: log,
+                               phoneID: Self.phoneID)
         let folder = folder(of: report)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for (index, data) in screenshots.enumerated() {
@@ -46,14 +68,25 @@ final class BugReportQueue {
     }
 
     func status(of report: BugReport) -> String {
+        switch report.resolution {
+        case .fixed: return "Fixed"
+        case .closed: return "Closed"
+        case nil: break
+        }
         if report.isFiled { return "Sent" }
         if isSending { return "Sending…" }
         return report.lastError ?? waitingReason ?? "Waiting to send"
     }
 
-    /// Files every waiting report, oldest first. Stops at the first failure: the rest would fail the same way.
-    func send(store: CloudStore?) async {
-        guard !isSending, reports.contains(where: { !$0.isFiled }) else { return }
+    /// Saves a new push token while reports wait for a fix, files every waiting report, then looks on GitHub for fixes
+    /// to filed ones (at most every `checkInterval`, unless `checkNow`).
+    func sync(store: CloudStore?, checkNow: Bool = false) async {
+        let waiting = reports.contains { !$0.isFiled }
+        let newToken = pushToken.flatMap { $0 == UserDefaults.standard.string(forKey: Self.savedTokenKey) ? nil : $0 }
+        let registering = newToken != nil && reports.contains { !$0.isFiled || $0.awaitsFix }
+        let checking = reports.contains(where: \.awaitsFix)
+            && (checkNow || checkedAt.map { Date().timeIntervalSince($0) >= Self.checkInterval } ?? true)
+        guard !isSending, waiting || registering || checking else { return }
         guard let store else {
             waitingReason = "Waiting: this phone hasn't joined a family"
             return
@@ -73,6 +106,14 @@ final class BugReportQueue {
         }
         waitingReason = nil
         let github = GitHubIssues(tracker: tracker)
+        if registering, let newToken { await savePushToken(newToken, with: github) }
+        if waiting { await file(with: github) }
+        if checking { await checkFixes(with: github) }
+        prune()
+    }
+
+    /// Oldest first. Stops at the first failure: the rest would fail the same way.
+    private func file(with github: GitHubIssues) async {
         for id in reports.filter({ !$0.isFiled }).reversed().map(\.id) {
             guard var report = reports.first(where: { $0.id == id }) else { continue }
             do {
@@ -95,7 +136,40 @@ final class BugReportQueue {
                 break
             }
         }
-        prune()
+    }
+
+    /// A failure is retried at the next sync; it doesn't hold up filing.
+    private func savePushToken(_ token: String, with github: GitHubIssues) async {
+        let phone = PushPhone(token: token, topic: Bundle.main.bundleIdentifier ?? "", environment: Self.pushEnvironment,
+                              updatedAt: Date())
+        do {
+            try await github.save(phone, id: Self.phoneID)
+            UserDefaults.standard.set(token, forKey: Self.savedTokenKey)
+            try? AppGroup.journal.append(.note("bug reports: push token saved"))
+        } catch {
+            try? AppGroup.journal.append(.note("bug reports: push token not saved: \(error)"))
+        }
+    }
+
+    /// For the list's "Fixed" (the reporter has heard by push). An issue GitHub won't show (deleted, or the token
+    /// changed) is skipped; no internet stops the check until next time.
+    private func checkFixes(with github: GitHubIssues) async {
+        for id in reports.filter(\.awaitsFix).map(\.id) {
+            guard var report = reports.first(where: { $0.id == id }), let issue = report.issueURL else { continue }
+            do {
+                report.resolution = try await github.resolution(of: issue)
+            } catch is GitHubIssues.Failure {
+                continue
+            } catch {
+                return
+            }
+            guard report != reports.first(where: { $0.id == id }) else { continue }
+            update(report)
+            if report.resolution == .fixed {
+                try? AppGroup.journal.append(.note("bug report fixed: issue \(issue.lastPathComponent)"))
+            }
+        }
+        checkedAt = Date()
     }
 
     func screenshot(_ name: String, of report: BugReport) -> UIImage? {

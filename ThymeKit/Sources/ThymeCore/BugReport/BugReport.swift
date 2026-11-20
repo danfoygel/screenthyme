@@ -33,15 +33,26 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     public var uploaded: [String: URL] = [:]
     public var issueURL: URL?
     public var lastError: String?
+    /// How its issue was closed, as last seen on GitHub; nil while it's open.
+    public var resolution: Resolution?
+    /// The phone that sent it (`PushPhone`), which GitHub tells when it's fixed.
+    public var phoneID: UUID?
+
+    /// How a filed report's issue was closed: as done (fixed), or for any other reason (not planned, a duplicate).
+    public enum Resolution: String, Codable, Sendable, Hashable {
+        case fixed, closed
+    }
 
     // Reports queued before parents could send them named the reporter `kidName`.
     enum CodingKeys: String, CodingKey {
-        case id, kidID, reporter = "kidName", at, text, screenshots, details, log, uploaded, issueURL, lastError
+        case id, kidID, reporter = "kidName", at, text, screenshots, details, log, uploaded, issueURL, lastError,
+             resolution, phoneID
     }
 
     public init(id: UUID = UUID(), kidID: UUID?, reporter: String, at: Date, text: String, screenshots: [String] = [],
-                details: [Detail] = [], log: [String] = []) {
+                details: [Detail] = [], log: [String] = [], phoneID: UUID? = nil) {
         self.id = id
+        self.phoneID = phoneID
         self.kidID = kidID
         self.reporter = reporter
         self.at = at
@@ -52,6 +63,18 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var isFiled: Bool { issueURL != nil }
+
+    /// Filed, and not fixed yet as far as this phone knows. A closed issue can still be reopened and fixed.
+    public var awaitsFix: Bool { isFiled && resolution != .fixed }
+
+    /// The push that tells the reporter it's fixed, sent by the repository's workflow (`Tools/BugPush`).
+    public var fixedNotification: (title: String, body: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = text.isEmpty
+            ? "The problem you reported on \(at.formatted(.dateTime.month(.abbreviated).day())) is fixed."
+            : "You reported: “\(summary)”"
+        return ("A problem you reported is fixed", what + " Thanks for telling us!")
+    }
 
     /// The first line of the reporter's words, shortened.
     public var summary: String {
@@ -89,4 +112,28 @@ public struct IssueTracker: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var isUsable: Bool { Self.isValidRepository(repository) && !token.isEmpty }
+}
+
+/// A phone that can be told its reports are fixed: its APNs device token, saved as `phones/<id>.json` in the family's
+/// bug repository. When an issue is closed as done, the repository's workflow (`Tools/BugPush`) pushes the
+/// notification named in the issue to the phone named there.
+public struct PushPhone: Codable, Sendable, Hashable {
+    /// Hex.
+    public var token: String
+    /// The app's bundle ID.
+    public var topic: String
+    /// "development" or "production", as the app's `aps-environment`.
+    public var environment: String
+    public var updatedAt: Date
+
+    public init(token: String, topic: String, environment: String, updatedAt: Date) {
+        self.token = token
+        self.topic = topic
+        self.environment = environment
+        self.updatedAt = updatedAt
+    }
+
+    public static func path(of id: UUID) -> String {
+        "phones/\(id.uuidString.lowercased()).json"
+    }
 }
