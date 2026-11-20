@@ -99,7 +99,7 @@ struct KidCard: View {
             }
             if !unmatched.toScan.isEmpty {
                 let count = unmatched.toScan.count
-                Label("\(count) \(count == 1 ? "app needs" : "apps need") a new app scan", systemImage: "square.grid.3x3")
+                Label("\(count) \(count == 1 ? "app" : "apps") not in the app scan", systemImage: "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -162,9 +162,9 @@ struct KidDayView: View {
                 Section {
                     UnmatchedNames(items: unmatched.toScan)
                 } header: {
-                    Text("Need a new app scan")
+                    Text("Not in the app scan")
                 } footer: {
-                    Text("Used this week, but the last match didn't find them: most likely installed after the last app scan. Until they're matched, limits don't count them and they can't be blocked by name. On \(kid.displayName)'s phone, tap Scan apps, then match again.")
+                    Text("Used this week, but the last match didn't find them in the app scan: Apple's app picker on \(kid.displayName)'s phone doesn't list them, so scanning again won't add them (search for one in Scan apps to check). Downtime and limits on their category or on all apps still cover them; they can't be limited or blocked by name.")
                 }
             }
             Section {

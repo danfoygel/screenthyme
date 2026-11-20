@@ -446,11 +446,13 @@ public enum TokenPairing {
 
     /// Apps from Apple's data that no scanned item is matched to, by what would match them.
     public struct Unmatched: Sendable, Equatable {
-        /// Another import may match them: they turned up since the last one (all of them, before the first), or the
-        /// app scan has added apps since.
+        /// Another import may match them: they turned up since the last one (all of them, before the first), the
+        /// app scan has added apps since, or a scan re-issued their token (a scanned item without a token is still
+        /// matched to them).
         public var toMatch: [TrackedItem] = []
-        /// An import since they turned up didn't match them, and the scan has added nothing since: most likely installed
-        /// after the last scan, so they need a new scan, then an import.
+        /// An import since they turned up didn't match them, and the scan has added nothing since: the scan doesn't
+        /// list them. Apple's picker on a kid's phone left out some apps, even searched for by name and after a
+        /// restart, so a new scan may not help; limits count them only through their category or all apps.
         public var toScan: [TrackedItem] = []
 
         public init() {}
@@ -461,12 +463,14 @@ public enum TokenPairing {
     /// - Parameter used: the apps to count, those used lately; nil counts them all. A deleted app stays unmatched.
     public static func unmatched(_ items: [TrackedItem], lastImport: Date?, used: Set<UUID>? = nil) -> Unmatched {
         let matched = matchedIDs(items)
+        let reissued = Set(items.compactMap { $0.isScanned && $0.tokenData == nil ? $0.match : nil })
         // When the scan last added an app: a scanned item keeps the date it was first picked.
         let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
         var result = Unmatched()
         for item in items where item.kind == .app && !item.isScanned && !matched.contains(item.id)
             && !BuiltInApps.isSystemProcess(item.identifier) && used.map({ $0.contains(item.id) }) ?? true {
-            if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true {
+            if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true,
+               !reissued.contains(item.id) {
                 result.toScan.append(item)
             } else {
                 result.toMatch.append(item)

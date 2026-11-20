@@ -707,6 +707,18 @@ like this:
   since the report extension can't be told it any other way. The app sizes the reports from at most the apps and
   websites nothing is matched to, plus 4 spare (`TokenPairing.estimatedLines`). An app installed since the last scan
   has no token: scan again first.
+- **A rescan can re-issue every token** (Nov 19, kid's phone): the scan's tokens share their first encrypted bytes,
+  and those bytes changed between Nov 16 and Nov 19 with no new grant in the journal (a shield's token that evening had
+  the new ones too). Old tokens still worked in report filters, but a rescan returned the same apps under new tokens
+  (`189 picked, 371 changed`): new, unmatched items, while the old ones lost their tokens and kept their matches.
+  Those matches counted, so `unmatched` rounds skipped those apps and nothing could be blocked by name. Now only
+  scanned items with a token count as matches (`TokenPairing.matchedIDs`); a tokenless item's match says its app needs
+  a match round, not a scan (`TokenPairing.unmatched`).
+- **Apple's picker leaves some apps out** (Nov 19, kid's phone): the scan stayed at 81 apps. Apps installed after the
+  first scan (Depop, Urban Outfitters, Amazon) and some older ones (NYTimes, NYT Cooking, Fitness) were used, but the
+  picker listed only their websites, even when searched for by name and after a restart. Not known why (perhaps its
+  list comes from App & Website Activity, which data access turns off). They get no token: Downtime and category or
+  all-apps limits cover them, nothing by name. Parents see them as "Not in the app scan".
 - **Speed** (Nov 18): the codes took 20+ s to appear on the SE. Drawing them isn't it (a small code is ~10 ms in a
   debug build). Each report fetched 28 daily segments, and every redraw of the screen made new filters (their end
   was `Date()`), so every report fetched again. Now the window is the last 7 days in one `.weekly` segment

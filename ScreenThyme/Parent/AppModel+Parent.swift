@@ -130,7 +130,7 @@ extension AppModel {
     }
 
     /// Apps used on the kid's phone lately that no scanned app is matched to (`TokenPairing.unmatched`), newest first: those
-    /// a match round may match, and those that need a new app scan first. None before the phone's first match (its
+    /// a match round may match, and those the app scan doesn't list. None before the phone's first match (its
     /// latest heartbeat says when), which the kid's phone starts.
     func unmatchedApps(for kid: Kid) -> TokenPairing.Unmatched {
         guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return TokenPairing.Unmatched() }

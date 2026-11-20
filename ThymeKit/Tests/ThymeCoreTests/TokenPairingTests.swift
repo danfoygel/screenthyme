@@ -281,7 +281,8 @@ struct TokenPairingTests {
     }
 
     /// A scan re-issued every token: the old scanned items lost theirs but kept their matches. Their apps are matched
-    /// again, to the new tokens: drawn in `unmatched` mode and counted to match, though the phone saw them long ago.
+    /// again, to the new tokens: drawn in `unmatched` mode and counted to match, though the phone saw them long ago and
+    /// an import ran after the scan. An app no scan lists needs a scan.
     @Test func matchesOfDroppedTokensDoNotCount() throws {
         let lastImport = Date(timeIntervalSince1970: 1_800_000_000)
         var app = data("com.app")
@@ -290,8 +291,10 @@ struct TokenPairingTests {
         dropped.tokenData = nil
         dropped.match = app.id
         var rescanned = scanned("new")
-        rescanned.firstSeen = lastImport.addingTimeInterval(60)
-        let items = [app, dropped, rescanned]
+        rescanned.firstSeen = lastImport.addingTimeInterval(-60)
+        var unlisted = data("com.unlisted")
+        unlisted.firstSeen = app.firstSeen
+        let items = [app, dropped, rescanned, unlisted]
 
         #expect(TokenPairing.matchedIDs(items).isEmpty)
         #expect(TokenPairing.order(items, mode: .unmatched).map(\.id) == [rescanned.id])
@@ -299,7 +302,7 @@ struct TokenPairingTests {
         #expect(TokenPairing.drawn(seen, items: items, mode: .unmatched) == seen)
         let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
         #expect(unmatched.toMatch.map(\.id) == [app.id])
-        #expect(unmatched.toScan.isEmpty)
+        #expect(unmatched.toScan.map(\.id) == [unlisted.id])
 
         let order = TokenPairing.order(items, mode: .unmatched)
         let drawn = codes(order: order, truth: [rescanned.id: app], items: items, mode: .unmatched)
@@ -309,7 +312,9 @@ struct TokenPairingTests {
         // Matched again: nothing left to match.
         var after = items
         _ = TokenPairing.apply(resolution.pairs, to: &after, kid: kid)
-        #expect(TokenPairing.unmatched(after, lastImport: lastImport.addingTimeInterval(120)) == .init())
+        let left = TokenPairing.unmatched(after, lastImport: lastImport.addingTimeInterval(120))
+        #expect(left.toMatch.isEmpty)
+        #expect(left.toScan.map(\.id) == [unlisted.id])
     }
 
     @Test func anotherItemMatchedToThePairedAppLosesItsMatch() {
