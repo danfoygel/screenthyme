@@ -4,7 +4,7 @@ import SwiftUI
 import ThymeCore
 
 /// An app's or website's name: Apple's label for its token (icon and name), else a nickname, the App Store's name or a
-/// readable form of the bundle ID or domain, with the icon `AppCatalog` found (on parents' phones).
+/// readable form of the bundle ID or domain, with the icon `AppCatalog` found.
 struct ItemName: View {
     let item: TrackedItem?
     var showIcon = true
