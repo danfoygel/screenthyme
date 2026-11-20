@@ -192,6 +192,8 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     /// As the nearby link last found it: iOS says only when the link tries, while the app is open.
     public var localNetwork: PermissionState?
     public var iCloud: PermissionState?
+    /// Always and Precise Location, while the location test watches places (PLAN.md §19); nil when it doesn't.
+    public var location: PermissionState?
     public var lowPowerMode: Bool?
     /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
     /// since (`TokenPairing.unmatched`). Nil before the first match, and from older builds.
@@ -202,7 +204,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
                 backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
                 backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
                 bluetooth: PermissionState? = nil, localNetwork: PermissionState? = nil, iCloud: PermissionState? = nil,
-                lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
+                location: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -219,6 +221,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.bluetooth = bluetooth
         self.localNetwork = localNetwork
         self.iCloud = iCloud
+        self.location = location
         self.lowPowerMode = lowPowerMode
         self.lastTokenPairing = lastTokenPairing
     }

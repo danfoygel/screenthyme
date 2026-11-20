@@ -205,7 +205,7 @@ All alerts are recorded in the timeline, so the alert feed and the timeline matc
   - app version
   - the Settings switches the kid can turn off for ScreenThyme and no app can lock: Background App Refresh, cellular
     data, Local Network (as the nearby link last found it: no API says), Bluetooth, iCloud (signed in, on for
-    ScreenThyme), and Low Power Mode (`DevicePermission`, read by `DevicePermissions`). The kid app uses no
+    ScreenThyme), Location (Always and precise, only while the location test watches places, §19), and Low Power Mode (`DevicePermission`, read by `DevicePermissions`). The kid app uses no
     notifications or camera, so they aren't among them. Debug → Permissions lists every permission with this phone's
     answers, and on a parent's phone what each kid's phone last reported
 - **Parent-side checks:**
@@ -964,9 +964,12 @@ Goal: say where each app was used ("YouTube: 50 min at home, 12 at school") with
   wins over a visit; a visit inside a fence counts as that place, in case its crossing was missed);
   `PlaceStays.usage` shares each timeline block's seconds out by stay, the rest "Unknown". The screen shows both,
   and each event's delay.
+- **Parents are told when it stops:** while places are watched, heartbeats carry Location (`Heartbeat.location`):
+  anything short of Always with Precise Location is `denied`, and parents get the usual permission alert. A phone not
+  watching places reports nil, so no alert.
 - **To learn:** how late crossings and visits arrive; whether relaunches deliver them after the app was killed;
   whether a child account can grant Always (Screen Time's Location Services restriction can lock it); iOS's
   "keep allowing Always?" prompts; battery, under Settings › Battery (our `EnergyLedger` counts only our process,
   not `locationd`).
 - **Then, if it holds up:** places set on a parent's phone and synced like `Policy`, stays uploaded, the timeline
-  split by place on parents' phones, location access in the heartbeat's permissions, and maybe rules by place.
+  split by place on parents' phones, and maybe rules by place.

@@ -31,7 +31,7 @@ import UserNotifications
         }
     }
 
-    /// This phone's answer now; nil when iOS can't say (or, for Photos and Location, never asks).
+    /// This phone's answer now; nil when iOS can't say (or, for Photos, never asks; for Location, places aren't watched).
     static func state(_ permission: DevicePermission) async -> PermissionState? {
         if permission == .iCloud { await refresh() }
         return switch permission {
@@ -47,13 +47,14 @@ import UserNotifications
         case .localNetwork: localNetwork
         case .bluetooth: bluetooth
         case .iCloud: iCloud
+        case .location: location
         case .camera:
             switch AVCaptureDevice.authorizationStatus(for: .video) {
             case .authorized: .allowed
             case .notDetermined: .notAsked
             default: .denied
             }
-        case .photos, .location: nil
+        case .photos: nil
         }
     }
 
@@ -97,6 +98,9 @@ import UserNotifications
     static func saw(localNetwork state: PermissionState) {
         UserDefaults.standard.set(state.rawValue, forKey: localNetworkKey)
     }
+
+    /// Only while the location test watches places (`PlaceWatcher`).
+    static var location: PermissionState? { PlaceWatcher.shared.permission }
 
     static var lowPowerMode: Bool { ProcessInfo.processInfo.isLowPowerModeEnabled }
 }

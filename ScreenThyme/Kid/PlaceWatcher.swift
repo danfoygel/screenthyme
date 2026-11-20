@@ -22,6 +22,17 @@ import ThymeCore
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
+    /// For heartbeats (`DevicePermission.location`): fences and visits need Always and Precise Location.
+    /// Nil while places aren't watched, so parents aren't told about a permission the phone doesn't use.
+    var permission: PermissionState? {
+        guard isEnabled else { return nil }
+        return switch authorization {
+        case .notDetermined: .notAsked
+        case .authorizedAlways: manager.accuracyAuthorization == .fullAccuracy ? .allowed : .denied
+        default: .denied
+        }
+    }
+
     @ObservationIgnored private let manager = CLLocationManager()
     @ObservationIgnored private var session: CLServiceSession?
     @ObservationIgnored private var monitor: CLMonitor?
