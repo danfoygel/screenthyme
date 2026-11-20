@@ -185,7 +185,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var bluetooth: PermissionState?
     public var lowPowerMode: Bool?
     /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
-    /// since (`TokenPairing.toMatch`). Nil before the first match, and from older builds.
+    /// since (`TokenPairing.unmatched`). Nil before the first match, and from older builds.
     public var lastTokenPairing: Date?
 
     public init(id: UUID = UUID(), kidID: UUID, at: Date, source: HeartbeatSource, authStatus: String,

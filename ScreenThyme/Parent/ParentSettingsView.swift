@@ -143,7 +143,7 @@ struct KidSettingsView: View {
                 }
                 if model.data.items(for: kid.id).values.contains(where: \.isScanned) {
                     NavigationLink { PairingScannerView(kid: kid) } label: {
-                        let count = model.appsToMatch(for: kid).count
+                        let count = model.unmatchedApps(for: kid).toMatch.count
                         LabeledContent("Match apps with camera", value: count == 0 ? "" : "\(count) new")
                             .foregroundStyle(count == 0 ? Color.primary : .orange)
                     }
