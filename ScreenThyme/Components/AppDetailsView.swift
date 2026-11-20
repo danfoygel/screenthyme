@@ -332,6 +332,25 @@ private struct StatusRow: View {
     }
 }
 
+/// An hourglass in a list of apps for one Downtime or a limit shields (now, or for a limit, on an earlier day);
+/// nothing otherwise.
+struct TimeShieldIcon: View {
+    let status: AppDetails.Status?
+
+    var body: some View {
+        switch status {
+        case let .downtime(name, until)?:
+            Image(systemName: "hourglass").foregroundStyle(.indigo)
+                .accessibilityLabel("\(name) until \(Format.time(until))")
+        case let .limit(name)?:
+            Image(systemName: "hourglass").foregroundStyle(.orange)
+                .accessibilityLabel("Over the \(name) limit")
+        default:
+            EmptyView()
+        }
+    }
+}
+
 /// A request for more time, with its answer, or a one more minute.
 private struct RequestHistoryRow: View {
     let request: AppDetails.Request
@@ -396,22 +415,29 @@ struct AppDetailsData {
     static func parent(_ family: FamilyData, kid: UUID, now: Date = Date()) -> AppDetailsData {
         let items = family.items(for: kid)
         let policy = family.policy(for: kid)
-        let today = DayKey(now)
-        // Today's answers and one more minutes, as the kid's phone applied them (about when they were given).
-        var state = EnforcementDayState(day: today)
-        state.grants = family.grants.values.filter { $0.kidID == kid && DayKey($0.at) == today }
-            .sorted { $0.at < $1.at }.map { AppliedGrant(grant: $0, appliedAt: $0.at) }
         let uses = family.extraMinutes.values.filter { $0.kidID == kid }
-        state.extraMinutes = uses.filter { DayKey($0.at) == today }
-            .map { ExtraMinute(itemID: $0.itemID, reason: $0.reason, at: $0.at, minutes: $0.minutes) }
-        let usage = AppDetails.usage(family.samples(kid: kid, day: today), items: items)
-        let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                           exempt: Enforcer.exemptItems(items))
+        let plan = parentPlan(family, kid: kid, items: items, policy: policy, now: now)
         return AppDetailsData(items: items, policy: policy, hasPolicy: family.storedPolicy(for: kid) != nil, plan: plan,
                               samples: { family.samples(kid: kid, day: $0) },
                               requests: family.requests.values.filter { $0.kidID == kid },
                               grants: family.grants.values.filter { $0.kidID == kid }, extraMinutes: Array(uses),
                               rules: family.rules(for: kid), alerts: family.alerts.values.filter { $0.kidID == kid })
+    }
+
+    /// What's blocked now on a kid's phone, worked out on a parent's phone from what has synced.
+    @MainActor
+    static func parentPlan(_ family: FamilyData, kid: UUID, items: [UUID: TrackedItem], policy: Policy,
+                           now: Date = Date()) -> EnforcementPlan {
+        let today = DayKey(now)
+        // Today's answers and one more minutes, as the kid's phone applied them (about when they were given).
+        var state = EnforcementDayState(day: today)
+        state.grants = family.grants.values.filter { $0.kidID == kid && DayKey($0.at) == today }
+            .sorted { $0.at < $1.at }.map { AppliedGrant(grant: $0, appliedAt: $0.at) }
+        state.extraMinutes = family.extraMinutes.values.filter { $0.kidID == kid && DayKey($0.at) == today }
+            .map { ExtraMinute(itemID: $0.itemID, reason: $0.reason, at: $0.at, minutes: $0.minutes) }
+        let usage = AppDetails.usage(family.samples(kid: kid, day: today), items: items)
+        return EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
+                                       exempt: Enforcer.exemptItems(items))
     }
 
     static func kid() -> AppDetailsData {

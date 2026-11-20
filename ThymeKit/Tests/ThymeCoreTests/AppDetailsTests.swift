@@ -88,6 +88,29 @@ struct AppDetailsTests {
         #expect(details.status(in: EnforcementPlan(), policy: off) == .notEnforced)
     }
 
+    @Test func limitReachedLooksPastDowntime() {
+        let limit = AppLimit(name: "Games", items: [scannedGames.id], minutes: 30)
+        let all = AppLimit(name: "All", items: [], allApps: true, minutes: 60)
+        let bedtime = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60, endMinute: 7 * 60)
+        let policy = Policy(kidID: kid, downtime: [bedtime], limits: [limit, all])
+        let details = AppDetails(item: roblox, items: items, policy: policy)
+        func plan(_ seconds: Double) -> EnforcementPlan {
+            EnforcementPlanner.plan(policy: policy, items: items, usage: [roblox.id: seconds, scannedRoblox.id: seconds],
+                                    state: EnforcementDayState(day: testDay), now: at(23, 59, 59), calendar: utc)
+        }
+        // The day's last moment is in Bedtime, but the limit it went over still shows.
+        #expect(details.status(in: plan(31 * 60), policy: policy) == .downtime(name: "Bedtime", until: testDay.adding(days: 1, calendar: utc).start(in: utc).addingTimeInterval(7 * 3600)))
+        #expect(details.limitReached(in: plan(31 * 60), policy: policy)?.name == "Games")
+        #expect(details.limitReached(in: plan(61 * 60), policy: policy)?.name == "Games")
+        #expect(details.limitReached(in: plan(10 * 60), policy: policy) == nil)
+        // Messages isn't a game: only the all-apps limit reaches it.
+        let chat = AppDetails(item: messages, items: items, policy: policy)
+        #expect(chat.limitReached(in: plan(31 * 60), policy: policy) == nil)
+        #expect(chat.limitReached(in: plan(61 * 60), policy: policy)?.name == "All")
+        #expect(AppDetails(item: messages, items: items, policy: policy, exempt: [messages.id])
+            .limitReached(in: plan(61 * 60), policy: policy) == nil)
+    }
+
     @Test func usageAddsUpDaysAndAveragesReportedDaysBeforeToday() {
         let details = AppDetails(item: scannedRoblox, items: items, policy: Policy(kidID: kid))
         func sample(_ item: TrackedItem, _ day: DayKey, _ seconds: Double) -> UsageSample {

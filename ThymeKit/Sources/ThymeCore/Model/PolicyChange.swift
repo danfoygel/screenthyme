@@ -25,6 +25,14 @@ public struct PolicyChange: Codable, Sendable, Hashable, Identifiable {
     public var edits: [PolicyEdit] {
         PolicyEdit.between(before ?? Policy(kidID: kidID), after)
     }
+
+    /// The policy in force at `date`: the last save before it, or the first save's `before` (nil when the kid had none
+    /// yet). `current` when nothing was saved since `date`, or no saves are known.
+    public static func policy(at date: Date, changes: [PolicyChange], current: Policy?) -> Policy? {
+        let sorted = changes.sorted { $0.at < $1.at }
+        guard let next = sorted.first(where: { $0.at > date }) else { return current }
+        return sorted.last { $0.at <= date }?.after ?? next.before
+    }
 }
 
 /// One difference between two policies. Items stay ids, named when shown.
