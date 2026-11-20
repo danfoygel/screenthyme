@@ -56,6 +56,24 @@ struct WebMirrorTests {
         #expect(mirror.mirrored(items: items, today: today).isEmpty)
     }
 
+    /// Amazon's minutes inside Libby's (its in-app browser opens amazon.com); Find My's few seconds beside Instagram.
+    @Test func inAppBrowsersCountWithEnoughTime() {
+        let libby = app("com.overdrive.dewey")
+        let instagram = app("com.burbn.instagram")
+        let amazon = app("com.amazon.Amazon")
+        let findMy = app("com.apple.findmy")
+        let items = Dictionary(uniqueKeysWithValues: [libby, instagram, amazon, findMy].map { ($0.id, $0) })
+        var mirror = WebMirror()
+        mirror.add([sample(libby, 48, minute: 0), sample(amazon, 48, minute: 0),
+                    sample(instagram, 83, minute: 2), sample(amazon, 5, minute: 2),
+                    sample(instagram, 90, minute: 4), sample(findMy, 24, minute: 4)], items: items)
+        // Not enough of either yet.
+        #expect(mirror.mirrored(items: items, today: today).isEmpty)
+
+        mirror.add([sample(libby, 70, minute: 6), sample(amazon, 70, minute: 6)], items: items)
+        #expect(mirror.mirrored(items: items, today: today) == [amazon.id])
+    }
+
     @Test func onlyTheLastWeekCounts() throws {
         let safari = app(WebMirror.browser)
         let shop = app("com.example.shop")

@@ -719,7 +719,8 @@ like this:
   installed (`devicectl device info apps --include-all-apps`): every minute of theirs fell inside Safari's in the same
   interval (`2.0` beside Safari's `2.0`), and Apple listed no website for those shops. Apple's data reports a website's
   time under its App Store app's bundle ID too, so it counted twice in all-apps totals. `WebMirror` finds them: no live
-  match and 95% of the last 7 days inside Safari's. The Sampler keeps a tally (`web-mirror.json`); all-apps limits and
+  match and 95% of the last 7 days inside Safari's, or inside another app's with 2 minutes or more in the week (Amazon's
+  minutes also fell inside Libby's, whose in-app browser opens amazon.com for Kindle books). The Sampler keeps a tally (`web-mirror.json`); all-apps limits and
   parents' "Apps (Apple's count)" leave them out (through `exempt`), and so does the unmatched list. Category limits
   still count them: Safari isn't in the shop's category, and it's the only record of the shop.
 - **Apple's apps need a search:** "All Apps & Categories" leaves out Safari (and maybe Find My, Clock, Fitness), but the

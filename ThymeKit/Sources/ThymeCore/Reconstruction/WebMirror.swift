@@ -5,17 +5,25 @@ import Foundation
 /// interval, and Apple listed no website for those shops. So that time counts twice in Apple's per-app numbers, as
 /// Safari and as the app. All-apps totals leave these apps out; category limits still count them (Safari isn't in the
 /// shop's category, and it's the only record of what was browsed). No scan lists them: they aren't installed.
+/// An app's in-app browser does it too: Amazon's minutes later fell inside Libby's (which opens amazon.com for Kindle
+/// books), not Safari's. Inside another app's time is weaker evidence (a real app used a few seconds beside a busier one
+/// looks the same), so it takes `minimumElsewhere` seconds in the week as well.
 public struct WebMirror: Codable, Sendable, Equatable {
     public static let browser = "com.apple.mobilesafari"
     /// The share of an app's seconds inside Safari's that makes it a website's.
     public static let share = 0.95
     /// The days that count, today included.
     public static let days = 7
+    /// Seconds in the week an app needs before time inside other apps' makes it a website's: Find My, Files and Clock,
+    /// used a few seconds at a time beside busier apps, had 25 to 40.
+    public static let minimumElsewhere = 120.0
 
-    /// An app's seconds in a day, and how many of them fell inside Safari's in the same interval.
+    /// An app's seconds in a day, and how many of them fell inside Safari's, or inside another app's, in the same
+    /// interval. A tally saved before `inApp` was added fails to decode, and the Sampler starts it again.
     public struct Seconds: Codable, Sendable, Equatable {
         public var all = 0.0
         public var inSafari = 0.0
+        public var inApp = 0.0
     }
 
     /// Day → app item → its seconds.
@@ -33,9 +41,12 @@ public struct WebMirror: Codable, Sendable, Equatable {
             for (id, used) in seconds {
                 guard let item = items[id], item.kind == .app, !item.isScanned, item.identifier != Self.browser else { continue }
                 let safari = seconds[TrackedItem.id(kid: item.kidID, kind: .app, identifier: Self.browser)] ?? 0
+                // The busiest other app, Safari included.
+                let busiest = seconds.filter { $0.key != id }.values.max() ?? 0
                 byDay[interval.day, default: [:]][id, default: Seconds()].all += used
                 // A second and a half of slack: the two are fetched together but rounded apart.
                 if used <= safari + 1.5 { byDay[interval.day, default: [:]][id, default: Seconds()].inSafari += used }
+                if used <= busiest + 1.5 { byDay[interval.day, default: [:]][id, default: Seconds()].inApp += used }
             }
         }
     }
@@ -71,11 +82,14 @@ public struct WebMirror: Codable, Sendable, Equatable {
             for (id, seconds) in apps {
                 total[id, default: Seconds()].all += seconds.all
                 total[id, default: Seconds()].inSafari += seconds.inSafari
+                total[id, default: Seconds()].inApp += seconds.inApp
             }
         }
         let matched = TokenPairing.matchedIDs(Array(items.values))
         return Set(total.filter { id, seconds in
-            seconds.all > 0 && seconds.inSafari >= Self.share * seconds.all && !matched.contains(id)
+            guard seconds.all > 0, !matched.contains(id) else { return false }
+            return seconds.inSafari >= Self.share * seconds.all
+                || seconds.all >= Self.minimumElsewhere && seconds.inApp >= Self.share * seconds.all
         }.keys)
     }
 }
