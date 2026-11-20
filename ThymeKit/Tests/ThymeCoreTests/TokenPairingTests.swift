@@ -247,10 +247,12 @@ struct TokenPairingTests {
         let newMatched = seen("com.matched", after: true)
         let site = seen("new.example.com", .domain, after: true)
         let screenshot = seen("com.apple.ScreenshotServicesService", after: true)
+        let settings = seen("com.apple.Preferences", after: false)  // unblockable: no token would block it
+        let webApps = seen(BuiltInApps.webApp, after: false)
         var scannedApp = scanned("s")
         scannedApp.firstSeen = lastImport.addingTimeInterval(-120)
         scannedApp.match = newMatched.id
-        let items = [old, new, newMatched, site, screenshot, scannedApp]
+        let items = [old, new, newMatched, site, screenshot, settings, webApps, scannedApp]
 
         let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
         #expect(unmatched.toMatch.map(\.identifier) == ["com.new"])
@@ -274,10 +276,55 @@ struct TokenPairingTests {
         #expect(BuiltInApps.isSystemProcess("com.apple.InCallService"))
         #expect(BuiltInApps.isSystemProcess("com.apple.CoreAuthUI"))
         #expect(BuiltInApps.isSystemProcess("com.apple.springboard"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.printcenter"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.ServicesPaymentAngel"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.CoreServicesUIAgent"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.ContactsUI.LimitedAccessPromptView"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.findmy"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.Preview"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.DocumentsApp"))
+        #expect(!BuiltInApps.isSystemProcess(BuiltInApps.webApp))
         #expect(!BuiltInApps.isSystemProcess("com.apple.mobilesafari"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.Pages"))
         #expect(!BuiltInApps.isSystemProcess("com.uo.StoreLocator"))
         #expect(!BuiltInApps.isSystemProcess("com.example.PushService"))
+    }
+
+    /// A scan re-issued every token: the old scanned items lost theirs but kept their matches. Their apps are matched
+    /// again, to the new tokens: drawn in `unmatched` mode and counted to match, though the phone saw them long ago and
+    /// an import ran after the scan. An app no scan lists needs a scan.
+    @Test func matchesOfDroppedTokensDoNotCount() throws {
+        let lastImport = Date(timeIntervalSince1970: 1_800_000_000)
+        var app = data("com.app")
+        app.firstSeen = lastImport.addingTimeInterval(-86_400)
+        var dropped = scanned("old")
+        dropped.tokenData = nil
+        dropped.match = app.id
+        var rescanned = scanned("new")
+        rescanned.firstSeen = lastImport.addingTimeInterval(-60)
+        var unlisted = data("com.unlisted")
+        unlisted.firstSeen = app.firstSeen
+        let items = [app, dropped, rescanned, unlisted]
+
+        #expect(TokenPairing.matchedIDs(items).isEmpty)
+        #expect(TokenPairing.order(items, mode: .unmatched).map(\.id) == [rescanned.id])
+        let seen: Set = [TokenPairing.Identifier(kind: .app, identifier: "com.app")]
+        #expect(TokenPairing.drawn(seen, items: items, mode: .unmatched) == seen)
+        let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
+        #expect(unmatched.toMatch.map(\.id) == [app.id])
+        #expect(unmatched.toScan.map(\.id) == [unlisted.id])
+
+        let order = TokenPairing.order(items, mode: .unmatched)
+        let drawn = codes(order: order, truth: [rescanned.id: app], items: items, mode: .unmatched)
+        let resolution = TokenPairing.resolve(drawn, order: order, known: items)
+        #expect(resolution.pairs == [.init(scanned: rescanned.id, kind: .app, identifier: "com.app")])
+
+        // Matched again: nothing left to match.
+        var after = items
+        _ = TokenPairing.apply(resolution.pairs, to: &after, kid: kid)
+        let left = TokenPairing.unmatched(after, lastImport: lastImport.addingTimeInterval(120))
+        #expect(left.toMatch.isEmpty)
+        #expect(left.toScan.map(\.id) == [unlisted.id])
     }
 
     @Test func anotherItemMatchedToThePairedAppLosesItsMatch() {

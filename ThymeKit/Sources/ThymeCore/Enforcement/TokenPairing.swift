@@ -39,9 +39,16 @@ public enum TokenPairing {
             .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
-    /// Apps, websites and categories some scanned item with a token is matched to.
+    /// The items from Apple's data that a scanned item with a token is matched to. A scanned item a later scan dropped
+    /// can't shield its app, so its match doesn't count: a scan can re-issue every token (it did on a kid's phone, all
+    /// at once), and those apps must be matched again, to the new tokens.
+    public static func matchedIDs(_ items: [TrackedItem]) -> Set<UUID> {
+        Set(items.compactMap(\.liveMatch))
+    }
+
+    /// Apps, websites and categories some scanned item is matched to.
     static func matched(_ items: [TrackedItem]) -> Set<Identifier> {
-        let matches = Set(items.compactMap(\.liveMatch))
+        let matches = matchedIDs(items)
         return Set(items.filter { matches.contains($0.id) }.map { Identifier(kind: $0.kind, identifier: $0.identifier) })
     }
 
@@ -439,27 +446,34 @@ public enum TokenPairing {
 
     /// Apps from Apple's data that no scanned item with a token is matched to, by what would match them.
     public struct Unmatched: Sendable, Equatable {
-        /// Another import may match them: they turned up since the last one (all of them, before the first), or the
-        /// app scan has added apps since.
+        /// Another import may match them: they turned up since the last one (all of them, before the first), the
+        /// app scan has added apps since, or a scan re-issued their token (a scanned item without a token is still
+        /// matched to them).
         public var toMatch: [TrackedItem] = []
-        /// An import since they turned up didn't match them, and the scan has added nothing since: most likely installed
-        /// after the last scan, so they need a new scan, then an import.
+        /// An import since they turned up didn't match them, and the scan has added nothing since: the scan doesn't
+        /// list them. "All Apps & Categories" leaves some of Apple's apps out (Safari), which a search in the picker
+        /// finds; limits count them only through their category or all apps.
         public var toScan: [TrackedItem] = []
 
         public init() {}
     }
 
     /// Websites are left out: browsing turns up new domains all the time, mostly embedded ones the scan doesn't list. So
-    /// are iOS's own processes, which no scan lists (`BuiltInApps.isSystemProcess`).
+    /// are iOS's own processes and Home Screen web apps, which no scan lists (`BuiltInApps.isSystemProcess`,
+    /// `BuiltInApps.webApp`), and apps nothing can block (`BuiltInApps.unblockable`).
     /// - Parameter used: the apps to count, those used lately; nil counts them all. A deleted app stays unmatched.
     public static func unmatched(_ items: [TrackedItem], lastImport: Date?, used: Set<UUID>? = nil) -> Unmatched {
-        let matched = Set(items.compactMap(\.liveMatch))
+        let matched = matchedIDs(items)
+        let reissued = Set(items.compactMap { $0.isScanned && $0.tokenData == nil ? $0.match : nil })
         // When the scan last added an app: a scanned item keeps the date it was first picked.
         let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
         var result = Unmatched()
         for item in items where item.kind == .app && !item.isScanned && !matched.contains(item.id)
-            && !BuiltInApps.isSystemProcess(item.identifier) && used.map({ $0.contains(item.id) }) ?? true {
-            if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true {
+            && !BuiltInApps.isSystemProcess(item.identifier) && !BuiltInApps.unblockable.contains(item.identifier)
+            && item.identifier != BuiltInApps.webApp
+            && used.map({ $0.contains(item.id) }) ?? true {
+            if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true,
+               !reissued.contains(item.id) {
                 result.toScan.append(item)
             } else {
                 result.toMatch.append(item)

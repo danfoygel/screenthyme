@@ -37,7 +37,8 @@ enum Enforcer {
             let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                               endingWindows: endingWindows, exempt: exemptItems(items))
+                                               endingWindows: endingWindows,
+                                               exempt: exemptItems(items).union(webMirrored(items, now: now)))
             apply(plan, policy: policy, items: items)
             AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: Dictionary(policy.limits.map { ($0.id, $0.name) },
                                                                                   uniquingKeysWith: { a, _ in a })),
@@ -118,6 +119,11 @@ enum Enforcer {
     /// Never blocked by Downtime or category limits, as with Apple's Screen Time: ScreenThyme itself (to ask for more
     /// time and see the answer) and Phone.
     static let exemptBundleIDs: Set<String> = ["com.danfoygel.screenthyme", "com.apple.mobilephone"]
+
+    /// Apps whose use is Safari's on their website (`WebMirror`): all-apps limits count that time as Safari's.
+    static func webMirrored(_ items: [UUID: TrackedItem], now: Date = Date()) -> Set<UUID> {
+        AppGroup.load(WebMirror.self, from: AppGroup.webMirrorURL)?.mirrored(items: items, today: DayKey(now)) ?? []
+    }
 
     static func exemptItems(_ items: [UUID: TrackedItem]) -> Set<UUID> {
         Set(items.values.filter { $0.kind == .app && exemptBundleIDs.contains($0.identifier) }.map(\.id))

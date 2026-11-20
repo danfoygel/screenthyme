@@ -21,7 +21,7 @@ extension AppModel {
         }
         // A new grant (e.g. upgrading to data access) makes iOS stop every activity (PLAN.md §13): start again.
         if isAuthorized, config.epoch != nil {
-            startMonitoring()
+            await startMonitoring()
         }
         await sendHeartbeat(.manual)
     }
@@ -51,15 +51,18 @@ extension AppModel {
         return epoch.activityNames.allSatisfy(active.contains) ? "on" : "stopped (open the app to restart)"
     }
 
-    /// Registers the wake alarm for a (new or current) epoch and publishes it.
-    func startMonitoring() {
+    /// Registers the wake alarm for a (new or current) epoch and publishes it. Off the main thread: iOS can take
+    /// seconds to register.
+    func startMonitoring() async {
         guard let kid = config.kid else { return }
-        // iOS takes the registration before the Roller writes its state: a kid switching away mid-registration
-        // suspended the app in between, leaving the alarm with no state.
+        // A kid switching away mid-registration suspended the app once, leaving the alarm with no state.
         let background = UIApplication.shared.beginBackgroundTask(withName: "register wake alarm")
         defer { UIApplication.shared.endBackgroundTask(background) }
+        let epochID = config.epoch?.id ?? UUID()
         do {
-            let epoch = try Roller.registerAll(epochID: config.epoch?.id ?? UUID(), kid: kid)
+            let epoch = try await Task.detached(priority: .userInitiated) {
+                try Roller.registerAll(epochID: epochID, kid: kid)
+            }.value
             update { $0.epoch = epoch }
             Task {
                 do { try await store?.save([epoch]) } catch { show(error) }
@@ -73,7 +76,7 @@ extension AppModel {
 
     /// Re-registers if iOS dropped the alarm (PLAN.md §4.7). At most every 10 minutes: each registration replays
     /// today's passed thresholds.
-    func ensureMonitoring() {
+    func ensureMonitoring() async {
         guard let epoch = config.epoch else { return }
         let active = Set(DeviceActivityCenter().activities.map(\.rawValue))
         // Running without its state, the alarm never rolls or restarts at midnight. A state from an earlier day means
@@ -83,14 +86,14 @@ extension AppModel {
         if let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 600 { return }
         UserDefaults.standard.set(Date(), forKey: key)
         try? AppGroup.journal.append(.note("re-registering: alarm or its state missing, or from an earlier day"))
-        startMonitoring()
+        await startMonitoring()
     }
 
     /// Phones registered with per-app ladders (before §13) move to the single wake alarm.
-    func migrateToWakeAlarm() {
+    func migrateToWakeAlarm() async {
         guard let epoch = config.epoch,
               epoch.activityNames != [RollingLadder.activityName(epochID: epoch.id)] else { return }
-        startMonitoring()
+        await startMonitoring()
     }
 
     func stopMonitoring() {

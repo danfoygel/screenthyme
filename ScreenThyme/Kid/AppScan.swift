@@ -20,18 +20,16 @@ enum AppScan {
         AppGroup.load(Saved.self, from: url) ?? Saved()
     }
 
-    /// Saves the picks as items (new or changed ones go to the outbox) and enforces with them. Items no longer picked
-    /// lose their token, so shields and parents' pickers drop them; they keep their match, so policies naming them
-    /// follow the app to its new token (`Policy.followingNewTokens`).
+    /// Saves the picks as items (new or changed ones go to the outbox) and enforces with them. Items the last scan
+    /// picked and this one doesn't lose their token, so shields and parents' pickers drop them; tokens picked in Ask for
+    /// more time stay (the scan's picker left Safari out, and a scan dropped the one the kid picked). A pick can re-issue
+    /// every token (one did on a kid's phone): the old items keep their matches, which no longer count
+    /// (`TokenPairing.matchedIDs`) but say those apps need a match round, to their new tokens (`TokenPairing.unmatched`), and policies naming them
+    /// follow the app there (`Policy.followingNewTokens`).
     static func save(_ saved: Saved, kid: Kid, now: Date = Date()) {
+        let before = Set(items(load().all, kid: kid, now: now).map(\.id))
         AppGroup.save(saved, to: url)
-        var picked: [TrackedItem] = []
-        func add(_ kind: ItemKind, _ data: Data?) {
-            data.map { picked.append(item(kind, tokenData: $0, kid: kid, now: now)) }
-        }
-        saved.all.categoryTokens.forEach { add(.category, TokenCoding.encode($0)) }
-        saved.all.applicationTokens.forEach { add(.app, TokenCoding.encode($0)) }
-        saved.all.webDomainTokens.forEach { add(.domain, TokenCoding.encode($0)) }
+        let picked = items(saved.all, kid: kid, now: now)
         AppGroup.save(saved.screenThyme.applicationTokens.compactMap(TokenCoding.encode), to: AppGroup.exemptTokensURL)
         // An empty pick is a cancel: keep the last scan rather than unshield everything.
         guard !picked.isEmpty else {
@@ -42,27 +40,37 @@ enum AppScan {
         AppGroup.withLock("sampler") {
             var known = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             var changed: [TrackedItem] = []
-            for item in picked where known[item.id]?.tokenData != item.tokenData {
-                var item = item
-                item.firstSeen = known[item.id]?.firstSeen ?? now
-                // A token picked again keeps its match and nickname.
-                item.match = known[item.id]?.match
-                item.nickname = known[item.id]?.nickname
+            for pick in picked where known[pick.id]?.tokenData != pick.tokenData {
+                var item = known[pick.id] ?? pick  // one a scan dropped keeps its match
+                item.tokenData = pick.tokenData
                 known[item.id] = item
                 changed.append(item)
             }
-            let ids = Set(picked.map(\.id))
-            for (id, item) in known where item.isScanned && item.tokenData != nil && !ids.contains(id) {
+            let dropped = before.subtracting(picked.map(\.id))
+            var unmatched = 0  // matches of dropped tokens
+            for (id, item) in known where dropped.contains(id) && item.tokenData != nil {
+                if item.match != nil { unmatched += 1 }
                 known[id]?.tokenData = nil
                 changed.append(known[id]!)
             }
             AppGroup.saveItems(Array(known.values))
             try? AppGroup.newItems.append(contentsOf: changed)
-            try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"))
+            try? AppGroup.journal.append(.note("app scan: \(picked.count) picked, \(changed.count) changed"
+                + (unmatched > 0 ? ", \(unmatched) matches to redo" : "")))
         }
         Task {
             await Enforcer.offMain { Enforcer.reconcile(now: now) }
         }
+    }
+
+    /// A pick's items: categories, apps, then websites.
+    private static func items(_ selection: FamilyActivitySelection, kid: Kid, now: Date) -> [TrackedItem] {
+        func items(_ kind: ItemKind, _ data: [Data]) -> [TrackedItem] {
+            data.map { item(kind, tokenData: $0, kid: kid, now: now) }
+        }
+        return items(.category, selection.categoryTokens.compactMap(TokenCoding.encode))
+            + items(.app, selection.applicationTokens.compactMap(TokenCoding.encode))
+            + items(.domain, selection.webDomainTokens.compactMap(TokenCoding.encode))
     }
 
     private static func item(_ kind: ItemKind, tokenData: Data, kid: Kid, now: Date) -> TrackedItem {
@@ -71,17 +79,25 @@ enum AppScan {
                            firstSeen: now)
     }
 
-    /// The scanned item for an app picked in Apple's picker; one installed since the scan becomes an item now.
+    /// The scanned item for an app picked in Apple's picker; one the scan doesn't list becomes an item now. An item a
+    /// scan took this token from gets it back, with its match.
     static func item(for token: ApplicationToken, kid: Kid, now: Date = Date()) -> TrackedItem? {
         if let known = AppGroup.loadItems().first(where: { $0.kind == .app && TokenCoding.application($0.tokenData) == token }) {
             return known
         }
         guard let data = TokenCoding.encode(token) else { return nil }
-        let new = item(.app, tokenData: data, kid: kid, now: now)
+        var result = item(.app, tokenData: data, kid: kid, now: now)
         AppGroup.withLock("sampler") {
-            AppGroup.saveItems(AppGroup.loadItems() + [new])
-            try? AppGroup.newItems.append(contentsOf: [new])
+            var items = AppGroup.loadItems()
+            if let index = items.firstIndex(where: { $0.id == result.id }) {
+                items[index].tokenData = data
+                result = items[index]
+            } else {
+                items.append(result)
+            }
+            AppGroup.saveItems(items)
+            try? AppGroup.newItems.append(contentsOf: [result])
         }
-        return new
+        return result
     }
 }

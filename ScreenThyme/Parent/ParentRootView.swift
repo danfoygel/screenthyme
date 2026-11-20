@@ -89,7 +89,9 @@ struct KidCard: View {
                 }
             }
             .font(.subheadline)
-            Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items))))").font(.subheadline.monospacedDigit())
+            let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: DayKey(Date()))
+            Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items, excluding: mirrored))))")
+                .font(.subheadline.monospacedDigit())
             let unmatched = model.unmatchedApps(for: kid)
             if !unmatched.toMatch.isEmpty {
                 let count = unmatched.toMatch.count
@@ -99,7 +101,7 @@ struct KidCard: View {
             }
             if !unmatched.toScan.isEmpty {
                 let count = unmatched.toScan.count
-                Label("\(count) \(count == 1 ? "app needs" : "apps need") a new app scan", systemImage: "square.grid.3x3")
+                Label("\(count) \(count == 1 ? "app" : "apps") not in the app scan", systemImage: "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -116,9 +118,11 @@ struct KidCard: View {
     }
 }
 
-/// Apple's total over apps only: websites also count as Safari's time.
-func appTotal(_ timeline: DayTimeline, _ items: [UUID: TrackedItem]) -> Int {
-    Int((timeline.items.filter { items[$0.key]?.kind != .domain }.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
+/// Apple's total over apps only: websites also count as Safari's time, and so do `mirrored` apps, whose use is Safari's on
+/// their website (`WebMirror`).
+func appTotal(_ timeline: DayTimeline, _ items: [UUID: TrackedItem], excluding mirrored: Set<UUID> = []) -> Int {
+    let apps = timeline.items.filter { items[$0.key]?.kind != .domain && !mirrored.contains($0.key) }
+    return Int((apps.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
 }
 
 struct KidDayView: View {
@@ -141,7 +145,8 @@ struct KidDayView: View {
                         .disabled(day >= DayKey(Date()))
                 }
                 .buttonStyle(.borderless)
-                LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items)))
+                let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: day)
+                LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items, excluding: mirrored)))
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
             }
             let unmatched = model.unmatchedApps(for: kid)
@@ -162,9 +167,9 @@ struct KidDayView: View {
                 Section {
                     UnmatchedNames(items: unmatched.toScan)
                 } header: {
-                    Text("Need a new app scan")
+                    Text("Not in the app scan")
                 } footer: {
-                    Text("Used this week, but the last match didn't find them: most likely installed after the last app scan. Until they're matched, limits don't count them and they can't be blocked by name. On \(kid.displayName)'s phone, tap Scan apps, then match again.")
+                    Text("Used this week, but the last match didn't find them in the app scan: \"All Apps & Categories\" leaves some apps out. On \(kid.displayName)'s phone, tap Scan apps, search for each one and tick it, then match again. Until then, Downtime and limits on their category or on all apps cover them, but nothing by name.")
                 }
             }
             Section {
