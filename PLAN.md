@@ -575,6 +575,12 @@ until the window ends (a press on a category shield can't say which app, §15.3)
 each an item with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). Parents pick them by `Label`, so
 no search or sorting. A second pick of ScreenThyme alone gives its own token, which Downtime and limits always let
 through (`exempt-tokens.json`). Apps installed later are covered by their category until the next scan.
+- **New tokens** (Nov 19): a rescan can re-issue every token (§15.6). Items it didn't pick lose their token but keep
+  their match, so they say what they were, and pairing a new token to the same app leaves it. Policies follow an app
+  to its new token (`Policy.followingNewTokens`: the scanned items with a token matched to the same app replace the
+  old one), on the kid's phone when it enforces and on parents' phones when they show or save the policy. Before
+  this, a kid's Always Allowed kept 5 old tokens that allowed nothing and showed as "App". Items with no new token to
+  follow show under "No longer on the phone", by their match's name, and parents can remove them.
 - Downtime shields every category except Always Allowed: no app list, so no cap.
 - Blocked apps and exhausted limits' apps are shielded one by one over `restrictions`/`limits` plus overflow stores
   `.2`…`.6` (50 each).
@@ -656,8 +662,8 @@ like this:
   the order (the extension reads the App Group). Core Image draws nothing in the report extension (not even its
   software renderer), so the codes come from our own encoder (`QRCode`) and a `Canvas`. An identifier's number is the sum of its reports' bits. The kid
   takes 2 screenshots; the app reads them from the photo library with Vision and saves the matches. A pair
-  overrides a match from watching use, and another scanned item matched to the same app loses its match and is
-  watched again. Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
+  overrides a match from watching use, and another scanned item with a token matched to the same app loses its match
+  and is watched again (one without a token keeps it: §15.3, new tokens). Hashes are looked up among items from Apple's data and the identifiers a names report (`pair.n`,
   filtered to every scanned item, one large code) spells out; a failed parity check (two scanned tokens for one app)
   is skipped. A match to an app or website the phone hasn't seen in Apple's data (used in the window, before
   tracking began) creates a bare item for it, so parents can name the match; it never counts as a new app. First run

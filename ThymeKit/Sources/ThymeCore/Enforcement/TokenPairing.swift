@@ -43,7 +43,7 @@ public enum TokenPairing {
     /// can't shield its app, so its match doesn't count: a scan can re-issue every token (it did on a kid's phone, all
     /// at once), and those apps must be matched again, to the new tokens.
     public static func matchedIDs(_ items: [TrackedItem]) -> Set<UUID> {
-        Set(items.compactMap { $0.isScanned && $0.tokenData != nil ? $0.match : nil })
+        Set(items.compactMap(\.liveMatch))
     }
 
     /// Apps, websites and categories some scanned item is matched to.
@@ -52,8 +52,8 @@ public enum TokenPairing {
         return Set(items.filter { matches.contains($0.id) }.map { Identifier(kind: $0.kind, identifier: $0.identifier) })
     }
 
-    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item is matched to already
-    /// (a second scanned token for a matched app would take its match away).
+    /// What a report draws of the identifiers it saw: in `unmatched`, not those a scanned item with a token is matched
+    /// to already (a second scanned token for a matched app would take its match away).
     public static func drawn(_ seen: Set<Identifier>, items: [TrackedItem], mode: Mode) -> Set<Identifier> {
         mode == .all ? seen : seen.subtracting(matched(items))
     }
@@ -405,7 +405,7 @@ public enum TokenPairing {
 
     /// Sets each paired scanned item's match to the item for its bundle ID, domain or category name. That item's id comes from the
     /// kid and the identifier; one this phone hasn't seen yet is created. Another scanned item matched to the same app
-    /// or website loses its match.
+    /// or website loses its match; one without a token keeps it, to say what it was.
     public static func apply(_ pairs: some Sequence<Pair>, to items: inout [TrackedItem], kid: UUID, now: Date = Date())
         -> Outcome {
         var outcome = Outcome()
@@ -435,7 +435,7 @@ public enum TokenPairing {
             changed.insert(index)
         }
         for (index, item) in items.enumerated() where item.isScanned && item.kidID == kid {
-            guard let match = item.match, let owner = paired[match], owner != index else { continue }
+            guard let match = item.liveMatch, let owner = paired[match], owner != index else { continue }
             items[index].match = nil
             changed.insert(index)
             outcome.cleared += 1
@@ -444,7 +444,7 @@ public enum TokenPairing {
         return outcome
     }
 
-    /// Apps from Apple's data that no scanned item is matched to, by what would match them.
+    /// Apps from Apple's data that no scanned item with a token is matched to, by what would match them.
     public struct Unmatched: Sendable, Equatable {
         /// Another import may match them: they turned up since the last one (all of them, before the first), the
         /// app scan has added apps since, or a scan re-issued their token (a scanned item without a token is still

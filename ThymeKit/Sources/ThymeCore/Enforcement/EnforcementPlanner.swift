@@ -165,7 +165,7 @@ public enum EnforcementPlanner {
                             calendar: Calendar = .current) -> EnforcementPlan {
         var plan = EnforcementPlan()
         guard policy.enabled else { return plan }
-        let policy = policy.resolved
+        let policy = policy.resolved(items: items)
         let today = DayKey(now, calendar: calendar)
         let grants = state.day == today ? state.grants.filter(\.grant.approved) : []
         let limitFires = state.day == today ? state.limitFires : [:]

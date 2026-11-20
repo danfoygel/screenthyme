@@ -54,7 +54,7 @@ public struct AppDetails: Sendable {
     public init(item: TrackedItem, items: [UUID: TrackedItem], policy: Policy, exempt: Set<UUID> = []) {
         self.item = item
         let match = item.isScanned ? item.match.flatMap { items[$0] } : item
-        let scanned = match.map { match in items.values.filter { $0.isScanned && $0.match == match.id } } ?? []
+        let scanned = match.map { match in items.values.filter { $0.liveMatch == match.id } } ?? []
         let ids = Set([item.id] + (match.map { [$0.id] } ?? []) + scanned.map(\.id))
         let categoryName = match?.category ?? item.category
         let categoryIDs = categoryName.map { name in

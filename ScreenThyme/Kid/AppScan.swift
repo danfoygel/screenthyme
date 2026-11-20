@@ -24,7 +24,8 @@ enum AppScan {
     /// picked and this one doesn't lose their token, so shields and parents' pickers drop them; tokens picked in Ask for
     /// more time stay (the scan's picker left Safari out, and a scan dropped the one the kid picked). A pick can re-issue
     /// every token (one did on a kid's phone): the old items keep their matches, which no longer count
-    /// (`TokenPairing.matchedIDs`) but say those apps need a match round, to their new tokens (`TokenPairing.unmatched`).
+    /// (`TokenPairing.matchedIDs`) but say those apps need a match round, to their new tokens (`TokenPairing.unmatched`), and policies naming them
+    /// follow the app there (`Policy.followingNewTokens`).
     static func save(_ saved: Saved, kid: Kid, now: Date = Date()) {
         let before = Set(items(load().all, kid: kid, now: now).map(\.id))
         AppGroup.save(saved, to: url)

@@ -33,8 +33,8 @@ enum Enforcer {
             var state = loadState(now: now)
             change?(&state)
             AppGroup.save(state, to: AppGroup.enforcementStateURL)
-            let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows,

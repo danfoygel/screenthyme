@@ -347,6 +347,42 @@ struct EnforcementTests {
         #expect(plan(Policy(kidID: kid, limits: [limit]), state: state, at: at(9, 0)).exhaustedLimits.isEmpty)
     }
 
+    // MARK: - New tokens
+
+    /// A later app scan gave Messages a new token: everything that named the old one follows it. Instagram's old token
+    /// has no new one to follow, so it stays, allowing nothing.
+    @Test func policiesFollowAnAppToItsNewToken() {
+        func scanned(_ hash: String, match: TrackedItem, token: Bool) -> TrackedItem {
+            var item = TrackedItem(kidID: kid, kind: .app, identifier: TrackedItem.scannedPrefix + hash,
+                                   tokenData: token ? Data([1]) : nil, firstSeen: dayStart)
+            item.match = match.id
+            return item
+        }
+        let oldMessages = scanned("old-m", match: messages, token: false)
+        let newMessages = scanned("new-m", match: messages, token: true)
+        let oldInstagram = scanned("old-i", match: instagram, token: false)
+        let all = items.merging([oldMessages, newMessages, oldInstagram].map { ($0.id, $0) }) { a, _ in a }
+        let group = ItemGroup(name: "Chat", items: [oldMessages.id, snapchat.id])
+        let window = DowntimeWindow(name: "School", startMinute: 8 * 60, endMinute: 15 * 60, items: [oldMessages.id])
+        let limit = AppLimit(name: "Chat", items: [oldMessages.id], minutes: 30)
+        let policy = Policy(kidID: kid, downtime: [window], alwaysAllowed: [oldMessages.id, oldInstagram.id],
+                            limits: [limit], blocked: [oldMessages.id], groups: [group])
+
+        let followed = policy.followingNewTokens(items: all)
+        #expect(followed.alwaysAllowed == [newMessages.id, oldInstagram.id])
+        #expect(followed.blocked == [newMessages.id])
+        #expect(followed.limits[0].items == [newMessages.id])
+        #expect(followed.downtime[0].items == [newMessages.id])
+        #expect(followed.groups[0].items == [newMessages.id, snapchat.id])
+        #expect(followed.followingNewTokens(items: all) == followed)
+        #expect(Policy.staleItems(followed.alwaysAllowed, items: all) == [oldInstagram.id])
+        #expect(policy.followingNewTokens(items: items) == policy)
+
+        let result = EnforcementPlanner.plan(policy: policy, items: all, usage: [:], state: EnforcementDayState(day: testDay),
+                                             now: at(9, 0), calendar: utc)
+        #expect(result.alwaysAllowed == [newMessages.id, oldInstagram.id])
+    }
+
     // MARK: - Groups and Downtime for some apps (PLAN.md §15.8)
 
     @Test func groupsStandForTheirItemsInLimitsAllowedAndBlocked() {

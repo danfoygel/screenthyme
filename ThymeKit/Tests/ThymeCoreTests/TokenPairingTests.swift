@@ -342,6 +342,36 @@ struct TokenPairingTests {
         #expect(Set(outcome.changed.map(\.id)) == [game.id, guess.id])
     }
 
+    @Test func anItemThatLostItsTokenKeepsItsMatch() {
+        // A later scan gave Camera a new token: the old item lost its token, and the new one pairs to Camera.
+        let camera = data("com.apple.camera")
+        var old = scanned("old")
+        old.tokenData = nil
+        old.match = camera.id
+        let new = scanned("new")
+        var items = [old, new, camera]
+
+        let outcome = TokenPairing.apply([.init(scanned: new.id, kind: .app, identifier: "com.apple.camera")], to: &items, kid: kid)
+
+        #expect(outcome.added == 1)
+        #expect(outcome.cleared == 0)
+        #expect(items[0].match == camera.id)
+        #expect(outcome.changed.map(\.id) == [new.id])
+    }
+
+    @Test func onlyItemsWithATokenCountAsMatched() {
+        // Camera's old token is gone and its new one isn't paired yet: Camera still needs matching.
+        let camera = data("com.apple.camera")
+        var old = scanned("old")
+        old.tokenData = nil
+        old.match = camera.id
+        let items = [old, scanned("new"), camera]
+
+        #expect(old.liveMatch == nil)
+        #expect(TokenPairing.matched(items).isEmpty)
+        #expect(TokenPairing.unmatched(items, lastImport: nil).toMatch.map(\.identifier) == ["com.apple.camera"])
+    }
+
     /// After a first round matched most apps, a new app's codes hold only its own hash: all of them fit one screen.
     @Test func unmatchedModePairsNewAppsWithSmallCodes() throws {
         var scans = (0..<200).map { scanned("a\($0)") }
