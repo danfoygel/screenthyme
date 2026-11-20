@@ -80,7 +80,7 @@ struct KidHomeView: View {
                         NavigationLink {
                             CameraPairingView()
                         } label: {
-                            let count = TokenPairing.toMatch(AppGroup.loadItems(), lastImport: TokenPairingView.lastImport()).count
+                            let count = TokenPairing.unmatched(AppGroup.loadItems(), lastImport: TokenPairingView.lastImport()).toMatch.count
                             LabeledContent("Match with a parent's camera", value: count == 0 ? "" : "\(count) new")
                                 .foregroundStyle(count == 0 ? Color.primary : .orange)
                         }
@@ -124,6 +124,8 @@ struct KidHomeView: View {
             .onChange(of: scenePhase, initial: true) {
                 if scenePhase == .active, let taken = ShieldContext.Ask.take() { ask = AskSheet(ask: taken) }
             }
+            // Names and icons for the apps and websites this phone has used, as on a parent's phone.
+            .task { await AppCatalog.shared.lookUp(AppGroup.loadItems()) }
             .refreshable {
                 await model.sampleNow()
                 await model.flush()

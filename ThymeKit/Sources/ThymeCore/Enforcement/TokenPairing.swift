@@ -444,17 +444,35 @@ public enum TokenPairing {
         return outcome
     }
 
-    /// Apps from Apple's data that no scanned item is matched to and that turned up after the last import (all of them,
-    /// before the first, or when the scan has added tokens since): another import may match them. Websites are left
-    /// out: browsing turns up new domains all the time, mostly embedded ones the scan doesn't list.
-    public static func toMatch(_ items: [TrackedItem], lastImport: Date?) -> [TrackedItem] {
+    /// Apps from Apple's data that no scanned item is matched to, by what would match them.
+    public struct Unmatched: Sendable, Equatable {
+        /// Another import may match them: they turned up since the last one (all of them, before the first), or the
+        /// app scan has added apps since.
+        public var toMatch: [TrackedItem] = []
+        /// An import since they turned up didn't match them, and the scan has added nothing since: most likely installed
+        /// after the last scan, so they need a new scan, then an import.
+        public var toScan: [TrackedItem] = []
+
+        public init() {}
+    }
+
+    /// Websites are left out: browsing turns up new domains all the time, mostly embedded ones the scan doesn't list. So
+    /// are iOS's own processes, which no scan lists (`BuiltInApps.isSystemProcess`).
+    /// - Parameter used: the apps to count, those used lately; nil counts them all. A deleted app stays unmatched.
+    public static func unmatched(_ items: [TrackedItem], lastImport: Date?, used: Set<UUID>? = nil) -> Unmatched {
         let matched = matchedIDs(items)
-        // A scanned item keeps the date it was first picked.
+        // When the scan last added an app: a scanned item keeps the date it was first picked.
         let lastScan = items.filter { $0.isScanned && $0.tokenData != nil }.map(\.firstSeen).max()
-        let since = lastImport.flatMap { lastImport in lastScan.map { $0 > lastImport } == true ? nil : lastImport }
-        return items.filter { item in
-            item.kind == .app && !item.isScanned && !matched.contains(item.id) && since.map { item.firstSeen > $0 } ?? true
+        var result = Unmatched()
+        for item in items where item.kind == .app && !item.isScanned && !matched.contains(item.id)
+            && !BuiltInApps.isSystemProcess(item.identifier) && used.map({ $0.contains(item.id) }) ?? true {
+            if let lastImport, item.firstSeen <= lastImport, lastScan.map({ $0 <= lastImport }) ?? true {
+                result.toScan.append(item)
+            } else {
+                result.toMatch.append(item)
+            }
         }
+        return result
     }
 
     /// FNV-1a, 64-bit: stable across processes, unlike `Hasher`.

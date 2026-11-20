@@ -52,7 +52,11 @@ struct KidAppsView: View {
         }
         .navigationTitle("Apps")
         .bugButton()
-        .task { load() }
+        .task {
+            load()
+            // Apps and websites new since launch; the rows redraw as their names and icons arrive.
+            await AppCatalog.shared.lookUp(AppGroup.loadItems())
+        }
         .refreshable { load() }
     }
 

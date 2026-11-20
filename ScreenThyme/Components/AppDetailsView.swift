@@ -172,6 +172,17 @@ struct AppDetailsView: View {
         }
     }
 
+    /// "+ 1 h 0 min for this app": what parents gave today on `limit` for this app (or its category) alone.
+    static func givenToApp(_ limit: AppLimit, details: AppDetails, grants: [TimeGrant]) -> String? {
+        let given = grants.filter { grant in
+            grant.approved && grant.reason == .limit(limit.id) && Calendar.current.isDateInToday(grant.at)
+                && grant.itemID.map { details.ids.contains($0) || details.categoryIDs.contains($0) } == true
+        }
+        guard !given.isEmpty else { return nil }
+        if given.contains(where: { $0.minutes == nil }) { return "No limit for this app today" }
+        return "+ \(Format.minutes(given.reduce(0) { $0 + ($1.minutes ?? 0) })) for this app"
+    }
+
     @ViewBuilder
     private func limitsSection(_ details: AppDetails, data: AppDetailsData) -> some View {
         let weekday = Calendar.current.component(.weekday, from: Date())
@@ -192,6 +203,9 @@ struct AppDetailsView: View {
                                      ?? "A parent gave the rest of today")
                                     .font(.footnote).foregroundStyle(.secondary)
                             }
+                            if let given = Self.givenToApp(limit, details: details, grants: data.grants) {
+                                Text(given).font(.footnote).foregroundStyle(.secondary)
+                            }
                         }
                     } else {
                         Text("\(Format.minutes(limit.minutes(on: weekday))) a day")
@@ -210,7 +224,7 @@ struct AppDetailsView: View {
         } footer: {
             if !details.limits.isEmpty {
                 Text(details.isAlwaysAllowed ? "Always allowed, so these don't count it or block it."
-                     : "Used today across everything each limit counts, out of the limit plus any extra time a parent gave today. Always Allowed apps, ScreenThyme and Phone don't count.")
+                     : "Used today across everything each limit counts, out of the limit plus any extra time a parent gave today. Time a parent gave for one app lets only that app through. Always Allowed apps, ScreenThyme and Phone don't count.")
             }
         }
     }
@@ -453,11 +467,16 @@ struct AppDetailsData {
         let today = DayKey(now)
         // Today's answers and one more minutes, as the kid's phone applied them (about when they were given).
         var state = EnforcementDayState(day: today)
+        let samples = family.samples(kid: kid, day: today)
         state.grants = family.grants.values.filter { $0.kidID == kid && DayKey($0.at) == today }
-            .sorted { $0.at < $1.at }.map { AppliedGrant(grant: $0, appliedAt: $0.at) }
+            .sorted { $0.at < $1.at }.map { grant in
+                // The app's use before the answer, which the grant's minutes come after.
+                let before = AppDetails.usage(samples.filter { $0.end <= grant.at }, items: items)
+                return AppliedGrant(grant: grant, appliedAt: grant.at, baselineSeconds: grant.itemID.flatMap { before[$0] } ?? 0)
+            }
         state.extraMinutes = family.extraMinutes.values.filter { $0.kidID == kid && DayKey($0.at) == today }
             .map { ExtraMinute(itemID: $0.itemID, reason: $0.reason, at: $0.at, minutes: $0.minutes) }
-        let usage = AppDetails.usage(family.samples(kid: kid, day: today), items: items)
+        let usage = AppDetails.usage(samples, items: items)
         return EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                        exempt: Enforcer.exemptItems(items))
     }
