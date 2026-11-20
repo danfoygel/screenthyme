@@ -36,6 +36,9 @@ struct WebMirrorTests {
                     sample(safari, 30, minute: 6), sample(photos, 10, minute: 6)], items: items)
 
         #expect(mirror.mirrored(items: items, today: today) == [depop.id])
+        #expect(mirror.used(today: today) == [depop.id, reddit.id, photos.id])
+        #expect(mirror.used(today: today, items: items) == [reddit.id, photos.id])
+        #expect(mirror.used(today: today.adding(days: WebMirror.days)).isEmpty)
     }
 
     @Test func aFewUncoveredSecondsAreSlack() {

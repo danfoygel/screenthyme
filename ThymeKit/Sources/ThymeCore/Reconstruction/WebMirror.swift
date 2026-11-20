@@ -52,6 +52,16 @@ public struct WebMirror: Codable, Sendable, Equatable {
         byDay = byDay.filter { $0.key >= first }
     }
 
+    /// The apps used over the last `days`, as far as this tally has seen; with `items`, not those whose use was Safari's
+    /// on their website. On a kid's phone, the apps a match round can pair (`TokenPairing.unmatched(used:)`).
+    public func used(today: DayKey, items: [UUID: TrackedItem]? = nil) -> Set<UUID> {
+        let first = today.adding(days: 1 - Self.days)
+        let used = Set(byDay.filter { $0.key >= first && $0.key <= today }.values.flatMap { apps in
+            apps.filter { $0.value.all > 0 }.keys
+        })
+        return items.map { used.subtracting(mirrored(items: $0, today: today)) } ?? used
+    }
+
     /// The apps whose use over the last `days` was Safari's on their website. An app a scanned item with a token is
     /// matched to is installed, so it never is.
     public func mirrored(items: [UUID: TrackedItem], today: DayKey) -> Set<UUID> {
