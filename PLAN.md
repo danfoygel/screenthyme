@@ -932,5 +932,12 @@ a GitHub issue; nobody needs a GitHub account. This repository is public, so the
   skips screenshots already committed (a 422 on one already there is answered by fetching it). Filing stops at the
   first failure; the kid sees why ("Waiting for the internet", "Waiting for a parent to set up bug reports", GitHub's
   message). Pictures are deleted once filed; the last 20 filed reports stay listed as "Sent".
+- **Fixed:** when an issue is closed as done (`completed`), the phone that filed it gets a push, "A problem you
+  reported is fixed", quoting the reporter's first line, whether or not the app is running. A workflow in the bug
+  repository sends it to APNs itself (`Tools/BugPush`, with the family's APNs key as secrets): the issue ends with a
+  hidden marker naming the phone and the words, and each phone keeps its device token in `phones/<id>.json` there,
+  saved again when it changes. The phone also looks its issues up (launch, background refresh, the screen; at most
+  every 30 minutes, pull to refresh now) so the list shows "Fixed", or "Closed" for another reason. Sending a report
+  asks for permission to notify, which kids' phones hadn't before.
 - **Not covered:** a report whose issue was opened but whose answer was lost is filed again on retry (a duplicate
   issue). The picture of the screen can't show Apple's own views (the report extension's, the pickers).

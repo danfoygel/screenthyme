@@ -71,6 +71,62 @@ public struct GitHubIssues: Sendable {
         return try JSONDecoder().decode(ContentsItem.self, from: body).htmlURL
     }
 
+    /// How a filed report's issue was closed, looked up in whichever repository it was filed in; nil while it's open.
+    public func resolution(of issue: URL) async throws -> BugReport.Resolution? {
+        guard let url = Self.apiURL(of: issue) else { throw Failure.unexpectedResponse }
+        let (body, response) = try await transport(request("GET", url: url))
+        guard response.statusCode == 200 else { throw Self.failure(response.statusCode, body) }
+        let item = try JSONDecoder().decode(IssueItem.self, from: body)
+        guard item.state == "closed" else { return nil }
+        return item.stateReason == "completed" ? .fixed : .closed
+    }
+
+    /// Saves this phone's push token where the repository's workflow finds it, over any older one.
+    public func save(_ phone: PushPhone, id: UUID) async throws {
+        let path = PushPhone.path(of: id)
+        let (existing, found) = try await transport(request("GET", "contents/\(path)"))
+        let sha: String?
+        switch found.statusCode {
+        case 200: sha = try JSONDecoder().decode(FileSHA.self, from: existing).sha
+        case 404: sha = nil
+        default: throw Self.failure(found.statusCode, existing)
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        var put = request("PUT", "contents/\(path)")
+        var fields = ["message": "Push token for phone \(id.uuidString.prefix(8).lowercased())",
+                      "content": try encoder.encode(phone).base64EncodedString()]
+        fields["sha"] = sha
+        put.httpBody = try JSONEncoder().encode(fields)
+        let (body, response) = try await transport(put)
+        guard [200, 201].contains(response.statusCode) else { throw Self.failure(response.statusCode, body) }
+    }
+
+    /// What the repository's workflow reads when the issue is closed as done: which phone to push to, and what to
+    /// say. An HTML comment, so the issue doesn't show it.
+    static func fixMarker(of report: BugReport) -> String? {
+        guard let phone = report.phoneID else { return nil }
+        let message = report.fixedNotification
+        let fields = ["phone": phone.uuidString.lowercased(), "report": report.id.uuidString,
+                      "title": message.title, "body": message.body]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let json = try? encoder.encode(fields) else { return nil }
+        // "-->" would end the comment early; "\u003e" is the same JSON.
+        return "<!-- \(fixMarkerName) " + String(decoding: json, as: UTF8.self)
+            .replacingOccurrences(of: ">", with: "\\u003e") + " -->"
+    }
+
+    static let fixMarkerName = "screenthyme-fixed"
+
+    /// `https://github.com/<owner>/<name>/issues/<n>` → the API's address for it.
+    static func apiURL(of issue: URL) -> URL? {
+        let parts = issue.pathComponents.filter { $0 != "/" }
+        guard issue.host == "github.com", parts.count == 4, parts[2] == "issues", Int(parts[3]) != nil else { return nil }
+        return URL(string: "https://api.github.com/repos/\(parts[0])/\(parts[1])/issues/\(parts[3])")
+    }
+
     public static func title(of report: BugReport) -> String {
         "\(report.reporter): \(report.summary)"
     }
@@ -91,6 +147,7 @@ public struct GitHubIssues: Sendable {
             parts.append("<details><summary>Recent log</summary>\n\n````\n\(log)\n````\n</details>")
         }
         parts.append("<sub>Filed by ScreenThyme on \(report.reporter)'s phone · report \(report.id.uuidString)</sub>")
+        if let marker = fixMarker(of: report) { parts.append(marker) }
         return parts.joined(separator: "\n\n")
     }
 
@@ -104,7 +161,11 @@ public struct GitHubIssues: Sendable {
     }
 
     private func request(_ method: String, _ endpoint: String) -> URLRequest {
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(tracker.repository)/\(endpoint)")!)
+        request(method, url: URL(string: "https://api.github.com/repos/\(tracker.repository)/\(endpoint)")!)
+    }
+
+    private func request(_ method: String, url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(tracker.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -121,6 +182,16 @@ public struct GitHubIssues: Sendable {
     private struct ContentsItem: Decodable {
         let htmlURL: URL
         enum CodingKeys: String, CodingKey { case htmlURL = "html_url" }
+    }
+
+    private struct IssueItem: Decodable {
+        let state: String
+        let stateReason: String?
+        enum CodingKeys: String, CodingKey { case state, stateReason = "state_reason" }
+    }
+
+    private struct FileSHA: Decodable {
+        let sha: String
     }
 
     private struct ContentsResult: Decodable {

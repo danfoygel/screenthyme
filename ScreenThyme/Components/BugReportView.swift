@@ -74,6 +74,8 @@ struct BugReportView: View {
                 Button("Send") { send() }
                     .disabled(loadingScreenshots || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                                      && screenshots.isEmpty && captured == nil))
+            } footer: {
+                Text("You'll get a notification when it's fixed.")
             }
             if !queue.reports.isEmpty {
                 Section("Your reports") {
@@ -82,7 +84,8 @@ struct BugReportView: View {
                             Text(report.summary).lineLimit(2)
                             Text("\(Format.relative(report.at)) · \(queue.status(of: report))")
                                 .font(.caption)
-                                .foregroundStyle(report.isFiled ? Color.secondary : .orange)
+                                .foregroundStyle(report.resolution == .fixed ? .green
+                                                 : report.isFiled ? Color.secondary : .orange)
                         }
                         .swipeActions {
                             if !report.isFiled {
@@ -103,8 +106,8 @@ struct BugReportView: View {
             }
         }
         .task(id: picked) { await load(picked) }
-        .task { await queue.send(store: model.store) }
-        .refreshable { await queue.send(store: model.store) }
+        .task { await queue.sync(store: model.store) }
+        .refreshable { await queue.sync(store: model.store, checkNow: true) }
     }
 
     private func thumbnail(_ image: UIImage, remove: @escaping () -> Void) -> some View {
@@ -160,7 +163,11 @@ struct BugReportView: View {
         screenshots = []
         writing = false
         thanks = true
-        Task { await model.bugReports.send(store: model.store) }
+        Task {
+            // The fix comes as a push (`Tools/BugPush`); kids' phones haven't asked before.
+            await Notifier.requestPermission()
+            await model.bugReports.sync(store: model.store)
+        }
     }
 }
 

@@ -1,0 +1,30 @@
+# Goes in the family's private bug repository as .github/workflows/notify-fixed.yml, beside
+# .github/scripts/notify-fixed.mjs (see README.md).
+name: Tell the reporter it's fixed
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    if: github.event.issue.state_reason == 'completed'
+    runs-on: ubuntu-latest
+    steps:
+      # Only the script: the repository also holds every report's screenshots.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/notify-fixed.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APNS_KEY: ${{ secrets.APNS_KEY }}
+          APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+          APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
