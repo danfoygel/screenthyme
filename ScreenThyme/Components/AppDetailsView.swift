@@ -183,8 +183,16 @@ struct AppDetailsView: View {
                         Text("Off")
                     } else if let used = data.plan?.used[limit.id] {
                         let budget = data.plan?.budgets[limit.id]
-                        Text(budget.map { "\(Format.minutes(used)) of \(Format.minutes($0))" } ?? "\(Format.minutes(used)), no limit today")
-                            .foregroundStyle(budget.map { used >= $0 } == true ? Color.orange : Color.secondary)
+                        let extra = budget.map { $0 - limit.minutes(on: weekday) }
+                        VStack(alignment: .trailing) {
+                            Text(budget.map { "\(Format.minutes(used)) of \(Format.minutes($0))" } ?? "\(Format.minutes(used)), no limit today")
+                                .foregroundStyle(budget.map { used >= $0 } == true ? Color.orange : Color.secondary)
+                            if budget == nil || extra.map({ $0 > 0 }) == true {
+                                Text(extra.map { "\(Format.minutes(limit.minutes(on: weekday))) + \(Format.minutes($0)) extra" }
+                                     ?? "A parent gave the rest of today")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
                     } else {
                         Text("\(Format.minutes(limit.minutes(on: weekday))) a day")
                     }
@@ -202,7 +210,7 @@ struct AppDetailsView: View {
         } footer: {
             if !details.limits.isEmpty {
                 Text(details.isAlwaysAllowed ? "Always allowed, so these don't count it or block it."
-                     : "Used today across everything each limit counts, with any extra time a parent gave.")
+                     : "Used today across everything each limit counts, out of the limit plus any extra time a parent gave today. Always Allowed apps, ScreenThyme and Phone don't count.")
             }
         }
     }
@@ -221,7 +229,7 @@ struct AppDetailsView: View {
         } header: {
             Text("More time")
         } footer: {
-            Text("Asking a parent, and One more minute on the block page, for this app or its category.")
+            Text("Asking a parent, and One more minute on the block page, for this app or its category, for more time on a limit that counts it, or for the whole phone.")
         }
     }
 
@@ -348,6 +356,7 @@ private struct RequestHistoryRow: View {
                     Image(systemName: grant == nil ? "hourglass" : grant!.approved ? "checkmark.circle" : "xmark.circle")
                         .foregroundStyle(grant == nil ? Color.secondary : grant!.approved ? Color.green : Color.red)
                 }
+                otherItem(asked.itemID)
                 if let note = asked.note { Text("\u{201C}\(note)\u{201D}").italic().font(.subheadline) }
                 Text(answer(grant)).font(.subheadline).foregroundStyle(.secondary)
             case let .extraMinute(use):
@@ -356,8 +365,21 @@ private struct RequestHistoryRow: View {
                 } icon: {
                     Image(systemName: "timer").foregroundStyle(.tint)
                 }
+                otherItem(use.itemID)
             }
             Text(request.at.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// The app the kid asked from, when it's another one that shares a limit.
+    @ViewBuilder
+    private func otherItem(_ itemID: UUID?) -> some View {
+        if let itemID, !details.ids.contains(itemID), !details.categoryIDs.contains(itemID), let item = data.items[itemID] {
+            HStack(spacing: 4) {
+                Text("From")
+                ItemName(item: item)
+            }
+            .font(.subheadline).foregroundStyle(.secondary)
         }
     }
 

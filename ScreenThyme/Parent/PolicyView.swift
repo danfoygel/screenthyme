@@ -37,14 +37,30 @@ struct PolicyView: View {
                     editingWindow = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60 + 30, endMinute: 7 * 60)
                 }
             }
-            Section("App Limits") {
+            Section {
+                let today = model.data.grants.values.filter { $0.kidID == kid.id && Calendar.current.isDateInToday($0.at) }
                 ForEach(policy.limits) { limit in
                     Button { editingLimit = limit } label: {
-                        LabeledContent(limit.name, value: limit.enabled ? Format.minutes(limit.minutes) + " a day" : "Off")
+                        LabeledContent {
+                            Text(limit.enabled ? Format.minutes(limit.minutes) + " a day" : "Off")
+                        } label: {
+                            Text(limit.name)
+                            if limit.enabled {
+                                switch EnforcementPlanner.extraMinutes(for: limit.id, grants: today) {
+                                case 0?: EmptyView()
+                                case let extra?: Text("\(Format.minutes(extra)) extra today")
+                                case nil: Text("No limit for the rest of today")
+                                }
+                            }
+                        }
                     }
                     .swipeActions { Button("Delete", role: .destructive) { update(policy) { $0.limits.removeAll { $0.id == limit.id } } } }
                 }
                 Button("Add limit") { editingLimit = AppLimit(name: "", items: [], minutes: 60) }
+            } header: {
+                Text("App Limits")
+            } footer: {
+                Text("Always Allowed apps, ScreenThyme and Phone don't count toward limits. Extra time is what a parent gave today, when \(kid.displayName) asked for more.")
             }
             Section {
                 ForEach(policy.groups) { group in
