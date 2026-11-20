@@ -80,7 +80,7 @@ struct KidHomeView: View {
                         NavigationLink {
                             CameraPairingView()
                         } label: {
-                            let count = TokenPairing.toMatch(AppGroup.loadItems(), lastImport: TokenPairingView.lastImport()).count
+                            let count = TokenPairing.unmatched(AppGroup.loadItems(), lastImport: TokenPairingView.lastImport()).toMatch.count
                             LabeledContent("Match with a parent's camera", value: count == 0 ? "" : "\(count) new")
                                 .foregroundStyle(count == 0 ? Color.primary : .orange)
                         }

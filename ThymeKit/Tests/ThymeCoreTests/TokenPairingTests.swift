@@ -246,12 +246,38 @@ struct TokenPairingTests {
         let new = seen("com.new", after: true)
         let newMatched = seen("com.matched", after: true)
         let site = seen("new.example.com", .domain, after: true)
+        let screenshot = seen("com.apple.ScreenshotServicesService", after: true)
         var scannedApp = scanned("s")
+        scannedApp.firstSeen = lastImport.addingTimeInterval(-120)
         scannedApp.match = newMatched.id
-        let items = [old, new, newMatched, site, scannedApp]
+        let items = [old, new, newMatched, site, screenshot, scannedApp]
 
-        #expect(TokenPairing.toMatch(items, lastImport: lastImport).map(\.identifier) == ["com.new"])
-        #expect(TokenPairing.toMatch(items, lastImport: nil).map(\.identifier) == ["com.old", "com.new"])
+        let unmatched = TokenPairing.unmatched(items, lastImport: lastImport)
+        #expect(unmatched.toMatch.map(\.identifier) == ["com.new"])
+        // The last import saw it and didn't match it: the scan hasn't added it.
+        #expect(unmatched.toScan.map(\.identifier) == ["com.old"])
+        #expect(TokenPairing.unmatched(items, lastImport: nil).toMatch.map(\.identifier) == ["com.old", "com.new"])
+        #expect(TokenPairing.unmatched(items, lastImport: nil).toScan.isEmpty)
+        // Only the apps used lately.
+        #expect(TokenPairing.unmatched(items, lastImport: lastImport, used: [new.id]).toScan.isEmpty)
+
+        // A scan since the last import adds a token: the next import may match every app.
+        var rescanned = scanned("r")
+        rescanned.firstSeen = lastImport.addingTimeInterval(120)
+        let afterScan = TokenPairing.unmatched(items + [rescanned], lastImport: lastImport)
+        #expect(afterScan.toMatch.map(\.identifier) == ["com.old", "com.new"])
+        #expect(afterScan.toScan.isEmpty)
+    }
+
+    @Test func systemProcessesAreTold() {
+        #expect(BuiltInApps.isSystemProcess("com.apple.ScreenshotServicesService"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.InCallService"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.CoreAuthUI"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.springboard"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.mobilesafari"))
+        #expect(!BuiltInApps.isSystemProcess("com.apple.Pages"))
+        #expect(!BuiltInApps.isSystemProcess("com.uo.StoreLocator"))
+        #expect(!BuiltInApps.isSystemProcess("com.example.PushService"))
     }
 
     @Test func anotherItemMatchedToThePairedAppLosesItsMatch() {

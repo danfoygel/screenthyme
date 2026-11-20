@@ -90,9 +90,16 @@ struct KidCard: View {
             }
             .font(.subheadline)
             Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items))))").font(.subheadline.monospacedDigit())
-            let toMatch = model.appsToMatch(for: kid).count
-            if toMatch > 0 {
-                Label("\(toMatch) new \(toMatch == 1 ? "app" : "apps") to match", systemImage: "qrcode.viewfinder")
+            let unmatched = model.unmatchedApps(for: kid)
+            if !unmatched.toMatch.isEmpty {
+                let count = unmatched.toMatch.count
+                Label("\(count) new \(count == 1 ? "app" : "apps") to match", systemImage: "qrcode.viewfinder")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if !unmatched.toScan.isEmpty {
+                let count = unmatched.toScan.count
+                Label("\(count) \(count == 1 ? "app needs" : "apps need") a new app scan", systemImage: "square.grid.3x3")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -137,20 +144,27 @@ struct KidDayView: View {
                 LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items)))
                 LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
             }
-            let toMatch = model.appsToMatch(for: kid)
-            if !toMatch.isEmpty {
+            let unmatched = model.unmatchedApps(for: kid)
+            if !unmatched.toMatch.isEmpty {
+                let toMatch = unmatched.toMatch
                 Section {
                     NavigationLink { PairingScannerView(kid: kid) } label: {
                         Label("Match \(toMatch.count) new \(toMatch.count == 1 ? "app" : "apps") with camera",
                               systemImage: "qrcode.viewfinder")
                             .foregroundStyle(.orange)
                     }
-                    ForEach(toMatch.prefix(5)) { item in ItemName(item: item).font(.subheadline) }
-                    if toMatch.count > 5 {
-                        Text("and \(toMatch.count - 5) more").font(.subheadline).foregroundStyle(.secondary)
-                    }
+                    UnmatchedNames(items: toMatch)
                 } footer: {
-                    Text("Used on \(kid.displayName)'s phone since its last match, so limits don't count them yet. Apps installed since the last app scan need a new scan on that phone first.")
+                    Text("Used on \(kid.displayName)'s phone since its last match, so limits don't count them yet.")
+                }
+            }
+            if !unmatched.toScan.isEmpty {
+                Section {
+                    UnmatchedNames(items: unmatched.toScan)
+                } header: {
+                    Text("Need a new app scan")
+                } footer: {
+                    Text("Used this week, but the last match didn't find them: most likely installed after the last app scan. Until they're matched, limits don't count them and they can't be blocked by name. On \(kid.displayName)'s phone, tap Scan apps, then match again.")
                 }
             }
             Section {
@@ -242,6 +256,18 @@ struct KidDayView: View {
             result[id] = .limit(name: limit.name)
         }
         return result
+    }
+}
+
+/// The first few of a kid's unmatched apps, then how many more.
+private struct UnmatchedNames: View {
+    let items: [TrackedItem]
+
+    var body: some View {
+        ForEach(items.prefix(5)) { item in ItemName(item: item).font(.subheadline) }
+        if items.count > 5 {
+            Text("and \(items.count - 5) more").font(.subheadline).foregroundStyle(.secondary)
+        }
     }
 }
 

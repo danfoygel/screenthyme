@@ -37,4 +37,12 @@ public enum BuiltInApps {
         // Every Home Screen web app.
         "com.apple.webapp": "Web app",
     ]
+
+    /// iOS's own processes that turn up in Apple's usage data, such as the screenshot editor
+    /// (com.apple.ScreenshotServicesService), the call screen and the Face ID prompt: no app scan lists them.
+    public static func isSystemProcess(_ bundleID: String) -> Bool {
+        guard bundleID.hasPrefix("com.apple."), names[bundleID] == nil else { return false }
+        let name = bundleID.split(separator: ".").last?.lowercased() ?? ""
+        return name == "springboard" || ["service", "services", "ui"].contains { name.hasSuffix($0) }
+    }
 }
