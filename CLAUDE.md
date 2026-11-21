@@ -56,7 +56,7 @@ xcodegen generate
 # Pull the App Group off a phone (Xcode 27's devicectl only copies from Library/) and reconstruct
 xcrun devicectl device copy from --device <udid> --domain-type appGroupDataContainer \
   --domain-identifier group.com.danfoygel.screenthyme --source Library/ScreenThyme --destination /tmp/st
-(cd ThymeKit && swift run thyme-inspect /tmp/st/Journal/journal-YYYY-MM-DD.jsonl /tmp/st/Outbox/samples.jsonl /tmp/st/items.json)
+(cd ThymeKit && swift run thyme-inspect /tmp/st/Journal/journal-YYYY-MM-DD.jsonl /tmp/st/Outbox/samples.jsonl /tmp/st/items.json [/tmp/st/Places])
 
 # A parent's local mirror of the family zone
 xcrun devicectl device copy from --device <udid> --domain-type appDataContainer \

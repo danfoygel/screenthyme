@@ -975,5 +975,16 @@ Goal: say where each app was used ("YouTube: 50 min at home, 12 at school") with
   whether a child account can grant Always (Screen Time's Location Services restriction can lock it); iOS's
   "keep allowing Always?" prompts; battery, under Settings › Battery (our `EnergyLedger` counts only our process,
   not `locationd`).
+- **First day out (Nov 20, 2026, a kid's iPhone 15 Pro on iOS 27):** visits caught every stop of six minutes or
+  more, at home and away; departures came 1–1.5 min late, arrivals 1–5 min (once 15). The app woke once per report,
+  and its energy that day was lower than the day before. **The Home fence reported nothing**: no exit in the
+  morning, no entry at night, only its first answer at setup the day before. So `PlaceStays` kept the phone home all
+  day, a fence outranking visits. Two changes: a visit outside a fence now ends that fence's stay (when the phone
+  left the fence's last visit, else when the outside visit began), and `PlaceWatcher` logs to App Group
+  `Places/diagnostics.txt` every start (foreground or background, location access), the monitor's own record of
+  each fence when it opens (`CLMonitor.record(for:)`), every raw monitor event and session problem; the Places
+  screen shows each fence's state as iOS holds it. Next day out tells whether iOS saw the crossings and they were
+  lost, or never saw them. `thyme-inspect` takes the copied `Places/` as a fourth argument (events, stays, use by
+  place; no coordinates).
 - **Then, if it holds up:** places set on a parent's phone and synced like `Policy`, stays uploaded, the timeline
   split by place on parents' phones, and maybe rules by place.

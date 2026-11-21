@@ -58,6 +58,27 @@ struct PlacesTests {
         #expect(stays == [PlaceStay(whereabouts: .place(home.id), start: at(12, 0), end: at(13, 0), isOpen: false)])
     }
 
+    @Test func aVisitElsewhereEndsAFenceStayWhoseExitWasMissed() {
+        let events = [
+            PlaceEvent(kind: .enter, at: at(6, 0), place: home.id),
+            // iOS saw the phone leave home, but the fence said nothing.
+            PlaceEvent(kind: .visit, at: at(7, 46), departure: at(7, 46), latitude: 0, longitude: 0, accuracy: 10),
+            PlaceEvent(kind: .visit, at: at(7, 57), departure: at(8, 7), latitude: 0.03, longitude: 0, accuracy: 50),
+            PlaceEvent(kind: .visit, at: at(19, 43), latitude: 0.0001, longitude: 0, accuracy: 5),
+        ]
+        #expect(PlaceStays.build(events, places: [home], now: at(20, 0)) == [
+            PlaceStay(whereabouts: .place(home.id), start: at(6, 0), end: at(7, 46), isOpen: false),
+            PlaceStay(whereabouts: .elsewhere, start: at(7, 57), end: at(8, 7), isOpen: false),
+            PlaceStay(whereabouts: .place(home.id), start: at(19, 43), end: at(20, 0), isOpen: true),
+        ])
+        // Without a visit at home saying when, the stay ends when the one elsewhere began.
+        let away = [events[0], events[2]]
+        #expect(PlaceStays.build(away, places: [home], now: at(9, 0)) == [
+            PlaceStay(whereabouts: .place(home.id), start: at(6, 0), end: at(7, 57), isOpen: false),
+            PlaceStay(whereabouts: .elsewhere, start: at(7, 57), end: at(8, 7), isOpen: false),
+        ])
+    }
+
     @Test func blocksAreSharedOutByStay() {
         let (game, video) = (UUID(), UUID())
         let stays = [

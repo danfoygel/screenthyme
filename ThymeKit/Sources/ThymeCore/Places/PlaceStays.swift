@@ -24,7 +24,8 @@ public enum PlaceStays {
     static let sameVisit: TimeInterval = 60
 
     /// Stays from the events, up to `now`. A fence's stay wins over a visit; between two fences, the later entry.
-    /// A visit inside a place's fence counts as that place, in case its own crossing was missed.
+    /// A visit inside a place's fence counts as that place, in case its own crossing was missed, and a visit outside
+    /// it ends the fence's stay, in case the exit was missed: iOS once reported none all day (PLAN.md §19).
     public static func build(_ events: [PlaceEvent], places: [Place], now: Date) -> [PlaceStay] {
         struct Raw {
             var whereabouts: Whereabouts
@@ -51,15 +52,27 @@ public enum PlaceStays {
         for (place, start) in entered where now > start {
             raws.append(Raw(whereabouts: .place(place), start: start, end: now, isOpen: true, rank: 2))
         }
-        for visit in visits(events) where visit.at < now {
+        let visits = visits(events)
+        // The phone left by the first visit outside the fence: when it left the fence's last visit, if one says so.
+        for index in raws.indices {
+            guard case let .place(id) = raws[index].whereabouts, let place = places.first(where: { $0.id == id }) else {
+                continue
+            }
+            let stay = raws[index]
+            guard let away = visits.first(where: { $0.at > stay.start && $0.at < stay.end && $0.isInside(place) == false })
+            else { continue }
+            let left = visits.compactMap { visit -> Date? in
+                guard visit.isInside(place) == true, let departure = visit.departure,
+                      departure > stay.start, departure <= away.at else { return nil }
+                return departure
+            }.max()
+            raws[index].end = left ?? away.at
+            raws[index].isOpen = false
+        }
+        for visit in visits where visit.at < now {
             let end = min(visit.departure ?? now, now)
             guard end > visit.at else { continue }
-            var whereabouts = Whereabouts.elsewhere
-            if let latitude = visit.latitude, let longitude = visit.longitude,
-               let place = places.first(where: { $0.contains(latitude: latitude, longitude: longitude,
-                                                              accuracy: visit.accuracy ?? 0) }) {
-                whereabouts = .place(place.id)
-            }
+            let whereabouts = places.first { visit.isInside($0) == true }.map { Whereabouts.place($0.id) } ?? .elsewhere
             raws.append(Raw(whereabouts: whereabouts, start: visit.at, end: end,
                             isOpen: visit.departure.map { $0 > now } ?? true, rank: 1))
         }
@@ -117,5 +130,13 @@ public enum PlaceStays {
             }
         }
         return result
+    }
+}
+
+extension PlaceEvent {
+    /// Whether a visit was inside the place's fence, allowing for its accuracy; nil without coordinates.
+    func isInside(_ place: Place) -> Bool? {
+        guard let latitude, let longitude else { return nil }
+        return place.contains(latitude: latitude, longitude: longitude, accuracy: accuracy ?? 0)
     }
 }

@@ -36,9 +36,17 @@ struct PlacesTestView: View {
                 Text("iOS watches the fences and visits itself and wakes ScreenThyme only when something changes. "
                      + "It all stays on this phone.")
             }
-            Section("Places") {
+            Section {
                 ForEach(watcher.places) { place in
-                    LabeledContent(place.name, value: "\(Int(place.radius)) m")
+                    LabeledContent(place.name) {
+                        VStack(alignment: .trailing) {
+                            Text("\(Int(place.radius)) m")
+                            if let fence = watcher.fences[place.id] {
+                                Text("iOS: \(fence.state) since \(fence.since.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption)
+                            }
+                        }
+                    }
                 }
                 .onDelete { offsets in offsets.map { watcher.places[$0] }.forEach(watcher.remove) }
                 HStack {
@@ -52,6 +60,10 @@ struct PlacesTestView: View {
                     }
                     .disabled(marking || name.isEmpty || !enabled || watcher.places.count >= 20)
                 }
+            } header: {
+                Text("Places")
+            } footer: {
+                Text("“iOS:” is what the geofence monitor itself believes, whether or not it told ScreenThyme.")
             }
             Section("Today by place") {
                 ForEach(byPlace.sorted { total($0.value) > total($1.value) }, id: \.key) { whereabouts, apps in
@@ -86,11 +98,17 @@ struct PlacesTestView: View {
             } footer: {
                 Text("+ is how long after it happened iOS told ScreenThyme.")
             }
+            Section("Diagnostics") {
+                ForEach(Array(watcher.diagnostics.reversed().enumerated()), id: \.offset) { _, line in
+                    Text(line).font(.caption2).monospaced()
+                }
+            }
             Section {
                 Button("Clear events", role: .destructive) { watcher.clearEvents() }
             }
         }
         .navigationTitle("Places")
+        .task { await watcher.refreshFences() }
         .bugButton()
     }
 

@@ -2,6 +2,7 @@ import CoreLocation
 import Foundation
 import Observation
 import ThymeCore
+import UIKit
 
 /// The location test on a kid's phone (PLAN.md §19): geofences around the places marked here, plus iOS's visits,
 /// written to App Group `Places/events.jsonl`. iOS watches both itself, on Wi-Fi and cell towers, and wakes or
@@ -19,6 +20,13 @@ import ThymeCore
     private(set) var problem: String?
     /// Bumped at each change to the events file, so views showing `events` redraw.
     private(set) var revision = 0
+    /// What iOS's fence monitor believes about each place now (`CLMonitor.record(for:)`), whatever reached `events`.
+    private(set) var fences: [UUID: Fence] = [:]
+
+    struct Fence: Hashable {
+        var state: String
+        var since: Date
+    }
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
@@ -55,6 +63,8 @@ import ThymeCore
     /// only once the monitor and the visit delegate are set up again.
     func start() {
         guard isEnabled, tasks.isEmpty else { return }
+        log("started, \(UIApplication.shared.applicationState == .background ? "in the background" : "in the foreground"), "
+            + "location \(authorization.label)\(manager.accuracyAuthorization == .fullAccuracy ? "" : ", not precise")")
         if authorization == .notDetermined || authorization == .authorizedWhenInUse {
             manager.requestAlwaysAuthorization()
         }
@@ -67,7 +77,9 @@ import ThymeCore
             Task {
                 do {
                     for try await diagnostic in session.diagnostics {
-                        self.problem = Self.describe(diagnostic)
+                        let problem = Self.describe(diagnostic)
+                        if problem != self.problem { self.log("session: \(problem ?? "fine")") }
+                        self.problem = problem
                     }
                 } catch {}
             },
@@ -76,6 +88,7 @@ import ThymeCore
 
     func setEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+        log("watching places \(enabled ? "on" : "off")")
         if enabled {
             start()
         } else {
@@ -98,12 +111,14 @@ import ThymeCore
                           radius: max(Place.defaultRadius, fix.accuracy * 2))
         places.append(place)
         save()
+        log("marked \(name), \(Int(place.radius)) m")
         if let monitor { await sync(monitor) }
     }
 
     func remove(_ place: Place) {
         places.removeAll { $0.id == place.id }
         save()
+        log("removed \(place.name)")
         if let monitor { Task { await monitor.remove(place.id.uuidString) } }
     }
 
@@ -123,12 +138,71 @@ import ThymeCore
         let monitor = await CLMonitor(Self.monitorName)
         self.monitor = monitor
         await sync(monitor)
+        await refreshFences()
+        log("monitor opened: " + places.map { place in
+            fences[place.id].map { "\(place.name) \($0.state) since \(Self.stamp($0.since))" } ?? "\(place.name) not monitored"
+        }.joined(separator: "; "))
         do {
             for try await event in await monitor.events {
                 record(event)
+                await refreshFences()
             }
+            log("monitor events ended")
         } catch {
             problem = "Geofences stopped: \(error.localizedDescription)"
+            log("monitor events failed: \(error)")
+        }
+    }
+
+    /// Reads the monitor's own record of each fence.
+    func refreshFences() async {
+        guard let monitor else { return }
+        var fences: [UUID: Fence] = [:]
+        for place in places {
+            if let event = await monitor.record(for: place.id.uuidString)?.lastEvent {
+                fences[place.id] = Fence(state: Self.label(event.state), since: event.date)
+            }
+        }
+        self.fences = fences
+    }
+
+    /// Every launch, monitor answer and problem, for when fences go quiet (PLAN.md §19).
+    private func log(_ line: String) {
+        let url = AppGroup.placeDiagnosticsURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Kept small: the older half goes once it passes 256 KB.
+        if let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int, size > 256_000,
+           let text = try? String(contentsOf: url, encoding: .utf8) {
+            try? String(text.dropFirst(text.count / 2)).write(to: url, atomically: true, encoding: .utf8)
+        }
+        let data = Data("\(Self.stamp(Date())) \(line)\n".utf8)
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
+        revision += 1
+    }
+
+    var diagnostics: [String] {
+        _ = revision
+        let text = (try? String(contentsOf: AppGroup.placeDiagnosticsURL, encoding: .utf8)) ?? ""
+        return text.split(separator: "\n").suffix(60).map(String.init)
+    }
+
+    private static func stamp(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.abbreviated).day().hour().minute().second())
+    }
+
+    static func label(_ state: CLMonitor.Event.State) -> String {
+        switch state {
+        case .unknown: "unknown"
+        case .satisfied: "inside"
+        case .unsatisfied: "outside"
+        case .unmonitored: "not monitored"
+        @unknown default: "state \(state.rawValue)"
         }
     }
 
@@ -146,7 +220,10 @@ import ThymeCore
     }
 
     private func record(_ event: CLMonitor.Event) {
-        if let issue = Self.describe(event) {
+        let name = places.first { $0.id.uuidString == event.identifier }?.name ?? "fence \(event.identifier.prefix(8))"
+        let issue = Self.describe(event)
+        log("event: \(name) \(Self.label(event.state)) at \(Self.stamp(event.date))\(issue.map { " (\($0))" } ?? "")")
+        if let issue {
             problem = "Geofence: \(issue)"
         }
         guard let place = UUID(uuidString: event.identifier) else { return }
@@ -176,7 +253,10 @@ import ThymeCore
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
-        MainActor.assumeIsolated { authorization = status }
+        MainActor.assumeIsolated {
+            if status != authorization { log("location: \(status.label)") }
+            authorization = status
+        }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {

@@ -86,6 +86,8 @@ enum AppGroup {
     /// The places a kid phone watches (`[Place]`) and what iOS said about them (PLAN.md §19). Never uploaded yet.
     static var placesURL: URL { container.appending(path: "Places/places.json") }
     static var placeEvents: JSONLinesFile<PlaceEvent> { JSONLinesFile(url: container.appending(path: "Places/events.jsonl")) }
+    /// What the fence monitor said and believed, line by line (`PlaceWatcher.log`): no coordinates.
+    static var placeDiagnosticsURL: URL { container.appending(path: "Places/diagnostics.txt") }
 
     /// Records waiting to be uploaded, and the ids already uploaded (uploads are idempotent).
     static var outbox: JSONLinesFile<AlertRecord> { JSONLinesFile(url: container.appending(path: "Outbox/alerts.jsonl")) }
