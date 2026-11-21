@@ -116,6 +116,21 @@ public struct Policy: Codable, Sendable, Hashable {
         window.isWholePhone ? nil : expandingGroups(window.items)
     }
 
+    /// Whether `itemID` is Always Allowed, itself or through a group (following new tokens).
+    public func isAlwaysAllowed(_ itemID: UUID, items: [UUID: TrackedItem]) -> Bool {
+        resolved(items: items).alwaysAllowed.contains(itemID)
+    }
+
+    /// The policy with an approved request to always allow an app applied: the app is Always Allowed, and no longer
+    /// Blocked. Any other grant leaves the policy as it is.
+    public func applying(_ grant: TimeGrant) -> Policy {
+        guard grant.approved, grant.reason == .alwaysAllow, let itemID = grant.itemID else { return self }
+        var policy = self
+        policy.alwaysAllowed.insert(itemID)
+        policy.blocked.remove(itemID)
+        return policy
+    }
+
     /// Removes a group and every use of it.
     public mutating func removeGroup(_ id: UUID) {
         groups.removeAll { $0.id == id }
@@ -261,6 +276,9 @@ public enum BlockReason: Codable, Sendable, Hashable {
     case downtime(UUID)
     case limit(UUID)
     case blocked
+    /// Not a block: the kid asks for the app to be Always Allowed. Approving it changes the policy
+    /// (`Policy.applying`); the grant lets nothing through by itself.
+    case alwaysAllow
 }
 
 /// The kid asked for more time, in ScreenThyme (opened from a block page). `minutes == nil` asks for the rest of the day

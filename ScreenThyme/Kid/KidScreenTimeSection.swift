@@ -1,7 +1,7 @@
 import SwiftUI
 import ThymeCore
 
-/// What ScreenThyme enforces right now and the kid's requests for more time (PLAN.md §15). While a request waits,
+/// What ScreenThyme enforces right now and the kid's requests for more time or to always allow an app (PLAN.md §15). While a request waits,
 /// the app uploads it and checks for the answer every few seconds.
 struct KidScreenTimeSection: View {
     @Environment(AppModel.self) private var model
@@ -9,6 +9,7 @@ struct KidScreenTimeSection: View {
     @State private var requests = KidSync.openRequests()
     @State private var answers: [AppliedGrant] = Enforcer.loadState().grants
     @State private var asking = false
+    @State private var askingAlwaysAllow = false
 
     var body: some View {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -42,13 +43,28 @@ struct KidScreenTimeSection: View {
             if let plan = applied?.plan, plan.hasDowntime || !plan.exhaustedLimits.isEmpty || !plan.blockedItems.isEmpty {
                 Button("Ask for more time") { asking = true }
             }
+            if applied?.plan != nil, AppGroup.loadPolicy()?.enabled == true {
+                Button("Ask to always allow an app") { askingAlwaysAllow = true }
+            }
             ForEach(requests) { request in
-                Label("Asked for \(ShieldContext.describe(minutes: request.minutes)) of \(request.itemID.flatMap { items[$0]?.displayName } ?? "an app") · waiting",
-                      systemImage: "hourglass")
+                let name = request.itemID.flatMap { items[$0] }.map { AppCatalog.shared.name(of: $0, in: items) ?? $0.displayName } ?? "an app"
+                if request.reason == .alwaysAllow {
+                    Label("Asked to always allow \(name) · waiting", systemImage: "hourglass")
+                } else {
+                    Label("Asked for \(ShieldContext.describe(minutes: request.minutes)) of \(name) · waiting",
+                          systemImage: "hourglass")
+                }
             }
             ForEach(answers.suffix(3).reversed(), id: \.grant.requestID) { answer in
-                let name = answer.grant.itemID.flatMap { items[$0]?.displayName } ?? "an app"
-                if answer.grant.approved {
+                let name = answer.grant.itemID.flatMap { items[$0] }.map { AppCatalog.shared.name(of: $0, in: items) ?? $0.displayName } ?? "an app"
+                if answer.grant.reason == .alwaysAllow {
+                    if answer.grant.approved {
+                        Label("\(answer.grant.by) always allowed \(name)", systemImage: "checkmark.circle").foregroundStyle(.green)
+                    } else {
+                        Label("\(answer.grant.by) said no to always allowing \(name)", systemImage: "xmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if answer.grant.approved {
                     Label("\(answer.grant.by) gave \(ShieldContext.describe(minutes: answer.grant.minutes)) of \(name)",
                           systemImage: "checkmark.circle").foregroundStyle(.green)
                 } else {
@@ -58,6 +74,7 @@ struct KidScreenTimeSection: View {
             }
         }
         .sheet(isPresented: $asking, onDismiss: reload) { AskForTimeView() }
+        .sheet(isPresented: $askingAlwaysAllow, onDismiss: reload) { AskAlwaysAllowView() }
         .task(id: requests.map(\.id)) {
             reload()
             while !requests.isEmpty, !Task.isCancelled {
