@@ -5,7 +5,8 @@ import ThymeCore
 import UIKit
 
 /// The location test on a kid's phone (PLAN.md §19): geofences around the places marked here, plus iOS's visits,
-/// written to App Group `Places/events.jsonl`. iOS watches both itself, on Wi-Fi and cell towers, and wakes or
+/// written to App Group `Places/events.jsonl`. Each place is watched by both of iOS's geofence APIs, `CLMonitor` and
+/// the older region monitoring, since `CLMonitor` once missed a whole day's crossings. iOS watches both itself, on Wi-Fi and cell towers, and wakes or
 /// relaunches the app only at a crossing or a visit, so there's no polling and no location background mode.
 /// Nothing leaves the phone yet.
 @MainActor @Observable final class PlaceWatcher: NSObject, CLLocationManagerDelegate {
@@ -22,6 +23,8 @@ import UIKit
     private(set) var revision = 0
     /// What iOS's fence monitor believes about each place now (`CLMonitor.record(for:)`), whatever reached `events`.
     private(set) var fences: [UUID: Fence] = [:]
+    /// The older API's last answer for each place (`didDetermineState`), and when it came: it gives no date of its own.
+    private(set) var regions: [UUID: Fence] = [:]
 
     struct Fence: Hashable {
         var state: String
@@ -72,6 +75,7 @@ import UIKit
         let session = CLServiceSession(authorization: .always)
         self.session = session
         manager.startMonitoringVisits()
+        syncRegions()
         tasks = [
             Task { await self.watchFences() },
             Task {
@@ -100,6 +104,7 @@ import UIKit
             if let monitor {
                 Task { for id in await monitor.identifiers { await monitor.remove(id) } }
             }
+            manager.monitoredRegions.forEach(manager.stopMonitoring)
         }
     }
 
@@ -113,12 +118,14 @@ import UIKit
         save()
         log("marked \(name), \(Int(place.radius)) m")
         if let monitor { await sync(monitor) }
+        syncRegions()
     }
 
     func remove(_ place: Place) {
         places.removeAll { $0.id == place.id }
         save()
         log("removed \(place.name)")
+        syncRegions()
         if let monitor { Task { await monitor.remove(place.id.uuidString) } }
     }
 
@@ -219,6 +226,48 @@ import UIKit
         }
     }
 
+    /// Makes the older API's regions match `places`, then asks it where the phone is for each.
+    private func syncRegions() {
+        let wanted = Set(places.map(\.id.uuidString))
+        for region in manager.monitoredRegions where !wanted.contains(region.identifier) {
+            manager.stopMonitoring(for: region)
+        }
+        let existing = Set(manager.monitoredRegions.map(\.identifier))
+        for place in places where !existing.contains(place.id.uuidString) {
+            let center = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
+            let region = CLCircularRegion(center: center, radius: min(place.radius, manager.maximumRegionMonitoringDistance),
+                                          identifier: place.id.uuidString)
+            region.notifyOnEntry = true
+            region.notifyOnExit = true
+            manager.startMonitoring(for: region)
+            log("region added: \(place.name)")
+        }
+        for region in manager.monitoredRegions {
+            manager.requestState(for: region)
+        }
+    }
+
+    /// The older API's answer, at a crossing or when asked: a crossing when it differs from its last one.
+    private func record(region identifier: String, state: CLRegionState) {
+        guard let place = UUID(uuidString: identifier) else { return }
+        let label = switch state {
+        case .inside: "inside"
+        case .outside: "outside"
+        default: "unknown"
+        }
+        let name = places.first { $0.id == place }?.name ?? "fence \(identifier.prefix(8))"
+        log("region: \(name) \(label)")
+        regions[place] = Fence(state: label, since: Date())
+        let kind: PlaceEvent.Kind
+        switch state {
+        case .inside: kind = .enter
+        case .outside: kind = .exit
+        default: return
+        }
+        if events.last(where: { $0.place == place && $0.source == .region })?.kind == kind { return }
+        append(PlaceEvent(kind: kind, at: Date(), place: place, source: .region))
+    }
+
     private func record(_ event: CLMonitor.Event) {
         let name = places.first { $0.id.uuidString == event.identifier }?.name ?? "fence \(event.identifier.prefix(8))"
         let issue = Self.describe(event)
@@ -234,8 +283,9 @@ import UIKit
         default: return
         }
         // A relaunch can hand over the last event again.
-        if let last = events.last(where: { $0.place == place }), last.kind == kind, last.at == event.date { return }
-        append(PlaceEvent(kind: kind, at: event.date, place: place))
+        if let last = events.last(where: { $0.place == place && ($0.source ?? .monitor) == .monitor }),
+           last.kind == kind, last.at == event.date { return }
+        append(PlaceEvent(kind: kind, at: event.date, place: place, source: .monitor))
     }
 
     // MARK: - Visits and one-off fixes (CLLocationManagerDelegate, on the main thread: the manager was made there)
@@ -248,6 +298,22 @@ import UIKit
             let at = arrival == .distantPast ? (departure == .distantFuture ? Date() : departure) : arrival
             append(PlaceEvent(kind: .visit, at: at, departure: departure == .distantFuture ? nil : departure,
                               latitude: latitude, longitude: longitude, accuracy: accuracy))
+        }
+    }
+
+    /// At each crossing of a region, and when asked (`requestState`).
+    nonisolated func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState,
+                                     for region: CLRegion) {
+        let identifier = region.identifier
+        MainActor.assumeIsolated { record(region: identifier, state: state) }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?,
+                                     withError error: any Error) {
+        let (identifier, text) = (region?.identifier ?? "?", error.localizedDescription)
+        MainActor.assumeIsolated {
+            log("region \(identifier.prefix(8)) failed: \(text)")
+            problem = "Region: \(text)"
         }
     }
 

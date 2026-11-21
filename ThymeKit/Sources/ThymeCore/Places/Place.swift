@@ -47,6 +47,14 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
         case visit
     }
 
+    /// Which of iOS's two geofence APIs reported a crossing; they run side by side to compare (PLAN.md §19).
+    public enum Source: String, Codable, Sendable {
+        /// `CLMonitor` (iOS 17).
+        case monitor
+        /// `CLLocationManager` region monitoring, the older API.
+        case region
+    }
+
     public var id: UUID
     public var kind: Kind
     /// When it happened, by iOS's account.
@@ -54,6 +62,8 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
     /// When the app heard about it: how late iOS is.
     public var observedAt: Date
     public var place: UUID?
+    /// For crossings; nil in events from before the comparison, which were all `monitor`'s.
+    public var source: Source?
     public var departure: Date?
     public var latitude: Double?
     public var longitude: Double?
@@ -61,12 +71,14 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
     public var accuracy: Double?
 
     public init(id: UUID = UUID(), kind: Kind, at: Date, observedAt: Date = Date(), place: UUID? = nil,
-                departure: Date? = nil, latitude: Double? = nil, longitude: Double? = nil, accuracy: Double? = nil) {
+                source: Source? = nil, departure: Date? = nil, latitude: Double? = nil, longitude: Double? = nil,
+                accuracy: Double? = nil) {
         self.id = id
         self.kind = kind
         self.at = at
         self.observedAt = observedAt
         self.place = place
+        self.source = source
         self.departure = departure
         self.latitude = latitude
         self.longitude = longitude

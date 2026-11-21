@@ -68,8 +68,8 @@ if arguments.count >= 5 {
     for event in events where DayKey(event.at) == day || DayKey(event.observedAt) == day {
         var text: String
         switch event.kind {
-        case .enter: text = "entered \(placeName(.place(event.place!)))"
-        case .exit: text = "left \(placeName(.place(event.place!)))"
+        case .enter: text = "entered \(placeName(.place(event.place!))) (\(event.source?.rawValue ?? "monitor"))"
+        case .exit: text = "left \(placeName(.place(event.place!))) (\(event.source?.rawValue ?? "monitor"))"
         case .visit:
             text = "visit until \(event.departure.map(clock) ?? "…")"
             if let latitude = event.latitude, let longitude = event.longitude, let nearest = places.min(by: {

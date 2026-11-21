@@ -42,8 +42,10 @@ struct PlacesTestView: View {
                         VStack(alignment: .trailing) {
                             Text("\(Int(place.radius)) m")
                             if let fence = watcher.fences[place.id] {
-                                Text("iOS: \(fence.state) since \(fence.since.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption)
+                                Text("Monitor: \(fence.state) since \(when(fence.since))").font(.caption)
+                            }
+                            if let region = watcher.regions[place.id] {
+                                Text("Region: \(region.state) as of \(when(region.since))").font(.caption)
                             }
                         }
                     }
@@ -63,7 +65,8 @@ struct PlacesTestView: View {
             } header: {
                 Text("Places")
             } footer: {
-                Text("“iOS:” is what the geofence monitor itself believes, whether or not it told ScreenThyme.")
+                Text("What each of iOS's two geofence APIs believes, whether or not it told ScreenThyme: "
+                     + "Monitor (CLMonitor) and Region (the older region monitoring).")
             }
             Section("Today by place") {
                 ForEach(byPlace.sorted { total($0.value) > total($1.value) }, id: \.key) { whereabouts, apps in
@@ -79,7 +82,7 @@ struct PlacesTestView: View {
             Section("Stays · \(stays.count)") {
                 ForEach(stays.reversed(), id: \.self) { stay in
                     LabeledContent(label(stay.whereabouts),
-                                   value: "\(Format.time(stay.start))–\(stay.isOpen ? "now" : Format.time(stay.end))")
+                                   value: "\(when(stay.start))–\(stay.isOpen ? "now" : when(stay.end))")
                         .monospacedDigit()
                 }
             }
@@ -123,12 +126,21 @@ struct PlacesTestView: View {
     private func describe(_ event: PlaceEvent) -> String {
         let place = event.place.map { label(.place($0)) } ?? ""
         switch event.kind {
-        case .enter: return "entered \(place)"
-        case .exit: return "left \(place)"
+        case .enter: return "entered \(place)\(source(event))"
+        case .exit: return "left \(place)\(source(event))"
         case .visit:
             let accuracy = event.accuracy.map { " ±\(Int($0)) m" } ?? ""
             return "visit until \(event.departure.map(Format.time) ?? "…")\(accuracy)"
         }
+    }
+
+    private func source(_ event: PlaceEvent) -> String {
+        event.source == .region ? " (region)" : " (monitor)"
+    }
+
+    /// A time today; with the day otherwise.
+    private func when(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? Format.time(date) : date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
     private func late(_ event: PlaceEvent) -> String {

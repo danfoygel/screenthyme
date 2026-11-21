@@ -986,5 +986,11 @@ Goal: say where each app was used ("YouTube: 50 min at home, 12 at school") with
   screen shows each fence's state as iOS holds it. Next day out tells whether iOS saw the crossings and they were
   lost, or never saw them. `thyme-inspect` takes the copied `Places/` as a fourth argument (events, stays, use by
   place; no coordinates).
+- **That evening the monitor's own record (`CLMonitor.record(for:)`) still said "inside since" the setup the day
+  before:** iOS never saw the crossings; the app lost nothing. So each place is now also watched by the older region
+  monitoring (`CLLocationManager.startMonitoring(for: CLCircularRegion)`, `didDetermineState`), asked for its state
+  at every start. `PlaceEvent.source` says which API reported a crossing (nil before: the monitor); stays take
+  either, a crossing that matches the current state changing nothing. The Places screen shows both APIs' state.
+  A day out decides: fences from whichever works, or visits alone.
 - **Then, if it holds up:** places set on a parent's phone and synced like `Policy`, stays uploaded, the timeline
   split by place on parents' phones, and maybe rules by place.

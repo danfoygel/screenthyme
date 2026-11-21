@@ -79,6 +79,25 @@ struct PlacesTests {
         ])
     }
 
+    @Test func eitherFenceAPIIsEnough() {
+        // Region monitoring saw the phone leave and come back; CLMonitor said nothing.
+        var events = [
+            PlaceEvent(kind: .enter, at: at(6, 0), place: home.id, source: .monitor),
+            PlaceEvent(kind: .enter, at: at(6, 0, 5), place: home.id, source: .region),
+            PlaceEvent(kind: .exit, at: at(7, 47), place: home.id, source: .region),
+            PlaceEvent(kind: .enter, at: at(19, 43), place: home.id, source: .region),
+        ]
+        let expected = [
+            PlaceStay(whereabouts: .place(home.id), start: at(6, 0), end: at(7, 47), isOpen: false),
+            PlaceStay(whereabouts: .place(home.id), start: at(19, 43), end: at(20, 0), isOpen: true),
+        ]
+        #expect(PlaceStays.build(events, places: [home], now: at(20, 0)) == expected)
+        // The same crossings from CLMonitor too, a few minutes late, change nothing.
+        events += [PlaceEvent(kind: .exit, at: at(7, 50), place: home.id, source: .monitor),
+                   PlaceEvent(kind: .enter, at: at(19, 46), place: home.id, source: .monitor)]
+        #expect(PlaceStays.build(events, places: [home], now: at(20, 0)) == expected)
+    }
+
     @Test func blocksAreSharedOutByStay() {
         let (game, video) = (UUID(), UUID())
         let stays = [
