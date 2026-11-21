@@ -384,7 +384,8 @@ private struct RequestHistoryRow: View {
             switch request {
             case let .asked(asked, grant):
                 Label {
-                    Text("Asked for \(ShieldContext.describe(minutes: asked.minutes)) \(reason(asked.reason, asked.itemID))")
+                    Text(asked.reason == .alwaysAllow ? "Asked to always allow it"
+                        : "Asked for \(ShieldContext.describe(minutes: asked.minutes)) \(reason(asked.reason, asked.itemID))")
                 } icon: {
                     Image(systemName: grant == nil ? "hourglass" : grant!.approved ? "checkmark.circle" : "xmark.circle")
                         .foregroundStyle(grant == nil ? Color.secondary : grant!.approved ? Color.green : Color.red)
@@ -426,6 +427,9 @@ private struct RequestHistoryRow: View {
     private func answer(_ grant: TimeGrant?) -> String {
         guard let grant else { return "Waiting for an answer" }
         let when = grant.at.formatted(date: .omitted, time: .shortened)
+        if grant.reason == .alwaysAllow {
+            return grant.approved ? "\(grant.by) allowed it always at \(when)" : "\(grant.by) said no at \(when)"
+        }
         return grant.approved ? "\(grant.by) gave \(ShieldContext.describe(minutes: grant.minutes)) at \(when)"
             : "\(grant.by) said no at \(when)"
     }

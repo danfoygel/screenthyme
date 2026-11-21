@@ -603,6 +603,10 @@ category ids) for the app, which shows `AskForTimeView`:
   Downtime through the scan's ScreenThyme pick.
 - **Works end to end on the kid's phone** (Nov 15, 2026): scan, Downtime block page, ask with the app picked, parent's
   approval, the app opens while Downtime stays on for the rest.
+- **Ask to always allow** (Nov 20): the Screen Time section's "Ask to always allow an app" picks an app the same way
+  and sends a request with reason `BlockReason.alwaysAllow`, through the same upload, nearby link and answer fetch.
+  The parent's request row offers Always allow / Decline; approving saves the policy with the app Always Allowed (and
+  no longer Blocked, `Policy.applying`) before the grant, which lets nothing through by itself.
 
 ### 15.5 One more minute
 

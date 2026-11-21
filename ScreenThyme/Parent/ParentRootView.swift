@@ -330,22 +330,36 @@ struct RequestRow: View {
                 Spacer()
                 Text(Format.relative(request.at)).font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason)\(forItemOnly(item)).")
+            if request.reason == .alwaysAllow {
+                Text("\(kid) asks for this app to be Always Allowed: it would work during Downtime and over limits.")
+            } else {
+                Text("\(kid) asks for \(ShieldContext.describe(minutes: request.minutes)) \(reason)\(forItemOnly(item)).")
+            }
             if let note = request.note {
                 Text("\u{201C}\(note)\u{201D}").italic()
             }
-            HStack {
-                Button("Approve") { answer(true, request.minutes) }
-                    .buttonStyle(.borderedProminent)
-                Menu("Other") {
-                    ForEach(ShieldContext.requestChoices.filter { $0 != request.minutes }, id: \.self) { minutes in
-                        Button(ShieldContext.describe(minutes: minutes).capitalizedFirst) { answer(true, minutes) }
-                    }
+            if request.reason == .alwaysAllow {
+                HStack {
+                    Button("Always allow") { answer(true, nil) }
+                        .buttonStyle(.borderedProminent)
+                    Spacer()
+                    Button("Decline", role: .destructive) { answer(false, nil) }
+                        .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
-                Spacer()
-                Button("Decline", role: .destructive) { answer(false, nil) }
+            } else {
+                HStack {
+                    Button("Approve") { answer(true, request.minutes) }
+                        .buttonStyle(.borderedProminent)
+                    Menu("Other") {
+                        ForEach(ShieldContext.requestChoices.filter { $0 != request.minutes }, id: \.self) { minutes in
+                            Button(ShieldContext.describe(minutes: minutes).capitalizedFirst) { answer(true, minutes) }
+                        }
+                    }
                     .buttonStyle(.bordered)
+                    Spacer()
+                    Button("Decline", role: .destructive) { answer(false, nil) }
+                        .buttonStyle(.bordered)
+                }
             }
         }
     }
@@ -368,6 +382,7 @@ struct RequestRow: View {
             return itemID == nil ? "during \(name), for the whole phone" : "during \(name)"
         case let .limit(id): return "over the \(policy.limits.first { $0.id == id }?.name ?? "time") limit"
         case .blocked: return "for a blocked app"
+        case .alwaysAllow: return "to always allow it"
         }
     }
 

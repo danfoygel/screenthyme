@@ -52,9 +52,13 @@ extension AppModel {
     }
 
     /// Answers a kid's request for more time; the kid's phone fetches the grant by name or gets it nearby. Offline,
-    /// the grant waits in `PendingSaves`.
+    /// the grant waits in `PendingSaves`. Approving a request to always allow an app saves the policy with it allowed
+    /// first.
     func answer(_ request: TimeRequest, approved: Bool, minutes: Int?) async {
         let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: senderName)
+        let policy = data.policy(for: request.kidID)
+        let allowing = policy.applying(grant)
+        if allowing != policy { await save(allowing) }
         data.ingest(IngestBatch(grants: [grant]))
         nearby.sendUpdates()
         guard let store else { return }
