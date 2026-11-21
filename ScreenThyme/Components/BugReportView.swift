@@ -3,36 +3,35 @@ import SwiftUI
 import ThymeCore
 
 /// Report a problem (PLAN.md §18): what happened, and up to five pictures: the screen it was opened from (`BugButton`)
-/// and screenshots from Photos. The phone files it as an issue on GitHub, now or when it next can.
+/// and screenshots from Photos. The phone files it as an issue on GitHub, now or when it next can. Send (top right)
+/// queues it and closes the screen: the bug button's sheet, or back to the kid's home.
 struct BugReportView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     /// Where it was opened from, for the developer.
     let screen: String?
+    /// Opened by the bug button: a sheet with Cancel, which asks before throwing away a draft.
+    let inSheet: Bool
     @State private var text = ""
     /// The screen the bug button was pressed on.
     @State private var captured: Screenshot?
     @State private var picked: [PhotosPickerItem] = []
     @State private var screenshots: [Screenshot] = []
     @State private var loadingScreenshots = false
-    @State private var thanks = false
+    @State private var confirmingDiscard = false
     @FocusState private var writing: Bool
 
     static let maxScreenshots = 5
 
-    init(screen: String? = nil, capture: UIImage? = nil) {
+    init(screen: String? = nil, capture: UIImage? = nil, inSheet: Bool = false) {
         self.screen = screen
+        self.inSheet = inSheet
         _captured = State(initialValue: capture.flatMap(Screenshot.init))
     }
 
     var body: some View {
         let queue = model.bugReports
         Form {
-            if thanks {
-                Section {
-                    Label("Thanks! Your report is on its way.", systemImage: "checkmark.circle")
-                        .foregroundStyle(.green)
-                }
-            }
             Section {
                 TextField("What happened?", text: $text, axis: .vertical)
                     .lineLimit(4...12)
@@ -40,7 +39,8 @@ struct BugReportView: View {
             } header: {
                 Text("The problem")
             } footer: {
-                Text("What you were doing, what you expected, and what happened instead.")
+                Text("What you were doing, what you expected, and what happened instead. "
+                     + "You'll get a notification when it's fixed.")
             }
             Section {
                 if captured != nil || !screenshots.isEmpty {
@@ -70,13 +70,6 @@ struct BugReportView: View {
                     Text("Optional, up to \(Self.maxScreenshots). To take one, press the side button and volume up together.")
                 }
             }
-            Section {
-                Button("Send") { send() }
-                    .disabled(loadingScreenshots || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                                     && screenshots.isEmpty && captured == nil))
-            } footer: {
-                Text("You'll get a notification when it's fixed.")
-            }
             if !queue.reports.isEmpty {
                 Section("Your reports") {
                     ForEach(queue.reports) { report in
@@ -99,16 +92,39 @@ struct BugReportView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Report a problem")
         .toolbar {
-            // The keyboard covers Send, and a kid may not know to scroll it away.
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Send") { send() }
+                    .disabled(loadingScreenshots || (trimmedText.isEmpty && screenshots.isEmpty && captured == nil))
+            }
+            if inSheet {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        if hasDraft { confirmingDiscard = true } else { dismiss() }
+                    }
+                    .confirmationDialog("Discard this report?", isPresented: $confirmingDiscard,
+                                        titleVisibility: .visible) {
+                        Button("Discard", role: .destructive) { dismiss() }
+                        Button("Keep Writing", role: .cancel) {}
+                    }
+                }
+            }
+            // A kid may not know to scroll the keyboard away. An icon, so "Done" never means anything but sending.
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done") { writing = false }
+                Button { writing = false } label: { Image(systemName: "keyboard.chevron.compact.down") }
+                    .accessibilityLabel("Hide keyboard")
             }
         }
+        .interactiveDismissDisabled(inSheet && hasDraft)
         .task(id: picked) { await load(picked) }
         .task { await queue.sync(store: model.store) }
         .refreshable { await queue.sync(store: model.store, checkNow: true) }
     }
+
+    private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Something the kid wrote or added. The bug button's own picture of the screen doesn't count.
+    private var hasDraft: Bool { !trimmedText.isEmpty || !screenshots.isEmpty }
 
     private func thumbnail(_ image: UIImage, remove: @escaping () -> Void) -> some View {
         Image(uiImage: image)
@@ -151,18 +167,14 @@ struct BugReportView: View {
         let reporter = model.bugReporter
         let pictures = (captured.map { [$0] } ?? []) + screenshots
         do {
-            try model.bugReports.add(text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+            try model.bugReports.add(text: trimmedText,
                                      screenshots: pictures.map(\.jpeg), reporter: reporter.name, kidID: reporter.kidID,
                                      details: model.bugReportDetails(screen: screen), log: AppModel.bugReportLog())
         } catch {
             return model.show(error)
         }
-        text = ""
-        captured = nil
-        picked = []
-        screenshots = []
         writing = false
-        thanks = true
+        dismiss()
         Task {
             // The fix comes as a push (`Tools/BugPush`); kids' phones haven't asked before.
             await Notifier.requestPermission()

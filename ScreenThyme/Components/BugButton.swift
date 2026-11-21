@@ -21,10 +21,7 @@ private struct BugButton: ViewModifier {
             }
             .sheet(item: $report) { sheet in
                 NavigationStack {
-                    BugReportView(screen: screen, capture: sheet.capture)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) { Button("Done") { report = nil } }
-                        }
+                    BugReportView(screen: screen, capture: sheet.capture, inSheet: true)
                 }
             }
     }
