@@ -22,7 +22,7 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
     case camera
     /// Never asked: screenshots come through Apple's photo picker.
     case photos
-    /// Never asked.
+    /// Where apps get used, on a kid's phone watching places (PLAN.md §19): Always, with Precise Location.
     case location
 
     public var title: String {
@@ -53,6 +53,7 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case (.bluetooth, _): "The nearby link when Wi-Fi is off"
         case (.iCloud, _): "Syncs with the family"
         case (.camera, false): "Matches a kid's apps by reading the codes on their screen"
+        case (.location, true): "Notes where apps get used, while Debug → Places watches places"
         default: nil
         }
     }
@@ -61,7 +62,6 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
     public var notUsedReason: String? {
         switch self {
         case .photos: "Screenshots come through Apple's photo picker, which hands over only the ones picked and needs no permission."
-        case .location: "ScreenThyme never asks where a phone is."
         default: nil
         }
     }
@@ -74,7 +74,8 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case .backgroundRefresh: "Settings → General → Background App Refresh, and Low Power Mode off"
         case .cellularData: "Settings → Cellular → ScreenThyme"
         case .iCloud: "Settings → Apple Account → iCloud: signed in, with ScreenThyme on"
-        case .photos, .location: nil
+        case .location: "Settings → Apps → ScreenThyme → Location: Always, with Precise Location on"
+        case .photos: nil
         }
     }
 
@@ -82,6 +83,7 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
     public var offSummary: String {
         switch self {
         case .iCloud: "iCloud isn't available to ScreenThyme: signed out, or off for it"
+        case .location: "Location isn't “Always” and precise for ScreenThyme: places aren't watched"
         default: "\(title) is off for ScreenThyme"
         }
     }
@@ -95,7 +97,8 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case .localNetwork: heartbeat.localNetwork
         case .bluetooth: heartbeat.bluetooth
         case .iCloud: heartbeat.iCloud
-        case .screenTime, .notifications, .camera, .photos, .location: nil
+        case .location: heartbeat.location
+        case .screenTime, .notifications, .camera, .photos: nil
         }
     }
 }

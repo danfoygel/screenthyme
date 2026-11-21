@@ -205,7 +205,7 @@ All alerts are recorded in the timeline, so the alert feed and the timeline matc
   - app version
   - the Settings switches the kid can turn off for ScreenThyme and no app can lock: Background App Refresh, cellular
     data, Local Network (as the nearby link last found it: no API says), Bluetooth, iCloud (signed in, on for
-    ScreenThyme), and Low Power Mode (`DevicePermission`, read by `DevicePermissions`). The kid app uses no
+    ScreenThyme), Location (Always and precise, only while the location test watches places, §19), and Low Power Mode (`DevicePermission`, read by `DevicePermissions`). The kid app uses no
     notifications or camera, so they aren't among them. Debug → Permissions lists every permission with this phone's
     answers, and on a parent's phone what each kid's phone last reported
 - **Parent-side checks:**
@@ -945,3 +945,52 @@ a GitHub issue; nobody needs a GitHub account. This repository is public, so the
   asks for permission to notify, which kids' phones hadn't before.
 - **Not covered:** a report whose issue was opened but whose answer was lost is filed again on retry (a duplicate
   issue). The picture of the screen can't show Apple's own views (the report extension's, the pickers).
+
+## 19. Where apps get used: a location test (Nov 19, 2026)
+
+Goal: say where each app was used ("YouTube: 50 min at home, 12 at school") without hurting the kid's battery.
+
+- **Not a fix every 2 minutes.** The monitor extension can't do it: it has ~3 s per callback, a fresh fix takes
+  5–30 s, and extensions can't ask for location access. Fixes from the app every 2 minutes would need continuous
+  background updates (the `location` background mode and the location indicator), among the costliest things an app
+  can do.
+- **Instead, where the phone was, joined to the timeline afterwards.** iOS watches geofences (`CLMonitor` circular
+  conditions, 20 at most) and visits (`CLLocationManager.startMonitoringVisits`) itself, on Wi-Fi and cell towers, and
+  wakes or relaunches the app only at a crossing or a visit: a few times a day. No location background mode.
+  Crossings come minutes late and fences are good to ~100–200 m: home vs. school, not one room vs. another.
+- **The test (kid phone only, Debug › Places):** "Watch places" asks for Always access; "Mark this spot" puts a fence
+  (150 m, or twice the fix's error) around where the phone is. `PlaceWatcher` holds a `CLServiceSession(.always)`
+  (CLMonitor events reach a backgrounded app only with one) and restarts at every launch, background ones included,
+  in `AppDelegate`. Events go to App Group `Places/events.jsonl` (`PlaceEvent`: when it happened, when the app heard,
+  coordinates for visits), places to `Places/places.json`. Nothing leaves the phone; nothing goes in the journal, whose
+  notes go into bug reports.
+- **Logic (`ThymeCore/Places`):** `PlaceStays.build` turns crossings and visits into non-overlapping stays (a fence
+  wins over a visit; a visit inside a fence counts as that place, in case its crossing was missed);
+  `PlaceStays.usage` shares each timeline block's seconds out by stay, the rest "Unknown". The screen shows both,
+  and each event's delay.
+- **Parents are told when it stops:** while places are watched, heartbeats carry Location (`Heartbeat.location`):
+  anything short of Always with Precise Location is `denied`, and parents get the usual permission alert. A phone not
+  watching places reports nil, so no alert.
+- **To learn:** how late crossings and visits arrive; whether relaunches deliver them after the app was killed;
+  whether a child account can grant Always (Screen Time's Location Services restriction can lock it); iOS's
+  "keep allowing Always?" prompts; battery, under Settings › Battery (our `EnergyLedger` counts only our process,
+  not `locationd`).
+- **First day out (Nov 20, 2026, a kid's iPhone 15 Pro on iOS 27):** visits caught every stop of six minutes or
+  more, at home and away; departures came 1–1.5 min late, arrivals 1–5 min (once 15). The app woke once per report,
+  and its energy that day was lower than the day before. **The Home fence reported nothing**: no exit in the
+  morning, no entry at night, only its first answer at setup the day before. So `PlaceStays` kept the phone home all
+  day, a fence outranking visits. Two changes: a visit outside a fence now ends that fence's stay (when the phone
+  left the fence's last visit, else when the outside visit began), and `PlaceWatcher` logs to App Group
+  `Places/diagnostics.txt` every start (foreground or background, location access), the monitor's own record of
+  each fence when it opens (`CLMonitor.record(for:)`), every raw monitor event and session problem; the Places
+  screen shows each fence's state as iOS holds it. Next day out tells whether iOS saw the crossings and they were
+  lost, or never saw them. `thyme-inspect` takes the copied `Places/` as a fourth argument (events, stays, use by
+  place; no coordinates).
+- **That evening the monitor's own record (`CLMonitor.record(for:)`) still said "inside since" the setup the day
+  before:** iOS never saw the crossings; the app lost nothing. So each place is now also watched by the older region
+  monitoring (`CLLocationManager.startMonitoring(for: CLCircularRegion)`, `didDetermineState`), asked for its state
+  at every start. `PlaceEvent.source` says which API reported a crossing (nil before: the monitor); stays take
+  either, a crossing that matches the current state changing nothing. The Places screen shows both APIs' state.
+  A day out decides: fences from whichever works, or visits alone.
+- **Then, if it holds up:** places set on a parent's phone and synced like `Policy`, stays uploaded, the timeline
+  split by place on parents' phones, and maybe rules by place.

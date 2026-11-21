@@ -57,6 +57,9 @@ targets:
         # Matching a kid's scanned apps: a parent's camera reads the codes on the kid's screen (PLAN.md §15.6).
         NSCameraUsageDescription: ScreenThyme reads the codes on your kid's screen to match the apps it scanned.
         NSBluetoothAlwaysUsageDescription: ScreenThyme talks to your family's phones nearby over Bluetooth when Wi-Fi is off, so usage and answers to requests for more time still arrive.
+        # The location test on kid phones: geofences and visits, no location background mode (PLAN.md §19).
+        NSLocationWhenInUseUsageDescription: ScreenThyme notes which of your places (like home or school) your phone is at, to show where apps get used.
+        NSLocationAlwaysAndWhenInUseUsageDescription: ScreenThyme notes when your phone arrives at or leaves your places (like home or school), to show where apps get used. iOS tells it only when that changes.
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
     settings:
