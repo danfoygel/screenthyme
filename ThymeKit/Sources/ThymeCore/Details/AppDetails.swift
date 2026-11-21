@@ -250,7 +250,7 @@ public struct AppDetails: Sendable {
         switch reason {
         case let .limit(id): return limits.contains { $0.limit.id == id && accepts($0.limit) }
         case let .downtime(id): return itemID == nil && downtime.contains { $0.window.id == id }
-        case .blocked: return false
+        case .blocked, .alwaysAllow: return false
         }
     }
 

@@ -78,6 +78,10 @@ private struct PolicyHistoryRow: View {
         case let .change(change):
             return change.edits.map { $0.describe(name: name) }
         case let .grant(grant):
+            if grant.reason == .alwaysAllow {
+                let what = grant.itemID.map(name) ?? "an app"
+                return [(grant.approved ? "Always allowed \(what), as asked" : "Said no to always allowing \(what)", [])]
+            }
             let what = grant.itemID.map { " for \(name($0))" } ?? ""
             let reason = RequestRow.describe(grant.reason, itemID: grant.itemID, policy: model.data.policy(for: kid.id))
             let title = grant.approved ? "Gave \(ShieldContext.describe(minutes: grant.minutes))\(what) \(reason)"

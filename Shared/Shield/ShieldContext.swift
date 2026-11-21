@@ -108,7 +108,7 @@ struct ShieldContext {
         case .downtime: "Downtime"
         case .limit: "Time limit"
         case .blocked: "Not allowed"
-        case nil: "Blocked"
+        case .alwaysAllow, nil: "Blocked"
         }
     }
 
@@ -129,7 +129,7 @@ struct ShieldContext {
             return "You've reached today's limit for \(name)\(budget)."
         case .blocked:
             return "Your parents don't allow \(target.name)."
-        case nil:
+        case .alwaysAllow, nil:
             return "\(target.name) is blocked by ScreenThyme."
         }
     }
@@ -177,7 +177,7 @@ struct ShieldContext {
         case let .limit(id)? where policy?.limits.first(where: { $0.id == id })?.allApps == true: (target.item?.id, .limit(id))
         case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
         case .blocked?: (target.item?.id ?? target.category?.id).map { ($0, .blocked) }
-        case nil: nil
+        case .alwaysAllow?, nil: nil
         }
     }
 
@@ -207,6 +207,7 @@ struct ShieldContext {
         case .downtime: scope.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) during Downtime."
         case let .limit(id): "\(amount) on the \(applied?.limitNames[id] ?? "time") limit."
         case .blocked: "\(amount), though it isn't allowed."
+        case .alwaysAllow: "To always allow it."
         }
         if let note { body += " \u{201C}\(note)\u{201D}" }
         let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: scope.itemID, at: request.at,
@@ -215,6 +216,38 @@ struct ShieldContext {
             try AppGroup.requests.append(contentsOf: [request])
             try AppGroup.outbox.append(contentsOf: [alert])
             try? AppGroup.journal.append(.note("asked for more time: \(body)"))
+        } catch {
+            try? AppGroup.journal.append(.note("request failed: \(error)"))
+        }
+        return request
+    }
+
+    // MARK: - Always allow
+
+    /// Today's unanswered request to always allow `itemID`.
+    func pendingAlwaysAllow(_ itemID: UUID) -> TimeRequest? {
+        let answered = Set(state?.grants.map(\.grant.requestID) ?? [])
+        let today = DayKey(Date())
+        return AppGroup.requests.readAll().last { request in
+            DayKey(request.at) == today && !answered.contains(request.id) && request.reason == .alwaysAllow
+                && request.itemID == itemID
+        }
+    }
+
+    /// Queues a request to always allow `item` (`BlockReason.alwaysAllow`) and an alert for the parents, for the app
+    /// to upload. `name`: what the kid's phone calls the app.
+    func requestAlwaysAllow(_ item: TrackedItem, name: String, note: String? = nil) -> TimeRequest? {
+        guard let kid = config.kid else { return nil }
+        let request = TimeRequest(kidID: kid.id, itemID: item.id, reason: .alwaysAllow, minutes: nil, at: Date(),
+                                  note: note)
+        var body = "Always allow \(name), even during Downtime and over limits."
+        if let note { body += " \u{201C}\(note)\u{201D}" }
+        let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: item.id, at: request.at,
+                                title: "\(kid.displayName) asks to always allow an app", body: body)
+        do {
+            try AppGroup.requests.append(contentsOf: [request])
+            try AppGroup.outbox.append(contentsOf: [alert])
+            try? AppGroup.journal.append(.note("asked to always allow: \(item.id)"))
         } catch {
             try? AppGroup.journal.append(.note("request failed: \(error)"))
         }
