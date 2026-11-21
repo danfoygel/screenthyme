@@ -173,7 +173,7 @@ struct KidDayView: View {
                 }
             }
             Section {
-                NavigationLink { KidTimelineView(kid: kid, day: day) } label: {
+                NavigationLink { KidTimelineView(source: .family(kid), day: day) } label: {
                     Label("Day timeline", systemImage: "calendar.day.timeline.left")
                 }
                 NavigationLink { PolicyHistoryView(kid: kid) } label: {

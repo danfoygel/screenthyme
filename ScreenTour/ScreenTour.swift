@@ -231,6 +231,9 @@ final class ScreenTour: XCTestCase {
             snap("k-apps")
             back()
         }
+        tap("Day timeline")
+        snap("k-timeline")
+        back()
         tap("Report a problem")
         snap("k-report")
         back()
