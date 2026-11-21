@@ -1,17 +1,23 @@
 import SwiftUI
 import ThymeCore
 
-/// A kid's day as a calendar (`UsageCalendar`), with day paging and zoom.
+/// A kid's day as a calendar (`UsageCalendar`), with day paging and zoom: on a parent's phone from the family's data,
+/// on the kid's own phone from its App Group (as Debug's "Today as parents see it").
 struct KidTimelineView: View {
+    enum Source {
+        case family(Kid)
+        case thisPhone
+    }
+
     @Environment(AppModel.self) private var model
-    let kid: Kid
+    let source: Source
     @State var day: DayKey
     @AppStorage("timelineScale") private var scale = 120.0
     @AppStorage("timelineWebsites") private var showWebsites = false
     @AppStorage("timelineHideShort") private var hideShort = true
 
     var body: some View {
-        let (_, timeline) = model.timeline(kid: kid.id, day: day)
+        let (timeline, items) = data
         VStack(spacing: 0) {
             HStack {
                 Button { day = day.adding(days: -1) } label: { Image(systemName: "chevron.left") }
@@ -27,7 +33,7 @@ struct KidTimelineView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 6)
             Divider()
-            UsageCalendar(timeline: timeline, items: model.data.items(for: kid.id), dayStart: day.start(),
+            UsageCalendar(timeline: timeline, items: items, dayStart: day.start(),
                           showWebsites: showWebsites, hideShort: hideShort, scale: $scale)
         }
         .navigationTitle("Timeline")
@@ -45,7 +51,22 @@ struct KidTimelineView: View {
                 }
             }
         }
-        .refreshable { await model.refresh() }
+        .refreshable {
+            switch source {
+            case .family: await model.refresh()
+            case .thisPhone: await model.sampleNow()
+            }
+        }
+    }
+
+    private var data: (DayTimeline, [UUID: TrackedItem]) {
+        switch source {
+        case .family(let kid):
+            return (model.timeline(kid: kid.id, day: day).timeline, model.data.items(for: kid.id))
+        case .thisPhone:
+            let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            return (Reconstructor.build(model.config.dayInput(day)), items)
+        }
     }
 
     /// What the line beside the hours means.

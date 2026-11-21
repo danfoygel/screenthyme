@@ -163,6 +163,7 @@ k.node("pairing", 2, 8, "Match by screenshot", "TokenPairingView", "after data a
 k.node("report", 2, 9.5, "Report a problem", "BugReportView", "also the bug, top right of\nevery screen (a sheet)", h=72)
 k.node("debug", 2, 11.75, "Debug", "KidDebugView")
 k.node("apps", 2, 13, "Apps", "KidAppsView", "used in the last 30 days")
+k.node("timeline", 2, 14.25, "Timeline", "KidTimelineView", "the day as parents see it")
 k.node("test", 2, 16, "Test mode", "TestModeView", "only with test mode on")
 
 k.node("appDetails", 3, 1, "‹app›", "AppDetailsView", "groups, limits, use, requests")
@@ -196,6 +197,7 @@ k.edge("home", "pairing", "Match apps by\nscreenshot")
 k.edge("home", "report", "Report a problem")
 k.edge("home", "debug", "Debug")
 k.edge("home", "apps", "Apps")
+k.edge("home", "timeline", "Day timeline")
 k.edge("apps", "appDetails", "an app", bend="dst")
 for src in ("dtItems", "allowed", "blocked"):
     k.edge(src, "appDetails", "an app" if src == "allowed" else "", dp=k.cy(src) - k.cy("appDetails"))
@@ -343,7 +345,7 @@ WHY.update({
 })
 
 kid_svg = k.render("Kid mode screen flow: Welcome leads to the ScreenThyme home screen, which links to the kid's Screen Time lists, "
-                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, and Test mode; the block page outside the app also opens Ask for more time.")
+                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, the day timeline, and Test mode; the block page outside the app also opens Ask for more time.")
 parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts and Settings; a kid's day leads to the timeline, "
                       "change history, camera matching, an app's details and rules and health, which leads to the Screen Time editor and its sheets and item picker.")
 

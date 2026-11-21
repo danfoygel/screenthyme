@@ -21,8 +21,13 @@ struct KidHomeView: View {
                 KidScreenTimeSection()
                 Section {
                     NavigationLink { KidAppsView() } label: { Label("Apps", systemImage: "square.grid.2x2") }
+                    NavigationLink {
+                        KidTimelineView(source: .thisPhone, day: DayKey(Date()))
+                    } label: {
+                        Label("Day timeline", systemImage: "calendar.day.timeline.left")
+                    }
                 } footer: {
-                    Text("How long you've used each app, and the Downtime and limits for it.")
+                    Text("How long you've used each app, and the Downtime and limits for it. The timeline shows when, as your parents see it.")
                 }
                 Section {
                     NavigationLink("Report a problem") { BugReportView() }
