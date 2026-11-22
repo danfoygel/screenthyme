@@ -289,6 +289,8 @@ struct LimitEditor: View {
                 } footer: {
                     if limit.allApps {
                         Text("Everything but Always Allowed, ScreenThyme and Phone. Checked every minute of use.")
+                    } else if oneByOneCount > ShieldBudget.cap {
+                        Text("An iPhone blocks at most \(ShieldBudget.cap) apps one by one, for limits, Downtime and Blocked together. Past that, ScreenThyme blocks the ones used most recently, and any other about a minute after it's opened. Categories and All apps have no such cap.")
                     }
                 }
             }
@@ -308,11 +310,22 @@ struct LimitEditor: View {
         }
     }
 
+    /// A scanned app goes by the app it's matched to; an unmatched one has no name, so it only counts.
     private var suggestedName: String {
         if limit.allApps { return "All apps" }
-        let names = groups.filter { limit.items.contains($0.id) }.map(\.name).sorted()
-            + limit.items.compactMap { items[$0]?.displayName }.sorted()
-        return names.count > 1 ? "\(names[0]) and \(names.count - 1) more" : names.first ?? "Limit"
+        let chosenGroups = groups.filter { limit.items.contains($0.id) }
+        let chosenItems = limit.items.compactMap { items[$0] }
+        let names = chosenGroups.map(\.name).sorted()
+            + chosenItems.compactMap { AppCatalog.shared.name(of: $0, in: items) }.sorted()
+        let count = chosenGroups.count + chosenItems.count
+        guard let first = names.first ?? chosenItems.first?.displayName else { return "Limit" }
+        return count > 1 ? "\(first) and \(count - 1) more" : first
+    }
+
+    /// Apps and websites the limit names, directly or through its groups: iOS shields them one by one.
+    private var oneByOneCount: Int {
+        let ids = limit.items.union(groups.filter { limit.items.contains($0.id) }.flatMap(\.items))
+        return ids.filter { items[$0].map { $0.kind != .category } == true }.count
     }
 }
 

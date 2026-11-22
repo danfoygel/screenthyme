@@ -39,9 +39,13 @@ enum Enforcer {
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows,
                                                exempt: exemptItems(items).union(webMirrored(items, now: now)))
-            apply(plan, policy: policy, items: items)
+            let unshielded = apply(plan, policy: policy, items: items, use: UsageSnapshot.todayUse(kid: kid, now: now))
+            if unshielded.count != loadApplied()?.unshielded?.count ?? 0 {
+                try? AppGroup.journal.append(.note("shields: \(unshielded.count) apps and sites past iOS's \(ShieldBudget.cap); shielding the ones used last"))
+            }
             AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: Dictionary(policy.limits.map { ($0.id, $0.name) },
-                                                                                  uniquingKeysWith: { a, _ in a })),
+                                                                                  uniquingKeysWith: { a, _ in a }),
+                                      unshielded: unshielded),
                           to: AppGroup.enforcementURL)
             registerActivities(policy: policy, plan: plan, items: items, now: now)
             return plan
@@ -129,13 +133,24 @@ enum Enforcer {
         Set(items.values.filter { $0.kind == .app && exemptBundleIDs.contains($0.identifier) }.map(\.id))
     }
 
-    private static func apply(_ plan: EnforcementPlan, policy: Policy, items: [UUID: TrackedItem]) {
+    /// Returns the apps and websites due a shield that iOS's cap left out.
+    private static func apply(_ plan: EnforcementPlan, policy: Policy, items: [UUID: TrackedItem],
+                              use: [UUID: ShieldBudget.Use]) -> Set<UUID> {
         let tokens = Tokens(items: items)
         let exempt = exemptItems(items)
         // ScreenThyme's own token, from the app scan.
         let exemptApps = Set((AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []).compactMap(TokenCoding.application))
-        var allowed = tokens.split(tokens.expandingCategories(plan.alwaysAllowed).union(exempt))
+        let allowedIDs = tokens.expandingCategories(plan.alwaysAllowed).union(exempt)
+        var allowed = tokens.split(allowedIDs)
         allowed.apps.formUnion(exemptApps)
+        clearRetiredStores()
+
+        // Apps and websites shielded one by one, within iOS's cap for all stores together.
+        let exemptIDs = tokens.ids(of: exemptApps)
+        let fitted = ShieldBudget.fit([plan.blockedItems.subtracting(exemptIDs),
+                                       Set(plan.scopedDowntime.flatMap(\.items)).subtracting(allowedIDs).subtracting(exemptIDs),
+                                       plan.limitedItems.subtracting(allowedIDs).subtracting(exemptIDs)],
+                                      items: items, use: use)
 
         let restrictions = ManagedSettingsStore(named: .init("restrictions"))
         if policy.enabled {
@@ -143,9 +158,9 @@ enum Enforcer {
         } else {
             restrictions.clearAllSettings()
         }
-        var blocked = tokens.split(plan.blockedItems)
+        var blocked = tokens.split(fitted.lists[0])
         blocked.apps.subtract(exemptApps)
-        shieldOneByOne(blocked, over: "restrictions")
+        shieldOneByOne(blocked, in: restrictions)
         restrictions.shield.applicationCategories = blocked.categories.isEmpty ? nil
             : .specific(Tokens.capped(blocked.categories), except: Tokens.capped(exemptApps))
         restrictions.shield.webDomainCategories = blocked.categories.isEmpty ? nil : .specific(Tokens.capped(blocked.categories))
@@ -164,11 +179,11 @@ enum Enforcer {
         // Downtime for some apps (PLAN.md §15.8): their tokens, so the shield names the app; categories let through
         // what's allowed or granted in any window that's on.
         let someDowntime = ManagedSettingsStore(named: .init("downtime.some"))
-        var some = tokens.split(Set(plan.scopedDowntime.flatMap(\.items)))
+        var some = tokens.split(fitted.lists[1])
         some.apps.subtract(allowed.apps)
         some.domains.subtract(allowed.domains)
         if plan.scopedDowntime.isEmpty { someDowntime.clearAllSettings() }
-        shieldOneByOne(some, over: "downtime.some")
+        shieldOneByOne(some, in: someDowntime)
         var someExceptions = tokens.split(tokens.expandingCategories(Set(plan.scopedDowntime.flatMap(\.exceptions))))
         someExceptions.apps.formUnion(allowed.apps)
         someExceptions.domains.formUnion(allowed.domains)
@@ -178,11 +193,11 @@ enum Enforcer {
             : .specific(Tokens.capped(some.categories), except: Tokens.capped(someExceptions.domains))
 
         let limits = ManagedSettingsStore(named: .init("limits"))
-        var limited = tokens.split(plan.limitedItems)
+        var limited = tokens.split(fitted.lists[2])
         limited.apps.subtract(allowed.apps)
         limited.domains.subtract(allowed.domains)
         if plan.limitedItems.isEmpty && !plan.allAppsLimited { limits.clearAllSettings() }
-        shieldOneByOne(limited, over: "limits")
+        shieldOneByOne(limited, in: limits)
         // What's allowed, and what parents' grants let through every used-up limit that counts it.
         var limitExceptions = tokens.split(tokens.expandingCategories(plan.limitExceptions))
         limitExceptions.apps.formUnion(allowed.apps)
@@ -197,26 +212,22 @@ enum Enforcer {
             limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
                 : .specific(Tokens.capped(limited.categories), except: Tokens.capped(limitExceptions.domains))
         }
+        return fitted.left
     }
 
-    /// Stores per shield list: `name`, `name.2`, … up to this many.
-    static let overflowStores = 6
+    /// Shields apps and websites by token; `ShieldBudget` keeps all stores together within iOS's cap.
+    private static func shieldOneByOne(_ split: Tokens.Split, in store: ManagedSettingsStore) {
+        store.shield.applications = split.apps.isEmpty ? nil : split.apps
+        store.shield.webDomains = split.domains.isEmpty ? nil : split.domains
+    }
 
-    /// Shields apps and websites by token over `name`, `name.2`, …: a store given more than 50 shields none.
-    private static func shieldOneByOne(_ split: Tokens.Split, over name: String) {
-        // A stable order, so the same app stays in the same store.
-        let apps = split.apps.sorted { TokenCoding.encode($0)?.base64EncodedString() ?? "" < TokenCoding.encode($1)?.base64EncodedString() ?? "" }
-        let domains = split.domains.sorted { TokenCoding.encode($0)?.base64EncodedString() ?? "" < TokenCoding.encode($1)?.base64EncodedString() ?? "" }
-        let limit = Tokens.Split.limit
-        if apps.count > limit * overflowStores || domains.count > limit * overflowStores {
-            try? AppGroup.journal.append(.note("\(name): \(apps.count) apps, \(domains.count) sites; shielding the first \(limit * overflowStores)"))
-        }
-        for index in 0..<overflowStores {
-            let store = ManagedSettingsStore(named: .init(index == 0 ? name : "\(name).\(index + 1)"))
-            let someApps = Set(apps.dropFirst(index * limit).prefix(limit))
-            let someDomains = Set(domains.dropFirst(index * limit).prefix(limit))
-            store.shield.applications = someApps.isEmpty ? nil : someApps
-            store.shield.webDomains = someDomains.isEmpty ? nil : someDomains
+    /// Overflow stores (`limits.2` …) from before `ShieldBudget`: iOS ignored what they held past the cap. Emptied.
+    private static func clearRetiredStores() {
+        for name in ["restrictions", "downtime.some", "limits"] {
+            for index in 2...6 {
+                let store = ManagedSettingsStore(named: .init("\(name).\(index)"))
+                if store.shield.applications != nil || store.shield.webDomains != nil { store.clearAllSettings() }
+            }
         }
     }
 
@@ -281,6 +292,13 @@ enum Enforcer {
                 }
             }
             return split
+        }
+
+        /// The app items holding `tokens`.
+        func ids(of tokens: Set<ApplicationToken>) -> Set<UUID> {
+            guard !tokens.isEmpty else { return [] }
+            return Set(items.values.filter { $0.kind == .app && TokenCoding.application($0.tokenData).map(tokens.contains) == true }
+                .map(\.id))
         }
 
         /// Categories replaced by their known apps and websites (for "all except" lists, which take apps only). Apple's

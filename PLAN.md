@@ -572,6 +572,8 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   `handle(action:for: ActivityCategoryToken)`: the category, not the app.
 - **50-token caps:** a store's `shield.applications` or `webDomains` with more than 50 shields nothing; an
   `.all(except:)` or `.specific(_:except:)` list takes at most 50 exceptions (Apple docs, developer forums).
+  The 50 apps (and 50 websites) are for all of an app's stores together: on Nov 22 a kid's 108-app limit over
+  `limits`, `limits.2` and `limits.3` let Netflix play on, while a limit of Netflix alone blocked it at once.
 
 **The app scan:** on the kid's phone a parent selects All Apps & Categories once
 (`FamilyActivitySelection(includeEntireCategory: true)`): a token for every installed app, website and category,
@@ -585,8 +587,9 @@ through (`exempt-tokens.json`). Apps installed later are covered by their catego
   this, a kid's Always Allowed kept 5 old tokens that allowed nothing and showed as "App". Items with no new token to
   follow show under "No longer on the phone", by their match's name, and parents can remove them.
 - Downtime shields every category except Always Allowed: no app list, so no cap.
-- Blocked apps and exhausted limits' apps are shielded one by one over `restrictions`/`limits` plus overflow stores
-  `.2`…`.6` (50 each).
+- Blocked apps and exhausted limits' apps are shielded one by one in `restrictions`/`limits`, 50 apps and 50
+  websites at most with `downtime.some` (`ShieldBudget`). Past that, the ones used most recently today: any other
+  that's opened moves up at the next wake, about a minute of use. The overflow stores (`.2`…`.6`) are emptied.
 - Grants on scanned items and the whole phone run by the clock: Apple's data has no usage for them.
 
 ### 15.4 Ask for more time in ScreenThyme
@@ -775,7 +778,7 @@ read it; kids' phones never fetch it. Changes made before this build aren't in i
 - **Downtime for some apps:** a window with `items` blocks only those (and its groups' items), not the whole phone;
   none means the whole phone, as before. Whole-phone Downtime is still the first window that's on; every window for
   some apps that's on is applied at once (`EnforcementPlan.scopedDowntime`), in its own store `downtime.some`
-  (`.2` … for more than 50 apps): app and website tokens one by one, categories as `.specific(except:)` Always
+  (within `ShieldBudget`'s 50): app and website tokens one by one, categories as `.specific(except:)` Always
   Allowed and granted apps. A window of an emptied group blocks nothing (`Policy.downtimeItems`), never the whole
   phone.
 - Its shields name the app (or the category), so a request or one more minute lets just that through until the
