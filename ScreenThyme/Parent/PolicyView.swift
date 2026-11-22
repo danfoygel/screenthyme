@@ -16,6 +16,7 @@ struct PolicyView: View {
         let policy = draft ?? stored
         let items = model.data.items(for: kid.id)
         Form {
+            RebuildingNotice()
             Section {
                 Toggle("Enforce on \(kid.displayName)'s phone", isOn: binding(policy, \.enabled))
             } footer: {
@@ -105,6 +106,8 @@ struct PolicyView: View {
                 }
             }
         }
+        // A draft started from a mirror being re-fetched would replace the kid's policy when saved.
+        .disabled(model.editsBlocked)
         .navigationTitle("Screen Time")
         .bugButton()
         .toolbar {

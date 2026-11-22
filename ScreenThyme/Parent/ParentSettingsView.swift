@@ -106,6 +106,7 @@ struct KidSettingsView: View {
     var body: some View {
         let heartbeat = model.data.heartbeats[kid.id]
         Form {
+            RebuildingNotice()
             Section {
                 NavigationLink("Screen Time: Downtime, limits, content") { PolicyView(kid: kid) }
             }
