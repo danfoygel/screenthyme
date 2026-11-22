@@ -114,11 +114,21 @@ final class AppModel {
         defer { isRefreshing = false }
         if isParent { await PendingSaves.retry(store: store) }
         do {
-            let fullFetch = data.needsFullFetch
-            if fullFetch { ChangeFetcher.resetToken(for: store) }
-            let batch = try await ChangeFetcher.fetch(store: store)
-            if fullFetch { data.fullFetchDone() }
-            let newAlerts = data.ingest(batch)
+            // A full re-fetch keeps each page as it comes (`FamilyData.isRebuilding`).
+            let rebuilding = data.isRebuilding
+            if data.rebuildNeedsReset {
+                ChangeFetcher.resetToken(for: store)
+                data.rebuildStarted()
+            }
+            let known = Set(data.alerts.keys)
+            let batch = try await ChangeFetcher.fetch(store: store, page: rebuilding ? data.ingestRebuildPage : nil)
+            let newAlerts: [AlertRecord]
+            if rebuilding {
+                data.rebuildDone()
+                newAlerts = batch.alerts.filter { !known.contains($0.id) }
+            } else {
+                newAlerts = data.ingest(batch)
+            }
             if data.linkKey == nil, let key = try? await LinkKeyService.fetchOrCreate(store: store) {
                 data.ingest(IngestBatch(linkKeys: [key]))
                 updateNearby()
