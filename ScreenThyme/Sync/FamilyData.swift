@@ -21,6 +21,8 @@ struct IngestBatch: Sendable {
     var grants: [TimeGrant] = []
     var extraMinutes: [ExtraMinuteUse] = []
     var linkKeys: [LinkKey] = []
+    var placeEvents: [PlaceEvent] = []
+    var familyPlaces: [FamilyPlaces] = []
     var deletedRecordNames: [String] = []
 
     mutating func add(_ record: CKRecord) {
@@ -41,6 +43,8 @@ struct IngestBatch: Sendable {
         case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
         case ExtraMinuteUse.recordType: ExtraMinuteUse.decode(record).map { extraMinutes.append($0) }
         case LinkKey.recordType: LinkKey.decode(record).map { linkKeys.append($0) }
+        case PlaceEvent.recordType: PlaceEvent.decode(record).map { placeEvents.append($0) }
+        case FamilyPlaces.recordType: FamilyPlaces.decode(record).map { familyPlaces.append($0) }
         default: break
         }
     }
@@ -49,7 +53,8 @@ struct IngestBatch: Sendable {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
-            && extraMinutes.isEmpty && linkKeys.isEmpty && deletedRecordNames.isEmpty
+            && extraMinutes.isEmpty && linkKeys.isEmpty && placeEvents.isEmpty && familyPlaces.isEmpty
+            && deletedRecordNames.isEmpty
     }
 }
 
@@ -59,7 +64,7 @@ struct IngestBatch: Sendable {
 final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: an older (or unreadable) snapshot triggers a full re-fetch.
-        static let currentVersion = 5
+        static let currentVersion = 6
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -75,6 +80,7 @@ final class FamilyData {
         var requests: [UUID: TimeRequest] = [:]
         var grants: [UUID: TimeGrant] = [:]
         var extraMinutes: [UUID: ExtraMinuteUse] = [:]
+        var familyPlaces: FamilyPlaces?
         /// Where builds before link-key.json kept the nearby link's secret; read once, to move it.
         var linkKey: LinkKey?
     }
@@ -85,6 +91,8 @@ final class FamilyData {
     @ObservationIgnored private let directory = URL.applicationSupportDirectory.appending(path: "FamilyData")
     @ObservationIgnored private lazy var fireStore = KidDayStore<UsageFire>(directory: directory.appending(path: "fires"))
     @ObservationIgnored private lazy var sampleStore = KidDayStore<UsageSample>(directory: directory.appending(path: "samples"))
+    /// Where kids' phones were (PLAN.md §19), filed by the day each happened.
+    @ObservationIgnored private lazy var placeEventStore = KidDayStore<PlaceEvent>(directory: directory.appending(path: "places"))
 
     var kids: [UUID: Kid] { snapshot.kids }
     var items: [UUID: TrackedItem] { snapshot.items }
@@ -96,6 +104,9 @@ final class FamilyData {
     var pings: [UUID: Ping] { snapshot.pings }
     var requests: [UUID: TimeRequest] { snapshot.requests }
     var grants: [UUID: TimeGrant] { snapshot.grants }
+    /// The family's named places (PLAN.md §19).
+    var places: [Place] { snapshot.familyPlaces?.places ?? [] }
+    var familyPlaces: FamilyPlaces? { snapshot.familyPlaces }
     /// "One more minute" taken on kids' block pages.
     var extraMinutes: [UUID: ExtraMinuteUse] { snapshot.extraMinutes }
     /// The nearby link's secret (PLAN.md §17), in its own file: a build from a branch without the link rewrites the
@@ -181,6 +192,9 @@ final class FamilyData {
         for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
         for use in batch.extraMinutes { snapshot.extraMinutes[use.id] = use }
         if let key = batch.linkKeys.last, key != linkKey { saveLinkKey(key) }
+        for places in batch.familyPlaces where places.updatedAt >= (snapshot.familyPlaces?.updatedAt ?? .distantPast) {
+            snapshot.familyPlaces = places
+        }
         for heartbeat in batch.heartbeats where heartbeat.at > (snapshot.heartbeats[heartbeat.kidID]?.at ?? .distantPast) {
             snapshot.heartbeats[heartbeat.kidID] = heartbeat
         }
@@ -207,6 +221,10 @@ final class FamilyData {
         for (key, samples) in Dictionary(grouping: batch.samples, by: { KidDay(kid: $0.kidID, day: $0.day) }) {
             sampleStore.merge(samples, into: key)
         }
+        for (key, events) in Dictionary(grouping: batch.placeEvents.filter { $0.kidID != nil },
+                                        by: { KidDay(kid: $0.kidID!, day: $0.day) }) {
+            placeEventStore.merge(events, into: key)
+        }
         saveSnapshot()
         revision += 1
         return newAlerts
@@ -220,6 +238,18 @@ final class FamilyData {
     func samples(kid: UUID, day: DayKey) -> [UsageSample] {
         _ = revision
         return sampleStore.values(KidDay(kid: kid, day: day))
+    }
+
+    /// What the kid's phone said about where it was, on the days `first` through `last`, oldest first.
+    func placeEvents(kid: UUID, from first: DayKey, through last: DayKey) -> [PlaceEvent] {
+        _ = revision
+        var events: [PlaceEvent] = []
+        var day = first
+        while day <= last {
+            events += placeEventStore.values(KidDay(kid: kid, day: day))
+            day = day.adding(days: 1)
+        }
+        return events.sorted { ($0.at, $0.observedAt) < ($1.at, $1.observedAt) }
     }
 
     func items(for kid: UUID) -> [UUID: TrackedItem] {
@@ -246,6 +276,7 @@ final class FamilyData {
         snapshot.lastFireAt[kid] = nil
         fireStore.forget(kid: kid)
         sampleStore.forget(kid: kid)
+        placeEventStore.forget(kid: kid)
         saveSnapshot()
         revision += 1
     }

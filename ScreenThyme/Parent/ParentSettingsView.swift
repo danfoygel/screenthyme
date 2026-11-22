@@ -142,6 +142,9 @@ struct KidSettingsView: View {
                     RawUsageView(items: model.data.items(for: kid.id), samples: { model.data.samples(kid: kid.id, day: $0) },
                                  day: DayKey(Date()))
                 }
+                if model.tracksLocation(kid.id) {
+                    NavigationLink("Raw location") { RawLocationView(kid: kid, day: DayKey(Date())) }
+                }
                 if model.data.items(for: kid.id).values.contains(where: \.isScanned) {
                     NavigationLink { PairingScannerView(kid: kid) } label: {
                         let count = model.unmatchedApps(for: kid).toMatch.count

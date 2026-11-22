@@ -133,6 +133,31 @@ final class ScreenTour: XCTestCase {
         back(); back()
         replay(onto: "Leo")
 
+        // Name the most visited spot (the replay's home), so Leo's day has a place besides other locations.
+        tab("Places")
+        let spot = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "visits ·")).firstMatch
+        for _ in 0..<6 where !(spot.exists && spot.isHittable && spot.frame.midY < bottom) { app.swipeUp(velocity: .slow) }
+        if spot.exists {
+            spot.tap()
+            Thread.sleep(forTimeInterval: 1)
+            let name = app.textFields.firstMatch
+            if name.waitForExistence(timeout: 5) {
+                name.tap()
+                // The Simulator's first keyboard of a run takes a while to come up.
+                _ = app.keyboards.firstMatch.waitForExistence(timeout: 15)
+                Thread.sleep(forTimeInterval: 1)
+                name.typeText("Home")
+            }
+            snap("p-placeEditor")
+            tap("Save")
+            // Below the map: a swipe on it would pan it instead of scrolling the list.
+            for _ in 0..<4 {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62))
+                    .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+            }
+            snap("p-places")
+        } else { print("TOUR missing a spot to name") }
+
         tab("Kids")
         snap("p-kids")
         tap("Leo")
@@ -149,6 +174,14 @@ final class ScreenTour: XCTestCase {
         // The day's Apps row ("Roblox, 1 h 5 min"), not the timeline's block.
         if tap("Roblox,") {
             snap("p-appDetails")
+            back()
+        }
+        if tap("Home,") {
+            snap("p-locationDay")
+            back()
+        }
+        if tap("Raw location") {
+            snap("p-rawLocation")
             back()
         }
         scrollTop()

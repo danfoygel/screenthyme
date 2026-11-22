@@ -82,6 +82,7 @@ final class AppModel {
             await sendHeartbeat(.launch)
             await refresh()
             await KidSync.refreshIfDue(config: config, force: true)
+            PlaceWatcher.shared.reloadFamilyPlaces()
         case .parent:
             await refresh()
             await handleTestRuleArguments()
@@ -102,6 +103,7 @@ final class AppModel {
             await sampleNow()
             await flush()
             await sendHeartbeat(.backgroundRefresh)
+            PlaceWatcher.shared.reloadFamilyPlaces()
         }
         await refresh()
         await bugReports.sync(store: store)
@@ -116,8 +118,10 @@ final class AppModel {
         do {
             let fullFetch = data.needsFullFetch
             if fullFetch { ChangeFetcher.resetToken(for: store) }
-            let batch = try await ChangeFetcher.fetch(store: store)
+            var batch = try await ChangeFetcher.fetch(store: store)
             if fullFetch { data.fullFetchDone() }
+            // Where each kid's phone was is for parents only: a kid's phone keeps none, its own included.
+            if isKid { batch.placeEvents = [] }
             let newAlerts = data.ingest(batch)
             if data.linkKey == nil, let key = try? await LinkKeyService.fetchOrCreate(store: store) {
                 data.ingest(IngestBatch(linkKeys: [key]))
@@ -133,6 +137,10 @@ final class AppModel {
                 await Enforcer.offMain {
                     if let policy { KidSync.savePolicy(policy) }
                     for grant in grants { Enforcer.apply(grant) }
+                }
+                if let places = batch.familyPlaces.last {
+                    KidSync.saveFamilyPlaces(places)
+                    PlaceWatcher.shared.reloadFamilyPlaces()
                 }
                 if batch.pings.contains(where: { $0.kidID == kid.id && $0.at > (lastHeartbeatAt ?? .distantPast) }) {
                     await sendHeartbeat(.ping)

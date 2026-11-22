@@ -8,6 +8,7 @@ struct ParentRootView: View {
         TabView {
             Tab("Kids", systemImage: "person.2") { ParentHomeView() }
             Tab("Alerts", systemImage: "bell") { AlertsView() }
+            Tab("Places", systemImage: "map") { PlacesView() }
             Tab("Settings", systemImage: "gear") { ParentSettingsView() }
         }
         // While open, poll every 30 s on top of push-triggered fetches (PLAN.md §4.3).
@@ -195,6 +196,7 @@ struct KidDayView: View {
             } footer: {
                 Text("All apps. " + UsageHeatmapView.footer)
             }
+            DayLocationsSection(kid: kid, day: day, timeline: timeline)
             Section("Apps") {
                 let apps = used.filter { items[$0.key]?.kind != .domain }
                 let shielded = day == DayKey(Date()) ? timeShielded(apps.map(\.key), items: items)

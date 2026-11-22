@@ -113,4 +113,133 @@ struct PlacesTests {
         #expect(usage[.unknown] == [game: 300])
         #expect(usage[.place(school.id)] == [video: 330])
     }
+
+    @Test func removedAndUnknownFencesAreIgnored() {
+        // Another phone's test fence, or a place since removed: its crossings say nothing about the family's places.
+        let events = [
+            PlaceEvent(kind: .enter, at: at(7, 0), place: UUID()),
+            PlaceEvent(kind: .enter, at: at(8, 0), place: home.id),
+        ]
+        #expect(PlaceStays.build(events, places: [home], now: at(9, 0)) == [
+            PlaceStay(whereabouts: .place(home.id), start: at(8, 0), end: at(9, 0), isOpen: true),
+        ])
+    }
+
+    @Test func eachPhonesVisitsAreTheirOwn() {
+        let (leo, mia) = (UUID(), UUID())
+        // Two kids arrive together: two visits, though at the same time.
+        let events = [
+            PlaceEvent(kidID: leo, kind: .visit, at: at(8, 0), latitude: 0, longitude: 0, accuracy: 20),
+            PlaceEvent(kidID: mia, kind: .visit, at: at(8, 0, 30), latitude: 0, longitude: 0, accuracy: 20),
+            PlaceEvent(kidID: leo, kind: .visit, at: at(8, 0), departure: at(9, 0), latitude: 0, longitude: 0, accuracy: 20),
+        ]
+        let visits = PlaceStays.visits(events)
+        #expect(visits.count == 2)
+        #expect(visits.first { $0.kidID == leo }?.departure == at(9, 0))
+        #expect(visits.first { $0.kidID == mia }?.departure == nil)
+    }
+
+    @Test func staysAreClippedToTheDay() {
+        let stay = PlaceStay(whereabouts: .place(home.id), start: at(-2, 0), end: at(7, 0), isOpen: true)
+        let day = DateInterval(start: at(0, 0), end: at(24, 0))
+        #expect(PlaceStays.clip([stay], to: day) == [
+            PlaceStay(whereabouts: .place(home.id), start: at(0, 0), end: at(7, 0), isOpen: true),
+        ])
+        #expect(PlaceStays.clip([stay], to: DateInterval(start: at(8, 0), end: at(9, 0))).isEmpty)
+    }
+
+    // MARK: - Visit clusters
+
+    /// A visit about `meters` north of (0, 0).
+    func visit(north meters: Double, accuracy: Double, at date: Date = at(12, 0), kid: UUID? = nil) -> PlaceEvent {
+        PlaceEvent(kidID: kid, kind: .visit, at: date, departure: date.addingTimeInterval(1800),
+                   latitude: meters / 111_195, longitude: 0, accuracy: accuracy)
+    }
+
+    @Test func visitsWithinTheirAccuracyAreOneSpot() {
+        let visits = [
+            visit(north: 0, accuracy: 30, at: at(8, 0)),
+            visit(north: 40, accuracy: 80, at: at(9, 0)),  // within 80 m of the first
+            visit(north: 25, accuracy: 10, at: at(10, 0)),  // within 50 m, the least distance
+            visit(north: 400, accuracy: 60, at: at(11, 0)),  // another spot
+        ]
+        let clusters = VisitClusters.build(visits)
+        #expect(clusters.count == 2)
+        #expect(clusters[0].visits.map(\.at) == [at(8, 0), at(9, 0), at(10, 0)])
+        #expect(clusters[0].id == visits[0].id)
+        #expect(clusters[0].accuracy == 30)
+        // Weighted by precision: nearest the ±10 m visit.
+        let north = clusters[0].latitude * 111_195
+        #expect(north > 15 && north < 25)
+        #expect(clusters[1].visits.map(\.at) == [at(11, 0)])
+        #expect(clusters[1].suggestedRadius == Place.minimumRadius)
+    }
+
+    @Test func aVagueVisitDoesntJoinTwoSpots() {
+        let visits = [
+            visit(north: 0, accuracy: 20),
+            visit(north: 300, accuracy: 20),
+            visit(north: 150, accuracy: 500),  // reaches both, but joins only one
+        ]
+        let clusters = VisitClusters.build(visits)
+        #expect(clusters.count == 2)
+        #expect(clusters.map(\.visits.count).sorted() == [1, 2])
+    }
+
+    @Test func visitsAtNamedPlacesAreLeftOut() {
+        let visits = [visit(north: 50, accuracy: 20), visit(north: 2000, accuracy: 20)]
+        let clusters = VisitClusters.build(visits, excluding: [home])
+        #expect(clusters.map(\.id) == [visits[1].id])
+        #expect(VisitClusters.place(of: visits[0], in: [home, school]) == home)
+        #expect(VisitClusters.place(of: visits[1], in: [home, school]) == nil)
+    }
+
+    @Test func syntheticSchoolDayHasTwoVisitsHome() {
+        let events = SyntheticScenario.schoolDay.placeEvents(kid: testKid, day: DayKey(dayStart, calendar: utc), calendar: utc)
+        let visits = PlaceStays.visits(events)
+        #expect(visits.count == 4)
+        #expect(visits.last?.departure == nil)
+        let clusters = VisitClusters.build(visits)
+        #expect(clusters.map(\.visits.count) == [2, 1, 1])
+    }
+}
+
+extension PlacesTests {
+    @Test func aDayByLocation() {
+        let (video, game) = (UUID(), UUID())
+        let events = [
+            // From the evening before: still home in the morning.
+            PlaceEvent(kind: .visit, at: at(-3, 0), departure: at(7, 30), latitude: 0, longitude: 0, accuracy: 20),
+            PlaceEvent(kind: .visit, at: at(8, 0), departure: at(15, 0), latitude: 0.05, longitude: 0, accuracy: 50),
+            PlaceEvent(kind: .visit, at: at(16, 0), latitude: 0.0002, longitude: 0, accuracy: 20),
+        ]
+        let blocks = [
+            block(video, at(7, 0), at(7, 20), seconds: 600),  // home
+            block(game, at(7, 40), at(7, 50), seconds: 300),  // on the way
+            block(video, at(12, 0), at(12, 10), seconds: 200),  // somewhere no place covers
+            block(game, at(17, 0), at(18, 0), seconds: 1800),  // home again
+        ]
+        let day = LocationDay(events: events, places: [home], blocks: blocks,
+                              day: DateInterval(start: at(0, 0), end: at(24, 0)), now: at(19, 0))
+        #expect(day.stays.first == PlaceStay(whereabouts: .place(home.id), start: at(0, 0), end: at(7, 30), isOpen: false))
+        #expect(day.stays.last == PlaceStay(whereabouts: .place(home.id), start: at(16, 0), end: at(19, 0), isOpen: true))
+        #expect(day.locations().map(\.whereabouts) == [.place(home.id), .elsewhere, .unknown])
+        #expect(day.locations().map(\.seconds) == [2400, 200, 300])
+        #expect(day.locations(items: [video]).map(\.seconds) == [600, 200])
+    }
+}
+
+extension PlacesTests {
+    @Test func daysAddUp() {
+        let video = UUID()
+        func day(_ seconds: Double, at whereabouts: Whereabouts) -> LocationDay {
+            var day = LocationDay(events: [], places: [], blocks: [], day: DateInterval(start: at(0, 0), end: at(24, 0)),
+                                  now: at(24, 0))
+            day.usage = [whereabouts: [video: seconds]]
+            return day
+        }
+        let week = LocationDay.locations([day(60, at: .unknown), day(120, at: .place(home.id)), day(30, at: .unknown)])
+        #expect(week.map(\.whereabouts) == [.place(home.id), .unknown])
+        #expect(week.map(\.seconds) == [120, 90])
+    }
 }

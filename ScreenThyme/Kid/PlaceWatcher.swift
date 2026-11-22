@@ -4,18 +4,23 @@ import Observation
 import ThymeCore
 import UIKit
 
-/// The location test on a kid's phone (PLAN.md §19): geofences around the places marked here, plus iOS's visits,
-/// written to App Group `Places/events.jsonl`. Each place is watched by both of iOS's geofence APIs, `CLMonitor` and
-/// the older region monitoring, since `CLMonitor` once missed a whole day's crossings. iOS watches both itself, on Wi-Fi and cell towers, and wakes or
+/// Where a kid's phone is (PLAN.md §19): geofences around the family's places (named by parents) and those the
+/// location test marked here, plus iOS's visits, written to App Group `Places/events.jsonl` and uploaded for parents
+/// as they come. Each place is watched by both of iOS's geofence APIs, `CLMonitor` and the older region monitoring,
+/// since `CLMonitor` once missed a whole day's crossings. iOS watches both itself, on Wi-Fi and cell towers, and wakes or
 /// relaunches the app only at a crossing or a visit, so there's no polling and no location background mode.
-/// Nothing leaves the phone yet.
 @MainActor @Observable final class PlaceWatcher: NSObject, CLLocationManagerDelegate {
     static let shared = PlaceWatcher()
 
     private static let enabledKey = "placesTest"
     private static let monitorName = "places"
 
-    private(set) var places: [Place] = AppGroup.load([Place].self, from: AppGroup.placesURL) ?? []
+    /// Marked here by the location test; only this phone knows them.
+    private(set) var localPlaces: [Place] = AppGroup.load([Place].self, from: AppGroup.placesURL) ?? []
+    /// Named by parents (`FamilyPlaces`, fetched by `KidSync`).
+    private(set) var familyPlaces: [Place] = AppGroup.familyPlaces()?.places ?? []
+    /// Every place fenced: the family's first, 20 in all at most.
+    var places: [Place] { Array((familyPlaces + localPlaces).prefix(FamilyPlaces.limit)) }
     private(set) var authorization: CLAuthorizationStatus = .notDetermined
     /// What CoreLocation says is holding it back, if anything.
     private(set) var problem: String?
@@ -66,6 +71,7 @@ import UIKit
     /// only once the monitor and the visit delegate are set up again.
     func start() {
         guard isEnabled, tasks.isEmpty else { return }
+        familyPlaces = AppGroup.familyPlaces()?.places ?? []
         log("started, \(UIApplication.shared.applicationState == .background ? "in the background" : "in the foreground"), "
             + "location \(authorization.label)\(manager.accuracyAuthorization == .fullAccuracy ? "" : ", not precise")")
         if authorization == .notDetermined || authorization == .authorizedWhenInUse {
@@ -114,7 +120,7 @@ import UIKit
         // A fence smaller than the fix's own error would flicker.
         let place = Place(name: name, latitude: fix.latitude, longitude: fix.longitude,
                           radius: max(Place.defaultRadius, fix.accuracy * 2))
-        places.append(place)
+        localPlaces.append(place)
         save()
         log("marked \(name), \(Int(place.radius)) m")
         if let monitor { await sync(monitor) }
@@ -122,11 +128,22 @@ import UIKit
     }
 
     func remove(_ place: Place) {
-        places.removeAll { $0.id == place.id }
+        localPlaces.removeAll { $0.id == place.id }
         save()
         log("removed \(place.name)")
         syncRegions()
         if let monitor { Task { await monitor.remove(place.id.uuidString) } }
+    }
+
+    /// Picks up the family's places after `KidSync` fetched a change, and fences them.
+    func reloadFamilyPlaces() {
+        let latest = AppGroup.familyPlaces()?.places ?? []
+        guard latest != familyPlaces else { return }
+        familyPlaces = latest
+        log("family places: \(latest.count)")
+        guard isEnabled else { return }
+        syncRegions()
+        if let monitor { Task { await sync(monitor) } }
     }
 
     var events: [PlaceEvent] {
@@ -213,12 +230,20 @@ import UIKit
         }
     }
 
-    /// Makes the monitor's fences match `places`.
+    /// Makes the monitor's fences match `places`, re-adding any a parent moved or resized.
     private func sync(_ monitor: CLMonitor) async {
         let wanted = Dictionary(places.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
-        let existing = Set(await monitor.identifiers)
-        for id in existing where wanted[id] == nil {
-            await monitor.remove(id)
+        var existing = Set(await monitor.identifiers)
+        for id in existing {
+            guard let place = wanted[id] else {
+                await monitor.remove(id)
+                continue
+            }
+            if let fence = await monitor.record(for: id)?.condition as? CLMonitor.CircularGeographicCondition,
+               !Self.matches(place, center: fence.center, radius: fence.radius) {
+                await monitor.remove(id)
+                existing.remove(id)
+            }
         }
         for (id, place) in wanted where !existing.contains(id) {
             let center = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
@@ -228,8 +253,11 @@ import UIKit
 
     /// Makes the older API's regions match `places`, then asks it where the phone is for each.
     private func syncRegions() {
-        let wanted = Set(places.map(\.id.uuidString))
-        for region in manager.monitoredRegions where !wanted.contains(region.identifier) {
+        let wanted = Dictionary(places.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
+        for region in manager.monitoredRegions {
+            if let place = wanted[region.identifier], let circle = region as? CLCircularRegion,
+               Self.matches(place, center: circle.center, radius: circle.radius,
+                            maximum: manager.maximumRegionMonitoringDistance) { continue }
             manager.stopMonitoring(for: region)
         }
         let existing = Set(manager.monitoredRegions.map(\.identifier))
@@ -245,6 +273,13 @@ import UIKit
         for region in manager.monitoredRegions {
             manager.requestState(for: region)
         }
+    }
+
+    /// Whether a fence iOS holds is still the place's (a parent may have moved or resized it).
+    private static func matches(_ place: Place, center: CLLocationCoordinate2D, radius: CLLocationDistance,
+                                maximum: CLLocationDistance = .greatestFiniteMagnitude) -> Bool {
+        Place.distance(place.latitude, place.longitude, center.latitude, center.longitude) < 1
+            && abs(min(place.radius, maximum) - radius) < 1
     }
 
     /// The older API's answer, at a crossing or when asked: a crossing when it differs from its last one.
@@ -354,15 +389,28 @@ import UIKit
     // MARK: -
 
     private func append(_ event: PlaceEvent) {
+        var event = event
+        let config = SharedConfig.load()
+        event.kidID = config.kid?.id
         try? AppGroup.placeEvents.append(event)
         revision += 1
         EnergyMeter.record(.app, isCallback: true)
+        upload(config)
+    }
+
+    /// Sends the events now, while iOS keeps the app awake for this one (the monitor extension sends any it misses).
+    private func upload(_ config: SharedConfig) {
+        let background = UIApplication.shared.beginBackgroundTask(withName: "places upload")
+        Task {
+            defer { UIApplication.shared.endBackgroundTask(background) }
+            do { try await Uploader.flushPlaces(config: config) } catch { log("upload failed: \(error.localizedDescription)") }
+        }
     }
 
     private func save() {
         try? FileManager.default.createDirectory(at: AppGroup.placesURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
-        AppGroup.save(places, to: AppGroup.placesURL)
+        AppGroup.save(localPlaces, to: AppGroup.placesURL)
     }
 
     private static func describe(_ diagnostic: CLServiceSession.Diagnostic) -> String? {

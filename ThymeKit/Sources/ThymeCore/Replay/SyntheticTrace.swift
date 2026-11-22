@@ -146,4 +146,29 @@ public enum SyntheticScenario: String, CaseIterable, Codable, Sendable, Identifi
                                 startedAt: start, activityNames: [SyntheticTrace.activity])
         return Trace(kid: kid, day: day, items: items, epoch: epoch, entries: entries, samples: samples)
     }
+
+    /// Where the phone stayed (PLAN.md §19), for the school day only: home, school, a stop on the way back, home again,
+    /// with travel between. Spots in a public park, for screenshots. Each visit is reported on arrival and again with
+    /// its departure, as iOS does.
+    public func placeEvents(kid: Kid, day: DayKey, calendar: Calendar = .current) -> [PlaceEvent] {
+        guard self == .schoolDay else { return [] }
+        let start = day.start(in: calendar)
+        func at(_ hour: Int, _ minute: Int) -> Date { start.addingTimeInterval(Double(hour * 3600 + minute * 60)) }
+        let stays: [(name: String, lat: Double, lon: Double, accuracy: Double, from: Date, to: Date?)] = [
+            ("home", 37.76955, -122.48310, 35, start.addingTimeInterval(-6 * 3600), at(7, 40)),
+            ("school", 37.76990, -122.46610, 60, at(8, 0), at(15, 10)),
+            ("stop", 37.76790, -122.45640, 120, at(15, 25), at(15, 55)),
+            ("home", 37.76940, -122.48290, 25, at(16, 5), nil),
+        ]
+        return stays.enumerated().flatMap { index, stay -> [PlaceEvent] in
+            func visit(_ part: String, departure: Date?, observed: Date) -> PlaceEvent {
+                PlaceEvent(id: Replay.stableUUID("synthetic-visit", kid.id.uuidString, day.description, "\(index)", part),
+                           kidID: kid.id, kind: .visit, at: stay.from, observedAt: observed, departure: departure,
+                           latitude: stay.lat, longitude: stay.lon, accuracy: stay.accuracy)
+            }
+            let arrival = visit("arrival", departure: nil, observed: stay.from.addingTimeInterval(180))
+            guard let to = stay.to else { return [arrival] }
+            return [arrival, visit("departure", departure: to, observed: to.addingTimeInterval(80))]
+        }
+    }
 }
