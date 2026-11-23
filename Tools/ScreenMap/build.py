@@ -164,6 +164,7 @@ k.node("report", 2, 9.5, "Report a problem", "BugReportView", "also the bug, top
 k.node("debug", 2, 11.75, "Debug", "KidDebugView")
 k.node("apps", 2, 13, "Apps", "KidAppsView", "used in the last 30 days")
 k.node("timeline", 2, 14.25, "Timeline", "KidTimelineView", "the day as parents see it")
+k.node("categories", 2, 15.1, "Categories", "CategoryTimeView", "the day by Apple's category")
 k.node("test", 2, 16, "Test mode", "TestModeView", "only with test mode on")
 
 k.node("appDetails", 3, 1, "‹app›", "AppDetailsView", "groups, limits, use, requests")
@@ -198,6 +199,7 @@ k.edge("home", "report", "Report a problem")
 k.edge("home", "debug", "Debug")
 k.edge("home", "apps", "Apps")
 k.edge("home", "timeline", "Day timeline")
+k.edge("home", "categories", "Time by category")
 k.edge("apps", "appDetails", "an app", bend="dst")
 for src in ("dtItems", "allowed", "blocked"):
     k.edge(src, "appDetails", "an app" if src == "allowed" else "", dp=k.cy(src) - k.cy("appDetails"))
@@ -246,7 +248,8 @@ p.node("issues", 2, 10, "Bug reports", "IssueTrackerView", "GitHub repository an
 p.node("report", 2, 11, "Report a problem", "BugReportView", "the bug, top right of\nevery screen", kind="sheet", h=72)
 p.node("perms", 2, 12.25, "Permissions", "PermissionsView", "this phone's, each kid's")
 
-p.node("timeline", 3, 0.5, "Timeline", "KidTimelineView", "zoom, Options menu")
+p.node("timeline", 3, 0, "Timeline", "KidTimelineView", "zoom, Options menu")
+p.node("categories", 3, 1, "Categories", "CategoryTimeView", "the day by Apple's category")
 p.node("history", 3, 2, "Change history", "PolicyHistoryView", "saves, changes back, answers")
 p.node("locationDay", 3, 3.1, "‹place›", "LocationDayView", "apps used there, times there")
 p.node("scanner", 3, 4.25, "Match ‹kid›'s apps", "PairingScannerView", "camera reads the kid's codes")
@@ -255,7 +258,7 @@ p.node("rawLocation", 3, 7.5, "Raw location", "RawLocationView", "visits, fences
 p.node("replay", 3, 9, "Replay", "ReplayView")
 p.node("toKid", 3, 10, "Kid mode  ›", kind="mode")
 
-p.node("popover", 4, 0.5, "Block details", "UsageCalendar popover", kind="popover")
+p.node("popover", 4, 0, "Block details", "UsageCalendar popover", kind="popover")
 p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "edits a draft; Save asks how long")
 p.node("apps", 4, 5, "‹kid›'s apps", "TrackedItemsView", "every app and site seen")
 p.node("raw", 4, 6, "Raw usage", "RawUsageView")
@@ -287,6 +290,7 @@ p.edge("settings", "issues", "Bug reports")
 p.edge("settings", "perms", "Permissions")
 p.edge("settings", "kidSettings", "Kids › ‹kid›", sp=12, dp=12, lpos=None)
 p.edge("kidDay", "timeline", "Day timeline")
+p.edge("kidDay", "categories", "Time by category")
 p.edge("kidDay", "history", "Change history")
 p.edge("kidDay", "scanner", "Match ‹n› new apps\nwith camera")
 p.edge("kidDay", "kidSettings", "Rules and health", dp=-12)
@@ -360,9 +364,9 @@ WHY.update({
 })
 
 kid_svg = k.render("Kid mode screen flow: Welcome leads to the ScreenThyme home screen, which links to the kid's Screen Time lists, "
-                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, the day timeline, and Test mode; the block page outside the app also opens Ask for more time.")
+                   "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, the day timeline, time by category, and Test mode; the block page outside the app also opens Ask for more time.")
 parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts, Places and Settings; Places names spots on its map; "
-                      "a kid's day leads to the timeline, change history, a place's use, camera matching, an app's details and rules and health, "
+                      "a kid's day leads to the timeline, time by category, change history, a place's use, camera matching, an app's details and rules and health, "
                       "which leads to the Screen Time editor and its sheets and item picker, and raw location.")
 
 commit = subprocess.run(["git", "-C", HERE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()

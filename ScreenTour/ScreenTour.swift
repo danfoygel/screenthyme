@@ -171,6 +171,9 @@ final class ScreenTour: XCTestCase {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
         } else { print("TOUR missing a timeline block") }
         back()
+        tap("Time by category")
+        snap("p-categories")
+        back()
         // The day's Apps row ("Roblox, 1 h 5 min"), not the timeline's block.
         if tap("Roblox,") {
             snap("p-appDetails")
@@ -269,6 +272,9 @@ final class ScreenTour: XCTestCase {
         }
         tap("Day timeline")
         snap("k-timeline")
+        back()
+        tap("Time by category")
+        snap("k-categories")
         back()
         tap("Report a problem")
         snap("k-report")

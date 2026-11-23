@@ -89,16 +89,18 @@ public enum SyntheticScenario: String, CaseIterable, Codable, Sendable, Identifi
         }
     }
 
+    /// Name, bundle ID and Apple's category.
     public static let apps = [
-        ("YouTube", "com.google.ios.youtube"), ("Roblox", "com.roblox.robloxmobile"), ("Messages", "com.apple.MobileSMS"),
-        ("TikTok", "com.zhiliaoapp.musically"), ("Minecraft", "com.mojang.minecraftpe"), ("Safari", "com.apple.mobilesafari"),
-        ("Classroom", "com.google.classroom"),
+        ("YouTube", "com.google.ios.youtube", "Entertainment"), ("Roblox", "com.roblox.robloxmobile", "Games"),
+        ("Messages", "com.apple.MobileSMS", "Social"), ("TikTok", "com.zhiliaoapp.musically", "Social"),
+        ("Minecraft", "com.mojang.minecraftpe", "Games"), ("Safari", "com.apple.mobilesafari", "Information & Reading"),
+        ("Classroom", "com.google.classroom", "Education"),
     ]
 
     public func trace(kid: Kid, day: DayKey, calendar: Calendar = .current) -> Trace {
         let start = day.start(in: calendar)
-        let items = Self.apps.map { name, bundle in
-            TrackedItem(kidID: kid.id, kind: .app, identifier: bundle, name: name, firstSeen: start)
+        let items = Self.apps.map { name, bundle, category in
+            TrackedItem(kidID: kid.id, kind: .app, identifier: bundle, name: name, category: category, firstSeen: start)
         }
         let ids = Dictionary(uniqueKeysWithValues: items.map { ($0.name!, $0.id) })
         func at(_ hour: Int, _ minute: Int) -> Date {

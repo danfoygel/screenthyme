@@ -26,8 +26,13 @@ struct KidHomeView: View {
                     } label: {
                         Label("Day timeline", systemImage: "calendar.day.timeline.left")
                     }
+                    NavigationLink {
+                        CategoryTimeView(source: .thisPhone, day: DayKey(Date()))
+                    } label: {
+                        Label("Time by category", systemImage: "chart.bar.horizontal.page")
+                    }
                 } footer: {
-                    Text("How long you've used each app, and the Downtime and limits for it. The timeline shows when, as your parents see it.")
+                    Text("How long you've used each app, and the Downtime and limits for it. The timeline shows when, as your parents see it, and Time by category adds up games, social apps and the rest.")
                 }
                 Section {
                     NavigationLink("Report a problem") { BugReportView() }
