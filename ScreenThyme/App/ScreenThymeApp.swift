@@ -19,6 +19,8 @@ struct ScreenThymeApp: App {
             if phase == .active {
                 Task { await AppModel.shared.launched() }
             } else if phase == .background {
+                // Before the link closes, so a parent's phone hears of it.
+                AppModel.shared.lockParentControls()
                 // iOS suspends the sockets anyway; closing them lets the other phone notice at once.
                 AppModel.shared.stopNearby()
                 if AppModel.shared.isKid {
@@ -33,6 +35,8 @@ struct ScreenThymeApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // The screen map's UI test (ScreenTour): no animations to wait out after each tap.
+        if ProcessInfo.processInfo.arguments.contains("-screenTour") { UIView.setAnimationsEnabled(false) }
         BackgroundRefresh.register()
         UNUserNotificationCenter.current().delegate = self
         application.registerForRemoteNotifications()

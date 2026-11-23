@@ -220,7 +220,18 @@ A plain status screen: Screen Time access, monitoring, last upload, and how long
 links to the kid's Apps (used in the last 30 days, each to its details), the day's timeline and Time by category
 (built from this phone's App Group as parents see it), the Screen Time section (limits, Always Allowed and Blocked,
 ask to always allow), and Report a problem. Setup is for a parent: Screen Time permission, joining the family, the
-app scan, and matching by screenshot or camera. Debug holds the wake alarm's state, Apple's report for a day (to
+app scan, and matching by screenshot or camera.
+
+**Parent controls** are locked once the phone has the family's link key (§17): the app scan, matching by screenshot,
+choosing ScreenThyme, starting monitoring, one more minute's length and Debug. Each of them let a kid get around
+enforcement: a "ScreenThyme" pick of other apps let them through every shield, Debug's Stop monitoring stopped every
+activity with no alert, a scan that left an app out unshielded it. A parent unlocks them from their own phone, nearby
+(Settings › Kids › the kid › Unlock), for 15 minutes (`ParentUnlock`, `LinkUnlock`); only a parent's phone sends it,
+so there's no request to approve by mistake. The kid's phone keeps the unlock in memory and times it by its own clock
+from when it arrived, so it locks when ScreenThyme leaves the foreground, and setting the clock only ends it sooner.
+Locking goes back to the top of the screen. Each unlock goes in the journal and in heartbeats
+(`Heartbeat.lastParentUnlock`), so the other parent sees it. Camera matching needs a parent anyway and stays open.
+Before the link key arrives (first setup) and in single-phone test mode they're open. Debug holds the wake alarm's state, Apple's report for a day (to
 compare with ours), the data access test, raw usage, the Places test, uploads, battery use, the journal,
 Permissions and CloudKit records.
 
@@ -277,6 +288,8 @@ replay tool and the screen map.
 - Places (§19): whether a child account can grant Always location, iOS's "keep allowing Always?" prompts, and
   `locationd`'s battery cost (Settings › Battery).
 - Website matching in token pairing when a page's embedded frames count toward other domains.
+- Self-approval and End now (§15.11, §15.12): the alert's push, the kid's phone picking up an end at its next wake,
+  and an ended limit grant shielding again.
 
 **To build:**
 - Token expiry: nothing handles `TokenExpiryMessage` (iOS 26.5) or prompts a rescan when tokens stop working.
@@ -469,6 +482,8 @@ approves the amount asked or changes it, saved as `TimeGrant.<request id>`.
 - On the kid's phone a parent selects All Apps & Categories once: a token for every installed app, website and
   category, each a `TrackedItem` with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). A second pick
   of ScreenThyme alone gives its own token, which Downtime and limits always let through (`exempt-tokens.json`).
+  The pick must be one app, no categories or websites, and the Enforcer ignores a file with more (an older build took
+  any pick). It's a parent control (§4.9): once at setup, again only if its token stops working.
   Apps installed later are covered by their category until the next scan.
 - The shield extensions can read the App Group but the configuration one can't write it; the action extension can.
 - A press on a category shield (Downtime's `.all(except:)`, category limits) calls
@@ -545,7 +560,9 @@ several reports run on one screen, so iOS does the comparison:
   Settings → the kid): the kid's phone shows one report at a time (`TokenPairing.Display`; at most 600 bytes a code,
   cycling every 0.7 s), the parent's reads them with VisionKit's live scanner and sends each complete report's codes
   over the nearby link (`LinkBundle.pairing`); the kid's phone moves to the next, tells parents its progress, and
-  sends the result. Needs both apps open and the link up.
+  sends the result. Needs both apps open and the link up. Opening the camera on the parent's phone opens the kid's
+  side too (`LinkBundle.open`, also sent when the kid's phone connects while the camera is open), unless it's showing
+  already; a field of its own, since a bundle an older build can't decode closes the connection.
 - **Modes** (`TokenPairing.Mode`, the default `unmatched`): numbers go only to scanned items with no match and the
   reports leave out what's matched, so new apps take one screenshot; `all` checks every match again. The mode and
   display are saved in the App Group (`token-pairing-mode.json`, `token-pairing-display.json`) before the reports
@@ -609,6 +626,45 @@ only" ends at midnight). A temporary save adds a `TemporaryChange` to the policy
 - **Change history:** the save says it's temporary and when it changes back; the change back is its own entry
   (`PolicyRevert`), shown under "Coming up" until then. The policy screen lists pending temporary changes.
 
+### 15.11 Self-approval
+
+When no parent can answer (no signal, nobody picks up), the kid can approve their own request for more time, for
+what they asked. It's for real emergencies, and the screen says so bluntly; what keeps it rare is that parents see
+every use, not a count.
+- **Where:** under a request that's waiting, in Ask for more time and in the kid's Screen Time section: "Can't reach
+  a parent? Approve it myself…" opens `SelfApproveView`: the warning, what it would approve, a required reason (at least
+  `TimeGrant.minimumSelfApprovalReason` characters) and a second "Is this really an emergency?" confirmation. So the
+  parents always got the request first.
+- **What:** Downtime and limit requests only (`TimeRequest.canSelfApprove`); never Blocked apps (as with one more
+  minute) or Always Allow, which changes the policy.
+- **How:** a `TimeGrant` the kid's phone writes itself, with `selfApproval` (the reason) and `by` the kid's name. The
+  Enforcer applies it like a parent's answer; `Enforcer.apply` refuses a request that already has one, so a parent's
+  answer that got there first wins. It's queued in `Outbox/self-grants.jsonl`, uploaded as `TimeGrant.<request id>` (so
+  parents' phones see the request as answered) and sent nearby; parents' phones take only self-approved grants from a
+  kid's phone.
+- **Alert:** "⚠️ <kid> self-approved more time", with what and the reason, at once (pushed like any alert).
+- **Parents' phones mark it** in orange: the alert (`TimeGrant.selfApproved(with:from:)` finds its grant by moment), the
+  ask alert's outcome ("self-approved, no parent answered"), Change history (with the reason), the app's details and
+  the kid's card on Home ("Self-approved more time today"). Usage during the time is recorded as always.
+- **Not yet:** there's no cap or switch to turn it off per kid. A parent can end it early (§15.12).
+- Race: a parent answering in the same seconds overwrites the `TimeGrant` record; the kid's phone keeps what it
+  applied first and the alert stays.
+
+### 15.12 Ending more time early
+
+A parent can end any approval that may still be running, theirs, another parent's or the kid's own.
+- **Where:** Alerts › "More time running now" (approvals today still within their minutes of the clock, or for the
+  rest of the day or window: `TimeGrant.mightBeRunning`), and an app's details under More time. "End now" asks first.
+- **How:** the parent saves the same `TimeGrant.<request id>` again with `endedAt` and `endedBy`; everything else
+  stays, so a self-approval stays marked. It goes nearby too. The kid's phone fetches today's running approvals by name
+  at its wakes (`KidSync.runningGrants`, with the policy), and `Enforcer.apply` records the end on the grant it
+  applied and reconciles: from `endedAt` the grant lets nothing through (`EnforcementPlanner.isLeft`). A limit grant
+  for no app (extra minutes on the limit) keeps only the minutes of the clock it ran, at most its own, so the limit
+  is used up again at once unless other time is left.
+- An end is final: a parent's mirror doesn't take a copy without it over one with it (the kid's phone resends its
+  self-approvals nearby).
+- Shown as "‹parent› ended it early" in Alerts, Change history, the app's details and the kid's Screen Time section.
+
 ## 16. Losing data access, and iOS's count restarting
 
 **Apple's Screen Time settings take data access back silently.** When a parent's device sends the kid's Screen Time
@@ -670,6 +726,8 @@ phone.
   hour old.
 - Parent → kid: the kid's policy (newer `updatedAt` wins), the last rule set this phone published (an older set from a
   parent nearby can't replace a newer one from CloudKit), answers from the last two days, and pairing codes (§15.6).
+- Parent controls (§4.9): a parent's phone sends `.unlock` or `.lock` to one kid's phone at once; the kid's phone
+  says whether they're unlocked (`.state`) in every bundle and whenever that changes.
 
 **Pairing is the family zone.** The owner creates `LinkKey.<fixed id>` (32 random bytes, create-only so two launches
 can't race); every phone fetches it by name at refresh (`LinkKeyService`), so each needs the internet once. The

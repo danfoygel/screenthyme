@@ -68,7 +68,9 @@ extension AppModel {
         bundle.alerts = AppGroup.outbox.readAll().filter { recent($0.at) }
         bundle.requests = AppGroup.requests.readAll().filter { recent($0.at) }
         bundle.extraMinutes = AppGroup.extraMinuteUses.readAll().filter { recent($0.at) }
+        bundle.grants = AppGroup.selfGrants.readAll().filter { recent($0.at) }
         bundle.pairing = pairingShown.map { [$0] }  // so a parent's phone that connects later knows
+        bundle.unlock = [unlockState]
         return bundle
     }
 
@@ -85,8 +87,12 @@ extension AppModel {
 
     private func receivedNearby(_ bundle: LinkBundle, from peer: LinkHello) {
         for message in bundle.pairing ?? [] { receivedPairing(message, from: peer) }
+        for message in bundle.unlock ?? [] { receivedUnlock(message, from: peer) }
+        for screen in bundle.open ?? [] { receivedOpen(screen, from: peer) }
         var bundle = bundle
         bundle.pairing = nil
+        bundle.unlock = nil
+        bundle.open = nil
         guard !bundle.isEmpty else { return }
         switch (config.role, peer.role) {
         case (.parent, .kid):
@@ -95,7 +101,10 @@ extension AppModel {
             let newAlerts = data.ingest(IngestBatch(kids: usage.kids, items: usage.items, epochs: usage.epochs,
                                                     fires: usage.fires, samples: usage.samples,
                                                     heartbeats: usage.heartbeats, alerts: usage.alerts,
-                                                    requests: usage.requests, extraMinutes: usage.extraMinutes ?? []))
+                                                    requests: usage.requests,
+                                                    // A kid's phone answers only its own requests, when it self-approves.
+                                                    grants: usage.grants.filter(\.isSelfApproved),
+                                                    extraMinutes: usage.extraMinutes ?? []))
             // Offline there's no CloudKit push; "asks for more time" is one of these. Once ingested, a later fetch
             // doesn't notify again (the owner's CloudKit push may still come when the kid's phone uploads).
             newAlerts.filter { Date().timeIntervalSince($0.at) < 3600 }.forEach(Notifier.post)
@@ -129,9 +138,24 @@ extension AppModel {
         nearby.send([.result(text)]) { $0.role == .parent }
     }
 
+    /// Parent: the camera is open for this kid, so their phone opens its side (if it's open already, nothing changes).
+    func startCameraPairing(on kid: UUID) {
+        nearby.send([LinkOpen.cameraPairing]) { $0.role == .kid && $0.kidID == kid }
+    }
+
     /// Parent: the codes read so far, to that kid's phone.
     func sendPairingCodes(_ texts: [String], to kid: UUID) {
         nearby.send([.codes(texts)]) { $0.role == .kid && $0.kidID == kid }
+    }
+
+    private func receivedOpen(_ screen: LinkOpen, from peer: LinkHello) {
+        guard isKid, peer.role == .parent else { return }
+        switch screen {
+        case .cameraPairing:
+            // Showing already (`pairingShown`), or no data access: there are no reports to draw.
+            guard hasDataAccess, pairingShown == nil else { return }
+            cameraPairingRequested = true
+        }
     }
 
     private func receivedPairing(_ message: LinkPairing, from peer: LinkHello) {
@@ -146,6 +170,70 @@ extension AppModel {
         case let (.parent, .kid, .result(text)):
             guard let kid = peer.kidID else { return }
             pairingPeers[kid, default: PairingPeer()].result = text
+        default:
+            break
+        }
+    }
+
+    // MARK: - Parent controls (`ParentUnlock`)
+
+    /// Kid: whether the scan, matching by screenshot, choosing ScreenThyme, starting monitoring, one more minute's
+    /// length and Debug are open now.
+    var parentControlsOpen: Bool {
+        ParentControls.areOpen(hasLinkKey: data.linkKey != nil, testMode: config.testMode, unlock: parentUnlock,
+                               now: Date())
+    }
+
+    /// Kid: a parent's phone nearby unlocked them.
+    private func unlockParentControls(minutes: Int, by name: String) {
+        let unlock = ParentUnlock(by: name, at: Date(), minutes: minutes)
+        parentUnlock = unlock
+        UserDefaults.standard.set(try? JSONEncoder.thyme.encode(unlock), forKey: "lastParentUnlock")
+        try? AppGroup.journal.append(.note("parent controls unlocked by \(name) for \(minutes) min"))
+        parentUnlockEnd?.cancel()
+        parentUnlockEnd = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, unlock.until.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            self?.lockParentControls()
+        }
+        nearby.send([unlockState]) { $0.role == .parent }
+    }
+
+    /// Kid: ends an unlock (its time is up, a parent locked them, or the app left the foreground).
+    func lockParentControls() {
+        guard isKid, parentUnlock != nil else { return }
+        parentUnlock = nil
+        parentUnlockEnd?.cancel()
+        parentUnlockEnd = nil
+        try? AppGroup.journal.append(.note("parent controls locked"))
+        nearby.send([unlockState]) { $0.role == .parent }
+    }
+
+    /// Kid: what to tell parents' phones.
+    private var unlockState: LinkUnlock {
+        .state(until: parentUnlock.flatMap { $0.isActive(at: Date()) ? $0.until : nil })
+    }
+
+    /// Kid: the last unlock, for heartbeats.
+    var lastParentUnlock: ParentUnlock? {
+        UserDefaults.standard.data(forKey: "lastParentUnlock").flatMap { try? JSONDecoder.thyme.decode(ParentUnlock.self, from: $0) }
+    }
+
+    /// Parent: unlocks a kid phone's parent controls, or locks them again.
+    func setParentControls(unlocked: Bool, on kid: UUID) {
+        let message: LinkUnlock = unlocked ? .unlock(minutes: ParentUnlock.minutes, by: senderName) : .lock
+        nearby.send([message]) { $0.role == .kid && $0.kidID == kid }
+    }
+
+    private func receivedUnlock(_ message: LinkUnlock, from peer: LinkHello) {
+        switch (config.role, peer.role, message) {
+        case let (.kid, .parent, .unlock(minutes, name)):
+            unlockParentControls(minutes: minutes, by: name)
+        case (.kid, .parent, .lock):
+            lockParentControls()
+        case let (.parent, .kid, .state(until)):
+            guard let kid = peer.kidID else { return }
+            kidUnlocks[kid] = until
         default:
             break
         }

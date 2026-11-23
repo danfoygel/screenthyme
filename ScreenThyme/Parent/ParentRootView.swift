@@ -119,6 +119,15 @@ struct KidCard: View {
             Text("Today: \(Format.minutes(total.minutes))"
                  + (total.uncountedMinutes > 0 ? " · \(Format.minutes(total.uncountedMinutes)) uncounted" : ""))
                 .font(.subheadline.monospacedDigit())
+            let selfApproved = model.data.grants.values.filter {
+                $0.kidID == kid.id && $0.isSelfApproved && Calendar.current.isDateInToday($0.at)
+            }.count
+            if selfApproved > 0 {
+                Label(selfApproved == 1 ? "Self-approved more time today" : "Self-approved more time \(selfApproved) times today",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.orange)
+            }
             let unmatched = model.unmatchedApps(for: kid)
             if !unmatched.toMatch.isEmpty {
                 let count = unmatched.toMatch.count
@@ -329,8 +338,25 @@ struct AlertsView: View {
                         ForEach(requests) { RequestRow(request: $0) }
                     }
                 }
+                let running = model.data.grants.values
+                    .filter { (kidFilter == nil || $0.kidID == kidFilter) && $0.mightBeRunning(at: Date()) }
+                    .sorted { $0.at > $1.at }
+                if !running.isEmpty {
+                    Section {
+                        ForEach(running) { RunningGrantRow(grant: $0) }
+                    } header: {
+                        Text("More time running now")
+                    } footer: {
+                        Text("Time given today that may not have run out yet. End it and the kid's phone blocks again at its next minute of use, or at once when it's nearby.")
+                    }
+                }
                 ForEach(alerts) { alert in
+                    let selfApproved = TimeGrant.selfApproved(with: alert, from: model.data.grants.values)
                     VStack(alignment: .leading, spacing: 2) {
+                        if selfApproved != nil {
+                            Label("Self-approved, no parent answered", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.bold()).foregroundStyle(.orange)
+                        }
                         Text(alert.title).font(.headline)
                         // What it's about: older kid builds' requests name only the limit, not what the time is for.
                         if let item = alert.itemID.flatMap({ model.data.items[$0] }) { ItemName(item: item) }
@@ -339,12 +365,13 @@ struct AlertsView: View {
                             let answer = model.data.grants[request.id]
                             Text(MoreTime.outcome(of: request, answer: answer))
                                 .font(.subheadline)
-                                .foregroundStyle(answer.map { $0.approved && $0.minutes != request.minutes } == true
+                                .foregroundStyle(answer.map { $0.isSelfApproved || $0.approved && $0.minutes != request.minutes } == true
                                                  ? .orange : .secondary)
                         }
                         Text(alert.at.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    .listRowBackground(selfApproved == nil ? nil : SelfApproval.background)
                 }
             }
             .navigationTitle("Alerts")
@@ -354,6 +381,58 @@ struct AlertsView: View {
                 if alerts.isEmpty { ContentUnavailableView("No alerts", systemImage: "bell.slash") }
             }
         }
+    }
+}
+
+/// How parents' phones mark a kid's approval of their own request (PLAN.md §15.11).
+enum SelfApproval {
+    static let background = Color.orange.opacity(0.15)
+}
+
+/// An approval that may still be running, a parent's or the kid's own, with End now (PLAN.md §15.12).
+struct RunningGrantRow: View {
+    @Environment(AppModel.self) private var model
+    let grant: TimeGrant
+
+    var body: some View {
+        let kid = model.data.kids[grant.kidID]?.displayName ?? "Your kid"
+        let item = grant.itemID.flatMap { model.data.items[$0] }
+        let reason = RequestRow.describe(grant.reason, itemID: grant.itemID, policy: model.data.policy(for: grant.kidID))
+        let amount = ShieldContext.describe(minutes: grant.minutes)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                if let item { ItemName(item: item) }
+                Spacer()
+                Text(Format.relative(grant.at)).font(.caption).foregroundStyle(.secondary)
+            }
+            if let why = grant.selfApproval {
+                Label("\(kid) self-approved \(amount) \(reason)", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("\u{201C}\(why)\u{201D}").italic()
+            } else {
+                Text("\(grant.by) gave \(kid) \(amount) \(reason).")
+            }
+            EndGrantButton(grant: grant)
+        }
+        .listRowBackground(grant.isSelfApproved ? SelfApproval.background : nil)
+    }
+}
+
+/// Ends a running approval, after asking.
+struct EndGrantButton: View {
+    @Environment(AppModel.self) private var model
+    let grant: TimeGrant
+    @State private var confirming = false
+
+    var body: some View {
+        let kid = model.data.kids[grant.kidID]?.displayName ?? "your kid"
+        Button("End now", role: .destructive) { confirming = true }
+            .buttonStyle(.bordered)
+            .confirmationDialog("End this time now?", isPresented: $confirming, titleVisibility: .visible) {
+                Button("End it now", role: .destructive) { Task { await model.end(grant) } }
+            } message: {
+                Text("What it let through is blocked again on \(kid)'s phone. The change history keeps both.")
+            }
     }
 }
 

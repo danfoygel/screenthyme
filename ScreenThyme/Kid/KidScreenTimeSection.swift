@@ -57,6 +57,9 @@ struct KidScreenTimeSection: View {
                 } else {
                     Label("Asked for \(ShieldContext.describe(minutes: request.minutes)) of \(name) · waiting",
                           systemImage: "hourglass")
+                    if request.canSelfApprove {
+                        SelfApproveRow(request: request, done: reload)
+                    }
                 }
             }
             ForEach(answers.suffix(3).reversed(), id: \.grant.requestID) { answer in
@@ -68,12 +71,19 @@ struct KidScreenTimeSection: View {
                         Label("\(answer.grant.by) said no to always allowing \(name)", systemImage: "xmark.circle")
                             .foregroundStyle(.secondary)
                     }
+                } else if answer.grant.isSelfApproved {
+                    Label("You approved \(ShieldContext.describe(minutes: answer.grant.minutes)) of \(name) yourself",
+                          systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 } else if answer.grant.approved {
                     Label("\(answer.grant.by) gave \(ShieldContext.describe(minutes: answer.grant.minutes)) of \(name)",
                           systemImage: "checkmark.circle").foregroundStyle(.green)
                 } else {
                     Label("\(answer.grant.by) said no to more time for \(name)", systemImage: "xmark.circle")
                         .foregroundStyle(.secondary)
+                }
+                if let ended = answer.grant.endedAt {
+                    Label("\(answer.grant.endedBy ?? "A parent") ended it early at \(Format.time(ended))", systemImage: "stop.circle")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
         }

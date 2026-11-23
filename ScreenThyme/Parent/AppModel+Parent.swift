@@ -89,6 +89,17 @@ extension AppModel {
         do { try await PendingSaves.save([grant], to: store) } catch { show(error) }
     }
 
+    /// Ends a running approval early, a parent's or the kid's own (PLAN.md §15.12): the same record, with its end. The
+    /// kid's phone fetches it at its next wake or gets it nearby, and blocks again.
+    func end(_ grant: TimeGrant) async {
+        guard grant.endedAt == nil else { return }
+        let ended = grant.ending(at: Date(), by: senderName)
+        data.ingest(IngestBatch(grants: [ended]))
+        nearby.sendUpdates()
+        guard let store else { return }
+        do { try await PendingSaves.save([ended], to: store) } catch { show(error) }
+    }
+
     /// The kid's whole rule list as one record, which the kid's monitor extension fetches by name (`KidSync`), and
     /// this phone sends to the kid's phone nearby.
     private func publishRuleSet(for kidID: UUID) async throws {

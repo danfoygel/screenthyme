@@ -22,6 +22,13 @@ final class AppModel {
     @ObservationIgnored var pairingShown: LinkPairing?
     var pairingCodes: Set<String> = []
     var pairingPeers: [UUID: PairingPeer] = [:]
+    /// Kid: a parent's phone nearby opened its camera to match apps, so the kid's home opens its side.
+    var cameraPairingRequested = false
+    /// Parent controls (`AppModel+Nearby`). Kid: unlocked by a parent's phone nearby, in memory only, so they lock
+    /// when the app leaves the foreground. Parent: each kid phone's, unlocked until then, as it last said.
+    var parentUnlock: ParentUnlock?
+    @ObservationIgnored var parentUnlockEnd: Task<Void, Never>?
+    var kidUnlocks: [UUID: Date] = [:]
     var message: String?
     private(set) var isRefreshing = false
     @ObservationIgnored private var isLaunching = false

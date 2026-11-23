@@ -203,16 +203,7 @@ struct ShieldContext {
         guard let kid = config.kid, let scope = requestScope(for: target) else { return nil }
         let request = TimeRequest(kidID: kid.id, itemID: scope.itemID, reason: scope.reason, minutes: minutes, at: Date(),
                                   note: note)
-        let amount = Self.describe(minutes: minutes).capitalizedFirst
-        let what = name ?? (items.first { $0.id == scope.itemID }?.kind == .category ? "this category" : "this app")
-        var body = switch scope.reason {
-        case .downtime: scope.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) for \(what) during Downtime."
-        case let .limit(id):
-            scope.itemID == nil ? "\(amount) on the \(applied?.limitNames[id] ?? "time") limit, for everything it counts."
-                : "\(amount) for \(what) only, over the \(applied?.limitNames[id] ?? "time") limit."
-        case .blocked: "\(amount) for \(what), though it isn't allowed."
-        case .alwaysAllow: "To always allow it."
-        }
+        var body = describe(request, name: name)
         if let note { body += " \u{201C}\(note)\u{201D}" }
         let alert = AlertRecord(kidID: kid.id, ruleID: nil, itemID: scope.itemID, at: request.at,
                                 title: "\(kid.displayName) asks for more time", body: body)
@@ -224,6 +215,20 @@ struct ShieldContext {
             try? AppGroup.journal.append(.note("request failed: \(error)"))
         }
         return request
+    }
+
+    /// What a request asks for, for the parents' alert: "30 more minutes for YouTube during Downtime."
+    func describe(_ request: TimeRequest, name: String?) -> String {
+        let amount = Self.describe(minutes: request.minutes).capitalizedFirst
+        let what = name ?? (items.first { $0.id == request.itemID }?.kind == .category ? "this category" : "this app")
+        return switch request.reason {
+        case .downtime: request.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) for \(what) during Downtime."
+        case let .limit(id):
+            request.itemID == nil ? "\(amount) on the \(applied?.limitNames[id] ?? "time") limit, for everything it counts."
+                : "\(amount) for \(what) only, over the \(applied?.limitNames[id] ?? "time") limit."
+        case .blocked: "\(amount) for \(what), though it isn't allowed."
+        case .alwaysAllow: "To always allow it."
+        }
     }
 
     // MARK: - Always allow

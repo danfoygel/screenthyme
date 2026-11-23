@@ -4,7 +4,8 @@ import ThymeCore
 
 /// Keeps a kid phone's rules, policy and answers to its requests current without relying on silent pushes, which
 /// iOS rations (PLAN.md §14, §15). The monitor extension fetches `RuleSet.<kid>` and `Policy.<kid>` by name at every
-/// wake (every minute of use; `interval` only skips back-to-back wakes), and `TimeGrant.<request>` for open requests.
+/// wake (every minute of use; `interval` only skips back-to-back wakes), and `TimeGrant.<request>` for open requests
+/// and for running approvals, which a parent may end early.
 /// A parent's change reaches a phone in use within about a minute. The family's places (`FamilyPlaces`) come the same
 /// way, for the app to fence (`PlaceWatcher`).
 enum KidSync {
@@ -25,7 +26,8 @@ enum KidSync {
         let policyID = id(Policy.recordType, kid.id)
         let placesID = id(FamilyPlaces.recordType, FamilyPlaces.fixedID)
         var ids = open.map { id(TimeGrant.recordType, $0.id) }
-        if due { ids += [ruleSetID, policyID, placesID] }
+        // A parent may end a running approval early: the same record, with its end.
+        if due { ids += [ruleSetID, policyID, placesID] + runningGrants(now: now).map { id(TimeGrant.recordType, $0) } }
         do {
             let results = try await store.database.records(for: ids)
             for (recordID, result) in results {
@@ -57,6 +59,11 @@ enum KidSync {
         let answered = Set(Enforcer.loadState(now: now).grants.map(\.grant.requestID))
         let today = DayKey(now)
         return AppGroup.requests.readAll().filter { DayKey($0.at) == today && !answered.contains($0.id) }
+    }
+
+    /// Today's applied approvals that may still be letting something through.
+    static func runningGrants(now: Date = Date()) -> [UUID] {
+        Enforcer.loadState(now: now).grants.map(\.grant).filter { $0.mightBeRunning(at: now) }.map(\.requestID)
     }
 
     /// Writes the rules if they changed; always records the check.

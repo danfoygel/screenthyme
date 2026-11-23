@@ -354,8 +354,36 @@ public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
     public var minutes: Int?
     public var at: Date
     public var by: String
+    /// The kid's reason, when the kid approved their own request because no parent could answer (`selfApproved`);
+    /// nil for a parent's answer. `by` is then the kid's name.
+    public var selfApproval: String?
+    /// A parent ended the approval early (PLAN.md §15.12): from then on it lets nothing through. The record keeps
+    /// everything else, so a self-approval stays marked.
+    public var endedAt: Date?
+    public var endedBy: String?
 
-    public init(request: TimeRequest, approved: Bool, minutes: Int?, at: Date, by: String) {
+    public var isSelfApproved: Bool { selfApproval != nil }
+
+    /// This approval, ended by `parent` at `at`.
+    public func ending(at: Date, by parent: String) -> TimeGrant {
+        var grant = self
+        grant.endedAt = at
+        grant.endedBy = parent
+        return grant
+    }
+
+    public func isEnded(at now: Date) -> Bool { endedAt.map { $0 <= now } ?? false }
+
+    /// Whether the approval may still be letting something through at `now`, so a parent can end it: approved today,
+    /// not ended, and within its minutes of the clock (use can't run longer), or for the rest of the day or window.
+    public func mightBeRunning(at now: Date, calendar: Calendar = .current) -> Bool {
+        guard approved, reason != .alwaysAllow, endedAt == nil,
+              DayKey(at, calendar: calendar) == DayKey(now, calendar: calendar) else { return false }
+        guard let minutes else { return true }
+        return now < at.addingTimeInterval(Double(minutes) * 60)
+    }
+
+    public init(request: TimeRequest, approved: Bool, minutes: Int?, at: Date, by: String, selfApproval: String? = nil) {
         self.requestID = request.id
         self.kidID = request.kidID
         self.itemID = request.itemID
@@ -364,6 +392,35 @@ public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
         self.minutes = minutes
         self.at = at
         self.by = by
+        self.selfApproval = selfApproval
+    }
+
+    /// The kid approves their own request, for the time they asked, with no parent to answer (PLAN.md §15.11).
+    public static func selfApproved(_ request: TimeRequest, by kid: String, because reason: String, at: Date) -> TimeGrant {
+        TimeGrant(request: request, approved: true, minutes: request.minutes, at: at, by: kid, selfApproval: reason)
+    }
+
+    /// The shortest reason a kid can give for approving their own request.
+    public static let minimumSelfApprovalReason = 10
+
+    /// The alert `alert` was sent with, when it's the kid's self-approval: the kid's phone writes both at the same moment.
+    public static func selfApproved(with alert: AlertRecord, from grants: some Sequence<TimeGrant>) -> TimeGrant? {
+        guard alert.ruleID == nil else { return nil }
+        return grants.first {
+            $0.isSelfApproved && $0.kidID == alert.kidID && $0.itemID == alert.itemID
+                && abs($0.at.timeIntervalSince(alert.at)) < 1
+        }
+    }
+}
+
+extension TimeRequest {
+    /// Whether the kid may approve this request themself: more time for Downtime or a limit. Never for Blocked apps
+    /// (as with one more minute) or to always allow an app, which changes the policy.
+    public var canSelfApprove: Bool {
+        switch reason {
+        case .downtime, .limit: true
+        case .blocked, .alwaysAllow: false
+        }
     }
 }
 

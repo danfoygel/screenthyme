@@ -38,9 +38,11 @@ public enum MoreTime {
         }
         let asked = "Asked for \(describe(minutes: request.minutes))"
         guard let answer else { return asked + " · not answered yet" }
+        let ended = answer.endedBy.map { " · \($0) ended it early" } ?? ""
+        if answer.isSelfApproved { return asked + " · self-approved, no parent answered" + ended }
         guard answer.approved else { return asked + " · \(answer.by) said no" }
-        return answer.minutes == request.minutes ? asked + " · \(answer.by) said yes"
-            : asked + " · \(answer.by) gave \(describe(minutes: answer.minutes))"
+        return (answer.minutes == request.minutes ? asked + " · \(answer.by) said yes"
+            : asked + " · \(answer.by) gave \(describe(minutes: answer.minutes))") + ended
     }
 }
 
