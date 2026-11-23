@@ -1,7 +1,7 @@
 import Foundation
 
-/// What ScreenThyme enforces on one kid's phone (PLAN.md §15): Downtime, App Limits, Always Allowed, blocked items
-/// and Content & Privacy restrictions. Edited on parent phones and synced as one record, `Policy.<kid id>`.
+/// What ScreenThyme enforces on one kid's phone (PLAN.md §15): Downtime, App Limits, Always Allowed (some of it
+/// Uncounted), blocked items and Content & Privacy restrictions. Edited on parent phones and synced as one record, `Policy.<kid id>`.
 /// Items are `TrackedItem` ids (apps, websites and categories found in Apple's activity data) or `ItemGroup` ids, which
 /// stand for their items (`resolved`).
 public struct Policy: Codable, Sendable, Hashable {
@@ -10,23 +10,30 @@ public struct Policy: Codable, Sendable, Hashable {
     /// Off: nothing is blocked or restricted (the policy is kept).
     public var enabled: Bool
     public var downtime: [DowntimeWindow]
-    public var alwaysAllowed: Set<UUID>
+    /// Leaving Always Allowed leaves Uncounted too.
+    public var alwaysAllowed: Set<UUID> {
+        didSet { uncounted.formIntersection(alwaysAllowed) }
+    }
+    /// Always Allowed entries (items or groups) whose use is left out of the day's total and the phone-wide time alert,
+    /// though it still shows as theirs. Always a subset of `alwaysAllowed`.
+    public var uncounted: Set<UUID>
     public var limits: [AppLimit]
     public var blocked: Set<UUID>
     public var restrictions: Restrictions
-    /// The parents' own categories, used in Downtime, limits, Always Allowed and Blocked (PLAN.md §15.8).
+    /// The parents' own categories, used in Downtime, limits, Always Allowed, Uncounted and Blocked (PLAN.md §15.8).
     public var groups: [ItemGroup]
     /// Saves made for some days only, each changing back at its end (`current(at:)`, PLAN.md §15.10).
     public var temporary: [TemporaryChange]
 
     public init(kidID: UUID, updatedAt: Date = Date(), enabled: Bool = true, downtime: [DowntimeWindow] = [],
-                alwaysAllowed: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
+                alwaysAllowed: Set<UUID> = [], uncounted: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
                 restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = [], temporary: [TemporaryChange] = []) {
         self.kidID = kidID
         self.updatedAt = updatedAt
         self.enabled = enabled
         self.downtime = downtime
         self.alwaysAllowed = alwaysAllowed
+        self.uncounted = uncounted.intersection(alwaysAllowed)
         self.limits = limits
         self.blocked = blocked
         self.restrictions = restrictions
@@ -42,6 +49,7 @@ public struct Policy: Codable, Sendable, Hashable {
         enabled = try container.decode(Bool.self, forKey: .enabled)
         downtime = try container.decode([DowntimeWindow].self, forKey: .downtime)
         alwaysAllowed = try container.decode(Set<UUID>.self, forKey: .alwaysAllowed)
+        uncounted = try (container.decodeIfPresent(Set<UUID>.self, forKey: .uncounted) ?? []).intersection(alwaysAllowed)
         limits = try container.decode([AppLimit].self, forKey: .limits)
         blocked = try container.decode(Set<UUID>.self, forKey: .blocked)
         restrictions = try container.decode(Restrictions.self, forKey: .restrictions)
@@ -57,11 +65,13 @@ public struct Policy: Codable, Sendable, Hashable {
         return result
     }
 
-    /// The policy as enforced: Always Allowed, Blocked and limits name items, never groups. Downtime windows keep
+    /// The policy as enforced: Always Allowed, Uncounted, Blocked and limits name items, never groups. Downtime windows keep
     /// theirs: a window of an emptied group must still block nothing rather than the whole phone, so the planner
     /// expands them (`downtimeItems`). Resolving twice changes nothing.
     public var resolved: Policy {
         var policy = self
+        // Uncounted first: setting Always Allowed keeps only Uncounted entries it holds.
+        policy.uncounted = expandingGroups(uncounted)
         policy.alwaysAllowed = expandingGroups(alwaysAllowed)
         policy.blocked = expandingGroups(blocked)
         for index in policy.limits.indices { policy.limits[index].items = expandingGroups(limits[index].items) }
@@ -75,7 +85,7 @@ public struct Policy: Codable, Sendable, Hashable {
 
     /// The policy with each scanned item that lost its token replaced by the scanned items with a token matched to the
     /// same app, website or category: a later app scan gave it a new token, and Downtime, limits, Always Allowed,
-    /// Blocked and groups follow it there. One with no such item stays, for an app no longer on the kid's phone
+    /// Uncounted, Blocked and groups follow it there. One with no such item stays, for an app no longer on the kid's phone
     /// (`staleItems`). Following twice changes nothing.
     public func followingNewTokens(items: [UUID: TrackedItem]) -> Policy {
         let stale = Self.staleItems(allItemIDs, items: items).compactMap { items[$0] }.filter { $0.match != nil }
@@ -97,6 +107,7 @@ public struct Policy: Codable, Sendable, Hashable {
             Set(ids.flatMap { replacements[$0] ?? [$0] })
         }
         var policy = self
+        policy.uncounted = follow(uncounted)
         policy.alwaysAllowed = follow(alwaysAllowed)
         policy.blocked = follow(blocked)
         for index in policy.limits.indices { policy.limits[index].items = follow(limits[index].items) }
@@ -135,6 +146,15 @@ public struct Policy: Codable, Sendable, Hashable {
         resolved(items: items).alwaysAllowed.contains(itemID)
     }
 
+    /// Seconds of Apple's per-app use (`usage`) that Uncounted apps and websites hold: what all-apps totals
+    /// (`EnforcementPlanner.totalSeconds`) leave out for them, beyond `mirrored` apps, whose use is Safari's on their
+    /// website (`WebMirror`). Call it on a resolved policy.
+    public func uncountedSeconds(items: [UUID: TrackedItem], usage: [UUID: Double], mirrored: Set<UUID> = []) -> Double {
+        guard !uncounted.isEmpty else { return 0 }
+        return EnforcementPlanner.totalSeconds(items: items, usage: usage, excluding: mirrored)
+            - EnforcementPlanner.totalSeconds(items: items, usage: usage, excluding: mirrored.union(uncounted))
+    }
+
     /// The policy with an approved request to always allow an app applied: the app is Always Allowed, and no longer
     /// Blocked. Any other grant leaves the policy as it is.
     public func applying(_ grant: TimeGrant) -> Policy {
@@ -149,6 +169,7 @@ public struct Policy: Codable, Sendable, Hashable {
     public mutating func removeGroup(_ id: UUID) {
         groups.removeAll { $0.id == id }
         alwaysAllowed.remove(id)
+        uncounted.remove(id)
         blocked.remove(id)
         for index in limits.indices { limits[index].items.remove(id) }
         for index in downtime.indices { downtime[index].items.remove(id) }

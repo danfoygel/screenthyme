@@ -36,6 +36,10 @@ struct KidScreenTimeSection: View {
                 }
                 itemList("Always Allowed", ids: policy.alwaysAllowed, items: items,
                          footer: "These work during Downtime and don't count toward limits. ScreenThyme and Phone are always allowed too.")
+                if !policy.uncounted.isEmpty {
+                    itemList("Uncounted", ids: policy.uncounted, items: items,
+                             footer: "Always allowed, and their time isn't added to your total for the day.")
+                }
                 itemList("Blocked", ids: policy.blocked, items: items, footer: "These never open.")
             } else {
                 Text("No limits on this phone.").foregroundStyle(.secondary)

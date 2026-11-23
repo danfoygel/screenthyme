@@ -70,12 +70,19 @@ public struct RuleEngine: Sendable {
     public var kidID: UUID
     public var kidName: String
     public var items: [UUID: TrackedItem]
+    /// The kid's resolved policy, whose Uncounted apps the phone's daily total leaves out.
+    public var policy: Policy?
+    /// Apps whose use is Safari's on their website (`WebMirror`).
+    public var mirrored: Set<UUID>
     public var calendar: Calendar
 
-    public init(kidID: UUID, kidName: String, items: [UUID: TrackedItem], calendar: Calendar = .current) {
+    public init(kidID: UUID, kidName: String, items: [UUID: TrackedItem], policy: Policy? = nil,
+                mirrored: Set<UUID> = [], calendar: Calendar = .current) {
         self.kidID = kidID
         self.kidName = kidName
         self.items = items
+        self.policy = policy
+        self.mirrored = mirrored
         self.calendar = calendar
     }
 
@@ -114,7 +121,7 @@ public struct RuleEngine: Sendable {
                           body: "In use during \(windowName) (\(clock(at))).")] + alerts
 
         case let .dailyThreshold(itemID, limit):
-            let used = itemID.map { minutes(state.itemSeconds[$0]) } ?? state.totalMinute
+            let used = itemID.map { minutes(state.itemSeconds[$0]) } ?? countedMinutes(state)
             guard used >= limit else { return [] }
             let key = "d.\(rule.id)"
             guard !state.fired.contains(key) else { return [] }
@@ -176,6 +183,12 @@ public struct RuleEngine: Sendable {
 
     func minutes(_ seconds: Double?) -> Int {
         Int(((seconds ?? 0) / 60).rounded(.down))
+    }
+
+    /// Today's total-use minutes, less what Uncounted apps held (`DayTotal`).
+    func countedMinutes(_ state: MonitorDayState) -> Int {
+        let uncounted = policy?.uncountedSeconds(items: items, usage: state.itemSeconds, mirrored: mirrored) ?? 0
+        return max(0, state.totalMinute - Int((uncounted / 60).rounded()))
     }
 
     func clock(_ date: Date) -> String {

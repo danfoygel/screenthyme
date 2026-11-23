@@ -11,6 +11,8 @@ struct SelectedItemsView: View {
     /// The parents' groups, which a selection may name (parents' phones only).
     var groups: [ItemGroup] = []
     var selection: Binding<Set<UUID>>?
+    /// What Edit may choose from (items and groups); nil for every scanned item and group.
+    var choices: Set<UUID>?
     @State private var editing = false
 
     var body: some View {
@@ -75,7 +77,9 @@ struct SelectedItemsView: View {
             if selection != nil { Button("Edit") { editing = true } }
         }
         .navigationDestination(isPresented: $editing) {
-            if let selection { ItemSelectionView(title: title, items: items, groups: groups, selection: selection) }
+            if let selection {
+                ItemSelectionView(title: title, items: items, groups: groups, choices: choices, selection: selection)
+            }
         }
     }
 

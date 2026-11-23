@@ -129,6 +129,9 @@ struct AppDetailsView: View {
             } else if details.isExempt {
                 Label("Always allowed: ScreenThyme and Phone never block it", systemImage: "checkmark.circle")
             }
+            if !details.uncounted.isEmpty {
+                listRow("Uncounted", systemImage: "minus.circle", via: details.uncounted, details, data)
+            }
             if !details.blocked.isEmpty {
                 listRow("Blocked", systemImage: "nosign", via: details.blocked, details, data)
             }
@@ -138,7 +141,9 @@ struct AppDetailsView: View {
         } header: {
             Text("Groups")
         } footer: {
-            if !details.blocked.isEmpty { Text("Blocked apps never open.") }
+            let notes = (details.uncounted.isEmpty ? [] : ["Uncounted: its time shows here but is left out of the day's total."])
+                + (details.blocked.isEmpty ? [] : ["Blocked apps never open."])
+            if !notes.isEmpty { Text(notes.joined(separator: " ")) }
         }
     }
 

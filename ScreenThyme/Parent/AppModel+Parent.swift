@@ -236,6 +236,12 @@ extension HealthIssue {
 @MainActor private var testRulesHandled = false
 
 extension FamilyData {
+    /// A kid's policy on `day`: as it is now for today, as it was at the day's end before.
+    func policy(on day: DayKey, kid: UUID) -> Policy {
+        guard day < DayKey(Date()) else { return policy(for: kid) }
+        return storedPolicy(for: kid, at: day.end().addingTimeInterval(-1)) ?? policy(for: kid)
+    }
+
     /// A kid's apps whose use in the week to `today` was Safari's on their website (`WebMirror`), from the kid's samples.
     func webMirrored(kid: UUID, items: [UUID: TrackedItem], today: DayKey) -> Set<UUID> {
         var mirror = WebMirror()

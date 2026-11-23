@@ -10,8 +10,7 @@ struct CategoryTimeView: View {
     @State private var expanded: Set<String> = []
 
     var body: some View {
-        let (categories, items) = data
-        let minutes = Int((categories.reduce(0) { $0 + $1.seconds } / 60).rounded())
+        let (categories, items, total) = data
         List {
             Section {
                 HStack {
@@ -23,7 +22,14 @@ struct CategoryTimeView: View {
                         .disabled(day >= DayKey(Date()))
                 }
                 .buttonStyle(.borderless)
-                LabeledContent("Apps (Apple's count)", value: Format.minutes(minutes))
+                LabeledContent("Apps (Apple's count)", value: Format.minutes(total.appMinutes))
+                if total.uncountedMinutes > 0 {
+                    LabeledContent("Uncounted", value: Format.minutes(total.uncountedMinutes))
+                }
+            } footer: {
+                if total.uncountedMinutes > 0 {
+                    Text("Uncounted apps are left out of the day's total. Their time still shows in their category.")
+                }
             }
             if categories.isEmpty {
                 Section { Text("No app use recorded.").foregroundStyle(.secondary) }
@@ -63,17 +69,21 @@ struct CategoryTimeView: View {
         }
     }
 
-    private var data: ([CategoryUsage], [UUID: TrackedItem]) {
+    private var data: ([CategoryUsage], [UUID: TrackedItem], DayTotal) {
         switch source {
         case .family(let kid):
             let items = model.data.items(for: kid.id)
             let timeline = model.timeline(kid: kid.id, day: day).timeline
             let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: day)
-            return (CategoryUsage.build(timeline.items, items: items, excluding: mirrored), items)
+            let total = DayTotal(timeline, items: items, policy: model.data.policy(on: day, kid: kid.id), mirrored: mirrored)
+            return (CategoryUsage.build(timeline.items, items: items, excluding: mirrored), items, total)
         case .thisPhone:
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             let timeline = Reconstructor.build(model.config.dayInput(day))
-            return (CategoryUsage.build(timeline.items, items: items, excluding: Enforcer.webMirrored(items)), items)
+            let mirrored = Enforcer.webMirrored(items)
+            let policy = AppGroup.loadPolicy() ?? Policy(kidID: model.config.kid?.id ?? UUID())
+            return (CategoryUsage.build(timeline.items, items: items, excluding: mirrored), items,
+                    DayTotal(timeline, items: items, policy: policy, mirrored: mirrored))
         }
     }
 
