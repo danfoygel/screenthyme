@@ -92,6 +92,33 @@ struct EnforcementTests {
         #expect(result.exhaustedLimits == [limit.id])
     }
 
+    /// iOS's event for a category limit counts the category's Always Allowed apps, so it can't end that limit.
+    @Test func limitFireIsIgnoredWhenItsCategoryHoldsAnAlwaysAllowedApp() {
+        let limit = AppLimit(name: "Social", items: [social.id], minutes: 30)
+        var state = EnforcementDayState(day: testDay)
+        state.limitFires[limit.id] = 30
+        let policy = Policy(kidID: kid, alwaysAllowed: [messages.id], limits: [limit])
+        #expect(EnforcementPlanner.eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: [messages.id]))
+        let early = plan(policy, usage: [instagram.id: 20 * 60.0, messages.id: 10 * 60.0], state: state, at: at(12, 0))
+        #expect(early.exhaustedLimits.isEmpty)
+        let used = plan(policy, usage: [instagram.id: 30 * 60.0, messages.id: 10 * 60.0], state: state, at: at(12, 0))
+        #expect(used.exhaustedLimits == [limit.id])
+    }
+
+    @Test func limitFireCountsWhenNoAlwaysAllowedAppIsInItsCategories() {
+        let socialLimit = AppLimit(name: "Social", items: [social.id], minutes: 30)
+        let apps = AppLimit(name: "Apps", items: [instagram.id, messages.id], minutes: 30)
+        // Always Allowed apps named directly are left out of the event's apps.
+        #expect(!EnforcementPlanner.eventCountsAlwaysAllowed(apps, items: items, alwaysAllowed: [messages.id]))
+        #expect(!EnforcementPlanner.eventCountsAlwaysAllowed(socialLimit, items: items, alwaysAllowed: []))
+        var scannedMessages = TrackedItem(kidID: kid, kind: .app, identifier: TrackedItem.scannedPrefix + "m",
+                                          firstSeen: dayStart)
+        scannedMessages.match = messages.id
+        let all = items.merging([(scannedMessages.id, scannedMessages)]) { a, _ in a }
+        // A scanned app finds its category through its match.
+        #expect(EnforcementPlanner.eventCountsAlwaysAllowed(socialLimit, items: all, alwaysAllowed: [scannedMessages.id]))
+    }
+
     func applied(_ reason: BlockReason, _ item: UUID?, minutes: Int?, approved: Bool = true, at date: Date,
                  baseline: Double = 0) -> AppliedGrant {
         let request = TimeRequest(kidID: kid, itemID: item, reason: reason, minutes: minutes, at: date)

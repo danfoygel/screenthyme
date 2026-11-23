@@ -314,7 +314,9 @@ enum Enforcer {
             let tokens = Tokens(items: items)
             // An all-apps limit has no event: one over all activity would count Always Allowed and exempt apps too.
             // The wake alarm's wakes (every minute of use) reconcile it instead.
-            for limit in policy.limits where limit.enabled && !limit.allApps {
+            // So has one whose categories hold an Always Allowed app, which its event would count.
+            for limit in policy.limits where limit.enabled && !limit.allApps
+                && !EnforcementPlanner.eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: policy.alwaysAllowed) {
                 guard let budget = plan.budgets[limit.id] else { continue }
                 let name = limitPrefix + short(limit.id)
                 let targets = tokens.split(limit.items.subtracting(policy.alwaysAllowed))
