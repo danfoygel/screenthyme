@@ -69,11 +69,11 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
         case visit
     }
 
-    /// Which of iOS's two geofence APIs reported a crossing; they run side by side to compare (PLAN.md §19).
+    /// Which of iOS's two geofence APIs reported a crossing (PLAN.md §19).
     public enum Source: String, Codable, Sendable {
-        /// `CLMonitor` (iOS 17).
+        /// `CLMonitor` (iOS 17): dropped after the comparison; only in older events.
         case monitor
-        /// `CLLocationManager` region monitoring, the older API.
+        /// `CLLocationManager` region monitoring, the older API, and the one kept.
         case region
     }
 

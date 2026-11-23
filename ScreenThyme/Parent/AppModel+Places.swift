@@ -10,6 +10,8 @@ extension AppModel {
 
     /// Saves the family's places; kids' phones fetch them by name (`KidSync`) and fence them.
     func save(places: [Place]) async {
+        // The whole list is saved: one built from a mirror still re-fetching could drop places.
+        guard !refuseWhileRebuilding() else { return }
         let record = FamilyPlaces(places: places)
         data.ingest(IngestBatch(familyPlaces: [record]))
         guard let store else { return }

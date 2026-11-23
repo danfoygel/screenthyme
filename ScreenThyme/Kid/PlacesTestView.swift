@@ -43,9 +43,6 @@ struct PlacesTestView: View {
                     LabeledContent(isFamily ? "\(place.name) (family)" : place.name) {
                         VStack(alignment: .trailing) {
                             Text("\(Int(place.radius)) m")
-                            if let fence = watcher.fences[place.id] {
-                                Text("Monitor: \(fence.state) since \(when(fence.since))").font(.caption)
-                            }
                             if let region = watcher.regions[place.id] {
                                 Text("Region: \(region.state) as of \(when(region.since))").font(.caption)
                             }
@@ -68,9 +65,8 @@ struct PlacesTestView: View {
             } header: {
                 Text("Places")
             } footer: {
-                Text("What each of iOS's two geofence APIs believes, whether or not it told ScreenThyme: "
-                     + "Monitor (CLMonitor) and Region (the older region monitoring). Parents name the family's places; "
-                     + "those marked here are this phone's only.")
+                Text("“Region:” is what iOS's region monitoring last said about the place. Parents name the family's "
+                     + "places; those marked here are this phone's only.")
             }
             Section("Today by place") {
                 ForEach(byPlace.sorted { total($0.value) > total($1.value) }, id: \.key) { whereabouts, apps in
@@ -115,7 +111,6 @@ struct PlacesTestView: View {
             }
         }
         .navigationTitle("Places")
-        .task { await watcher.refreshFences() }
         .bugButton()
     }
 

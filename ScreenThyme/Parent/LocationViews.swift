@@ -206,7 +206,7 @@ struct RawLocationView: View {
             } header: {
                 Text("Events · \(events.count)")
             } footer: {
-                Text("Newest first, at the time it happened. + is how long after that iOS told ScreenThyme. Monitor and region are iOS's two ways of watching a fence; the phone uses both.")
+                Text("Newest first, at the time it happened. + is how long after that iOS told ScreenThyme. Region is how the phone watches a fence; monitor marks iOS's other way, in older events only.")
             }
         }
         .navigationTitle("Raw location")

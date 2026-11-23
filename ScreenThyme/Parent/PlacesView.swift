@@ -19,6 +19,7 @@ struct PlacesView: View {
             .mapValues(\.count)
         NavigationStack {
             List {
+                RebuildingNotice()
                 Section {
                     Map(position: $position) {
                         ForEach(places) { place in
@@ -209,6 +210,7 @@ struct PlaceEditor: View {
                 if case .place = subject {
                     Section {
                         Button("Remove place", role: .destructive) { confirmingDelete = true }
+                            .disabled(model.editsBlocked)
                     }
                 }
             }
@@ -218,7 +220,7 @@ struct PlaceEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save(place) }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || model.editsBlocked
                                   || isNew && model.data.places.count >= FamilyPlaces.limit)
                 }
             }

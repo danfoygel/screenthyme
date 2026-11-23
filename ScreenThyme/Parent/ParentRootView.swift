@@ -29,6 +29,7 @@ struct ParentHomeView: View {
     var body: some View {
         NavigationStack {
             List {
+                RebuildingNotice()
                 if model.config.family == nil {
                     Section {
                         Text("Set up your family in Settings, then send the invite to each kid's Apple Account.")
@@ -46,6 +47,26 @@ struct ParentHomeView: View {
                     ContentUnavailableView("No kids yet", systemImage: "iphone",
                                            description: Text("Kids appear once their phone joins the family."))
                 }
+            }
+        }
+    }
+}
+
+/// Shown while the mirror is re-fetched from scratch (`FamilyData.isRebuilding`): until it ends, what's shown may be
+/// incomplete and parents can't change policies or rules.
+struct RebuildingNotice: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.data.isRebuilding {
+            Section {
+                Label {
+                    Text("Syncing with iCloud. Kids, limits and history may be missing until it finishes; changes to Screen Time, rules and places wait until then.")
+                } icon: {
+                    ProgressView()
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
         }
     }

@@ -49,6 +49,29 @@ struct IngestBatch: Sendable {
         }
     }
 
+    /// Adds another batch's records after this one's.
+    mutating func append(_ other: IngestBatch) {
+        kids += other.kids
+        items += other.items
+        epochs += other.epochs
+        fires += other.fires
+        samples += other.samples
+        heartbeats += other.heartbeats
+        alerts += other.alerts
+        rules += other.rules
+        pings += other.pings
+        energy += other.energy
+        policies += other.policies
+        policyChanges += other.policyChanges
+        requests += other.requests
+        grants += other.grants
+        extraMinutes += other.extraMinutes
+        linkKeys += other.linkKeys
+        placeEvents += other.placeEvents
+        familyPlaces += other.familyPlaces
+        deletedRecordNames += other.deletedRecordNames
+    }
+
     var isEmpty: Bool {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
@@ -63,7 +86,8 @@ struct IngestBatch: Sendable {
 @MainActor @Observable
 final class FamilyData {
     private struct Snapshot: Codable {
-        /// Bump when stored types change: an older (or unreadable) snapshot triggers a full re-fetch.
+        /// Bump when stored types change: a snapshot of another version (or an unreadable one) triggers a full
+        /// re-fetch, shown meanwhile.
         static let currentVersion = 6
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
@@ -83,6 +107,17 @@ final class FamilyData {
         var familyPlaces: FamilyPlaces?
         /// Where builds before link-key.json kept the nearby link's secret; read once, to move it.
         var linkKey: LinkKey?
+        /// A full re-fetch under way (`isRebuilding`), kept so that a relaunch resumes it.
+        var rebuild: Rebuild?
+
+        struct Rebuild: Codable {
+            /// Whether the change token was dropped yet; after that the re-fetch resumes from the token saved after
+            /// each page.
+            var started = false
+            /// Kids, rules and pings the re-fetch has seen. A fetch from scratch reports no deletions, so those still
+            /// unseen at its end were deleted.
+            var seen: Set<UUID> = []
+        }
     }
 
     private var snapshot = Snapshot()
@@ -104,6 +139,8 @@ final class FamilyData {
     var pings: [UUID: Ping] { snapshot.pings }
     var requests: [UUID: TimeRequest] { snapshot.requests }
     var grants: [UUID: TimeGrant] { snapshot.grants }
+    /// Off on a kid's phone: where kids' phones were is for parents only (PLAN.md §19).
+    @ObservationIgnored var keepsPlaceEvents = true
     /// The family's named places (PLAN.md §19).
     var places: [Place] { snapshot.familyPlaces?.places ?? [] }
     var familyPlaces: FamilyPlaces? { snapshot.familyPlaces }
@@ -152,24 +189,48 @@ final class FamilyData {
         snapshot.kids.values.sorted { ($0.isTest ? 1 : 0, $0.displayName) < ($1.isTest ? 1 : 0, $1.displayName) }
     }
 
-    /// The snapshot couldn't be used, so records fetched before it was written are missing here: the next refresh
-    /// must ignore its change token and fetch everything.
-    @ObservationIgnored private(set) var needsFullFetch = false
+    /// A full re-fetch of the family zone is under way: kids, policies and rules may be missing or out of date until
+    /// it ends, so nothing a parent saves may be built from them.
+    var isRebuilding: Bool { snapshot.rebuild != nil }
+
+    /// The re-fetch hasn't started: drop the change token, then call `rebuildStarted()`.
+    var rebuildNeedsReset: Bool { snapshot.rebuild?.started == false }
 
     init() {
         linkKey = (try? Data(contentsOf: linkKeyURL)).flatMap { try? JSONDecoder.thyme.decode(LinkKey.self, from: $0) }
         guard let data = try? Data(contentsOf: directory.appending(path: "snapshot.json")) else { return }
-        if let saved = try? JSONDecoder.thyme.decode(Snapshot.self, from: data), saved.version == Snapshot.currentVersion {
-            snapshot = saved
-        } else {
-            needsFullFetch = true
+        let saved = try? JSONDecoder.thyme.decode(Snapshot.self, from: data)
+        if let saved { snapshot = saved }
+        if saved?.version != Snapshot.currentVersion {
+            // Another build's snapshot (or an unreadable one) can lack records or fields that build didn't know:
+            // fetch everything again, showing what it has meanwhile. Emptying it hid kids and their limits for hours
+            // while the re-fetch ran, and a policy saved from that empty mirror would have replaced the kid's.
+            snapshot.version = Snapshot.currentVersion
+            snapshot.rebuild = Snapshot.Rebuild()
         }
         if linkKey == nil, let key = snapshot.linkKey { saveLinkKey(key) }
     }
 
-    func fullFetchDone() {
-        needsFullFetch = false
+    func rebuildStarted() {
+        snapshot.rebuild?.started = true
         saveSnapshot()
+    }
+
+    /// One page of the re-fetch, kept as it arrives so an interrupted re-fetch loses none of it.
+    func ingestRebuildPage(_ batch: IngestBatch) {
+        snapshot.rebuild?.seen.formUnion(batch.kids.map(\.id) + batch.rules.map(\.id) + batch.pings.map(\.id))
+        ingest(batch)
+    }
+
+    /// The re-fetch reached the end of the zone: drops the kids, rules and pings it didn't see.
+    func rebuildDone() {
+        guard let seen = snapshot.rebuild?.seen else { return }
+        snapshot.kids = snapshot.kids.filter { seen.contains($0.key) }
+        snapshot.rules = snapshot.rules.filter { seen.contains($0.key) }
+        snapshot.pings = snapshot.pings.filter { seen.contains($0.key) }
+        snapshot.rebuild = nil
+        saveSnapshot()
+        revision += 1
     }
 
     /// Returns alerts that weren't known before, for local notifications.
@@ -221,7 +282,7 @@ final class FamilyData {
         for (key, samples) in Dictionary(grouping: batch.samples, by: { KidDay(kid: $0.kidID, day: $0.day) }) {
             sampleStore.merge(samples, into: key)
         }
-        for (key, events) in Dictionary(grouping: batch.placeEvents.filter { $0.kidID != nil },
+        for (key, events) in Dictionary(grouping: batch.placeEvents.filter { keepsPlaceEvents && $0.kidID != nil },
                                         by: { KidDay(kid: $0.kidID!, day: $0.day) }) {
             placeEventStore.merge(events, into: key)
         }
