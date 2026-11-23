@@ -42,6 +42,8 @@ public struct AppDetails: Sendable {
     /// The parents' groups that hold the app or its category.
     public var groups: [ItemGroup]
     public var alwaysAllowed: [Via]
+    /// How Uncounted reaches it: its use is left out of the day's total (`DayTotal`).
+    public var uncounted: [Via]
     public var blocked: [Via]
     /// Downtime windows that cover it, in the policy's order. Whole-phone windows are left out for Always Allowed apps.
     public var downtime: [Downtime]
@@ -85,6 +87,7 @@ public struct AppDetails: Sendable {
         self.groups = groups
         self.isExempt = isExempt
         self.alwaysAllowed = alwaysAllowed
+        uncounted = via(policy.uncounted)
         blocked = via(policy.blocked)
         downtime = policy.downtime.compactMap { window in
             if window.isWholePhone { return allowed ? nil : Downtime(window: window, via: [.everything]) }

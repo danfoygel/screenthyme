@@ -98,7 +98,7 @@ struct PolicyView: View {
             } header: {
                 Text("Groups")
             } footer: {
-                Text("Your own categories of apps, websites and Apple's categories, for Downtime, limits, Always Allowed and Blocked. A change to a group changes everything that uses it.")
+                Text("Your own categories of apps, websites and Apple's categories, for Downtime, limits, Always Allowed, Uncounted and Blocked. A change to a group changes everything that uses it.")
             }
             Section {
                 NavigationLink {
@@ -109,13 +109,22 @@ struct PolicyView: View {
                     LabeledContent("Always Allowed", value: "\(policy.alwaysAllowed.count)")
                 }
                 NavigationLink {
+                    SelectedItemsView(title: "Uncounted", items: items,
+                                      footer: "Always Allowed apps whose time is left out of \(kid.displayName)'s total for the day. Their own time still shows. Taking one off Always Allowed takes it off here too.",
+                                      groups: policy.groups, selection: binding(policy, \.uncounted),
+                                      choices: policy.alwaysAllowed)
+                } label: {
+                    LabeledContent("Uncounted", value: "\(policy.uncounted.count)")
+                }
+                .disabled(policy.alwaysAllowed.isEmpty)
+                NavigationLink {
                     SelectedItemsView(title: "Blocked", items: items, footer: "These never open.",
                                       groups: policy.groups, selection: binding(policy, \.blocked))
                 } label: {
                     LabeledContent("Blocked", value: "\(policy.blocked.count)")
                 }
             } footer: {
-                Text("Always Allowed apps work during Downtime and don't count toward limits. Blocked apps never open. ScreenThyme and Phone are always allowed.")
+                Text("Always Allowed apps work during Downtime and don't count toward limits. Uncounted ones, chosen from those, don't count toward the day's total either. Blocked apps never open. ScreenThyme and Phone are always allowed.")
             }
             Section {
                 NavigationLink("Content & Privacy") { RestrictionsView(restrictions: binding(policy, \.restrictions)) }
@@ -193,11 +202,12 @@ struct PolicyView: View {
         return "\(names[0]), \(names[1]) and \(names.count - 2) more"
     }
 
-    /// What uses group `id`: Downtime windows, limits, Always Allowed and Blocked.
+    /// What uses group `id`: Downtime windows, limits, Always Allowed, Uncounted and Blocked.
     static func uses(of id: UUID, in policy: Policy) -> [String] {
         policy.downtime.filter { $0.items.contains(id) }.map { "Downtime \u{201C}\($0.name)\u{201D}" }
             + policy.limits.filter { !$0.allApps && $0.items.contains(id) }.map { "Limit \u{201C}\($0.name)\u{201D}" }
             + (policy.alwaysAllowed.contains(id) ? ["Always Allowed"] : [])
+            + (policy.uncounted.contains(id) ? ["Uncounted"] : [])
             + (policy.blocked.contains(id) ? ["Blocked"] : [])
     }
 
@@ -474,6 +484,8 @@ struct ItemSelectionView: View {
     let title: String
     let items: [UUID: TrackedItem]
     var groups: [ItemGroup] = []
+    /// The items and groups to choose from; nil for all of them.
+    var choices: Set<UUID>?
     @Binding var selection: Set<UUID>
     @State private var search = ""
 
@@ -481,9 +493,13 @@ struct ItemSelectionView: View {
         // Only items with a token can be shielded: those from the app scan on the kid's phone (PLAN.md §15.3).
         // Scanned apps get a name to sort and search by once matched to Apple's data (§15.6).
         let catalog = AppCatalog.shared
-        let named = items.values.filter { $0.tokenData != nil }.map { ($0, catalog.name(of: $0, in: items)) }
+        let named = items.values.filter { $0.tokenData != nil && choices?.contains($0.id) != false }
+            .map { ($0, catalog.name(of: $0, in: items)) }
+        let groups = groups.filter { choices?.contains($0.id) != false }
         List {
-            if named.isEmpty {
+            if choices?.isEmpty == true {
+                Text("Nothing is Always Allowed yet.").foregroundStyle(.secondary)
+            } else if named.isEmpty && groups.isEmpty {
                 Text("On the kid's phone, open ScreenThyme and scan apps under Apps for Screen Time.")
                     .foregroundStyle(.secondary)
             }

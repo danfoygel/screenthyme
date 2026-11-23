@@ -52,6 +52,7 @@ public enum PolicyEdit: Sendable, Hashable {
     case groupRemoved(ItemGroup)
     case groupChanged(from: ItemGroup, to: ItemGroup)
     case alwaysAllowed(added: Set<UUID>, removed: Set<UUID>)
+    case uncounted(added: Set<UUID>, removed: Set<UUID>)
     case blocked(added: Set<UUID>, removed: Set<UUID>)
     /// A Content & Privacy setting, with its values as shown ("On", "12+").
     case restriction(name: String, from: String, to: String)
@@ -70,6 +71,10 @@ public enum PolicyEdit: Sendable, Hashable {
         if old.alwaysAllowed != new.alwaysAllowed {
             edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
                                         removed: old.alwaysAllowed.subtracting(new.alwaysAllowed)))
+        }
+        if old.uncounted != new.uncounted {
+            edits.append(.uncounted(added: new.uncounted.subtracting(old.uncounted),
+                                    removed: old.uncounted.subtracting(new.uncounted)))
         }
         if old.blocked != new.blocked {
             edits.append(.blocked(added: new.blocked.subtracting(old.blocked), removed: old.blocked.subtracting(new.blocked)))
@@ -155,6 +160,8 @@ public enum PolicyEdit: Sendable, Hashable {
             return ("Changed group \u{201C}\(new.name)\u{201D}", details)
         case let .alwaysAllowed(added, removed):
             return ("Changed Always Allowed", listChange(added, removed))
+        case let .uncounted(added, removed):
+            return ("Changed Uncounted", listChange(added, removed))
         case let .blocked(added, removed):
             return ("Changed Blocked", listChange(added, removed))
         case let .restriction(name, from, to):

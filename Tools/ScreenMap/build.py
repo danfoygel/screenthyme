@@ -271,14 +271,14 @@ p.node("rule", 4, 9, "‹rule name›", "RuleEditor", "Cancel / Save", kind="she
 p.node("downtime", 5, 1, "Downtime", "DowntimeEditor", "Cancel / Done", kind="sheet")
 p.node("limit", 5, 2, "App Limit", "LimitEditor", "Cancel / Done", kind="sheet")
 p.node("group", 5, 3, "Group", "GroupEditor", "Cancel / Done", kind="sheet")
-p.node("allowed", 5, 4, "Always Allowed", "SelectedItemsView", "read-only list, Edit")
+p.node("allowed", 5, 4, "Always Allowed", "SelectedItemsView", "read-only list, Edit;\nUncounted is the same,\nchoosing from Always Allowed", h=72)
 p.node("blocked", 5, 5, "Blocked", "SelectedItemsView", "read-only list, Edit")
 p.node("content", 5, 6, "Content & Privacy", "RestrictionsView")
 p.node("save", 5, 7, "Save changes", "SavePolicySheet", "Permanent or Temporary", kind="sheet")
 p.node("what", 5, 9, "What", "navigationLink Picker", "daily-limit rules only")
 
 p.node("select", 6, 0, "‹list name›", "ItemSelectionView",
-       "Search and tick categories,\napps, websites and groups.\n\nTitled after what it edits:\nDowntime, Limit, the group's\nname, Always Allowed or\nBlocked.",
+       "Search and tick categories,\napps, websites and groups.\n\nTitled after what it edits:\nDowntime, Limit, the group's\nname, Always Allowed,\nUncounted or Blocked.",
        rows=(1, 5))
 p.node("domains", 6, 6, "‹website list›", "DomainListView", "Always allow, Never allow\nor Allowed websites", h=72)
 p.node("appDetails", 6, 7.5, "‹app›", "AppDetailsView", "groups, limits, use, requests;\nEdit Screen Time › PolicyView", h=72)
@@ -311,7 +311,7 @@ p.edge("kidSettings", "rule", "a rule, or Add rule ▾", kind="sheet")
 p.edge("policy", "downtime", "a window, Add Downtime", kind="sheet")
 p.edge("policy", "limit", "a limit, Add limit", kind="sheet")
 p.edge("policy", "group", "a group, Add group", kind="sheet")
-p.edge("policy", "allowed", "Always Allowed")
+p.edge("policy", "allowed", "Always Allowed,\nUncounted")
 p.edge("policy", "blocked", "Blocked")
 p.edge("policy", "content", "Content & Privacy")
 p.edge("policy", "save", "Save", kind="sheet")

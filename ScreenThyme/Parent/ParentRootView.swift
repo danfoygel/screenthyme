@@ -115,7 +115,9 @@ struct KidCard: View {
             }
             .font(.subheadline)
             let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: DayKey(Date()))
-            Text("Today: \(Format.minutes(max(timeline.totalMinutes, appTotal(timeline, items, excluding: mirrored))))")
+            let total = DayTotal(timeline, items: items, policy: model.data.policy(for: kid.id), mirrored: mirrored)
+            Text("Today: \(Format.minutes(total.minutes))"
+                 + (total.uncountedMinutes > 0 ? " · \(Format.minutes(total.uncountedMinutes)) uncounted" : ""))
                 .font(.subheadline.monospacedDigit())
             let selfApproved = model.data.grants.values.filter {
                 $0.kidID == kid.id && $0.isSelfApproved && Calendar.current.isDateInToday($0.at)
@@ -152,13 +154,6 @@ struct KidCard: View {
     }
 }
 
-/// Apple's total over apps only: websites also count as Safari's time, and so do `mirrored` apps, whose use is Safari's on
-/// their website (`WebMirror`).
-func appTotal(_ timeline: DayTimeline, _ items: [UUID: TrackedItem], excluding mirrored: Set<UUID> = []) -> Int {
-    let apps = timeline.items.filter { items[$0.key]?.kind != .domain && !mirrored.contains($0.key) }
-    return Int((apps.values.reduce(0) { $0 + $1.seconds } / 60).rounded())
-}
-
 struct KidDayView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
@@ -180,8 +175,16 @@ struct KidDayView: View {
                 }
                 .buttonStyle(.borderless)
                 let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: day)
-                LabeledContent("Apps (Apple's count)", value: Format.minutes(appTotal(timeline, items, excluding: mirrored)))
-                LabeledContent("Phone in use", value: Format.minutes(timeline.totalMinutes))
+                let total = DayTotal(timeline, items: items, policy: model.data.policy(on: day, kid: kid.id), mirrored: mirrored)
+                LabeledContent("Apps (Apple's count)", value: Format.minutes(total.appMinutes))
+                LabeledContent("Phone in use", value: Format.minutes(total.inUseMinutes))
+                if total.uncountedMinutes > 0 {
+                    LabeledContent("Uncounted", value: Format.minutes(total.uncountedMinutes))
+                }
+            } footer: {
+                if model.data.policy(on: day, kid: kid.id).uncounted.isEmpty == false {
+                    Text("Uncounted apps are left out of the day's total. Their time still shows under each one.")
+                }
             }
             let unmatched = model.unmatchedApps(for: kid)
             if !unmatched.toMatch.isEmpty {

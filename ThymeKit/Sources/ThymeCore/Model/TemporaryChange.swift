@@ -89,6 +89,9 @@ extension Policy {
             revertSet(&group.items, old.items, new.items)
         }
         revertSet(&policy.alwaysAllowed, old.alwaysAllowed, new.alwaysAllowed)
+        // What Always Allowed no longer holds can't come back as Uncounted.
+        revertSet(&policy.uncounted, old.uncounted, new.uncounted)
+        policy.uncounted.formIntersection(policy.alwaysAllowed)
         revertSet(&policy.blocked, old.blocked, new.blocked)
         for field in Restrictions.fields { field(&policy.restrictions, old.restrictions, new.restrictions) }
         return policy

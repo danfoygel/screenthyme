@@ -148,7 +148,7 @@ Apple's Screen Time.
 | `EnergyReport` | `kidID`, `day`, `deviceModel`, `monitor` and `app` usage (energy, CPU time, wake-ups, callbacks, launches), `batteryLevel`; one per kid per day, overwritten |
 | `Alert` | `kidID`, `ruleID?`, `itemID?`, `at`, `title`, `body` |
 | `Rule`, `RuleSet` | a rule's `condition` (§4.6) and `enabled`; `RuleSet.<kid>` holds all of a kid's rules |
-| `Policy` | one per kid: Downtime, limits, Always Allowed, Blocked, restrictions, groups, temporary changes (§15.1) |
+| `Policy` | one per kid: Downtime, limits, Always Allowed, Uncounted, Blocked, restrictions, groups, temporary changes (§15.1) |
 | `PolicyChange` | the kid, time, parent's name, the policy before and after, `until?` (§15.7, §15.10) |
 | `TimeRequest`, `TimeGrant` | a request for more time or to always allow (item, reason, minutes, note) and its answer (`TimeGrant.<request id>`) |
 | `ExtraMinuteUse` | one more minute taken on the kid's phone (§15.5) |
@@ -418,6 +418,7 @@ the data back (§16). So ScreenThyme rebuilds the limits. Nothing usage-based st
 |---|---|
 | Downtime windows | name, start/end minute (may wrap midnight), weekdays (of the day the window starts), and optionally items: none means the whole phone (§15.8) |
 | Always Allowed | apps, websites, categories or groups exempt from Downtime and limits |
+| Uncounted | some of Always Allowed whose use is left out of the day's total (below); leaving Always Allowed leaves it too |
 | App limits | name, items (apps, websites, categories, groups) or **all apps**, minutes per day, optional per-weekday minutes |
 | Blocked | items never allowed |
 | Groups | the parents' own categories (§15.8) |
@@ -425,6 +426,12 @@ the data back (§16). So ScreenThyme rebuilds the limits. Nothing usage-based st
 | Temporary changes | §15.10 |
 
 Targets are scanned items with tokens (§15.3); items from Apple's data have no tokens.
+
+**Uncounted** changes no shield: Always Allowed already passes Downtime and limits. It changes the numbers. The day's
+total (`DayTotal`: the kid card's "Today", the day and category screens) and the phone-wide daily-threshold alert
+(`RuleEngine`) leave out what Uncounted apps held, by the all-apps count (`Policy.uncountedSeconds`, from
+`EnforcementPlanner.totalSeconds`). The total ladder counts all activity, so their Apple seconds come off its minutes
+too. Each app's own time, its blocks on the timeline, its category's time and the heatmap still show it.
 
 **More time:** the kid's `TimeRequest` (an item or none, the reason, 5 minutes to 4 hours on a stepper
 (`MoreTime.steps`) or the rest of today / until Downtime ends, and an optional note) becomes an Alert. A parent

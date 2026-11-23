@@ -53,7 +53,11 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             var state = MonitorStateStore.load(day: DayKey(entry.at))
             if let kid = config.kid {
                 let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-                let engine = RuleEngine(kidID: kid.id, kidName: kid.displayName, items: items)
+                // Uncounted apps leave the phone's daily total; the web mirror is read only when some are.
+                let policy = AppGroup.loadPolicy(now: entry.at)?.resolved(items: items)
+                let mirrored = policy?.uncounted.isEmpty == false ? Enforcer.webMirrored(items, now: entry.at) : []
+                let engine = RuleEngine(kidID: kid.id, kidName: kid.displayName, items: items, policy: policy,
+                                        mirrored: mirrored)
                 var alerts = engine.process(wake, state: &state, rules: config.currentRules)
                 let hasAccess: Bool? = sampled != nil ? true : sample?.unauthorized == true ? false : nil
                 if let lost = engine.accessAlert(hasAccess: hasAccess, at: entry.at, state: &state) {
