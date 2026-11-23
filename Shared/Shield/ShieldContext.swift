@@ -289,15 +289,7 @@ struct ShieldContext {
         Target(item: item, category: categoryItem(nil, name: item.category), name: item.displayName)
     }
 
-    static let requestChoices: [Int?] = [15, 60, nil]
-
-    static func describe(minutes: Int?) -> String {
-        switch minutes {
-        case nil: "the rest of today"
-        case 60?: "1 more hour"
-        case let minutes?: "\(minutes) more minutes"
-        }
-    }
+    static func describe(minutes: Int?) -> String { ThymeCore.MoreTime.describe(minutes: minutes) }
 }
 
 extension String {

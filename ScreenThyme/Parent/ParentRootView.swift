@@ -326,6 +326,13 @@ struct AlertsView: View {
                         // What it's about: older kid builds' requests name only the limit, not what the time is for.
                         if let item = alert.itemID.flatMap({ model.data.items[$0] }) { ItemName(item: item) }
                         Text(alert.body)
+                        if let request = TimeRequest.sent(with: alert, from: model.data.requests.values) {
+                            let answer = model.data.grants[request.id]
+                            Text(MoreTime.outcome(of: request, answer: answer))
+                                .font(.subheadline)
+                                .foregroundStyle(answer.map { $0.approved && $0.minutes != request.minutes } == true
+                                                 ? .orange : .secondary)
+                        }
                         Text(alert.at.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -345,6 +352,7 @@ struct AlertsView: View {
 struct RequestRow: View {
     @Environment(AppModel.self) private var model
     let request: TimeRequest
+    @State private var changing = false
 
     var body: some View {
         let kid = model.data.kids[request.kidID]?.displayName ?? "Your kid"
@@ -375,17 +383,16 @@ struct RequestRow: View {
                 HStack {
                     Button("Approve") { answer(true, request.minutes) }
                         .buttonStyle(.borderedProminent)
-                    Menu("Other") {
-                        ForEach(ShieldContext.requestChoices.filter { $0 != request.minutes }, id: \.self) { minutes in
-                            Button(ShieldContext.describe(minutes: minutes).capitalizedFirst) { answer(true, minutes) }
-                        }
-                    }
-                    .buttonStyle(.bordered)
+                    Button("Change") { changing = true }
+                        .buttonStyle(.bordered)
                     Spacer()
                     Button("Decline", role: .destructive) { answer(false, nil) }
                         .buttonStyle(.bordered)
                 }
             }
+        }
+        .sheet(isPresented: $changing) {
+            ChangeTimeSheet(request: request, kid: kid) { minutes in answer(true, minutes) }
         }
     }
 
@@ -413,5 +420,47 @@ struct RequestRow: View {
 
     private func answer(_ approved: Bool, _ minutes: Int?) {
         Task { await model.answer(request, approved: approved, minutes: minutes) }
+    }
+}
+
+/// Approving a request with more or less time than the kid asked for.
+private struct ChangeTimeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let request: TimeRequest
+    let kid: String
+    let give: (Int?) -> Void
+    @State private var minutes: Int?
+
+    init(request: TimeRequest, kid: String, give: @escaping (Int?) -> Void) {
+        self.request = request
+        self.kid = kid
+        self.give = give
+        _minutes = State(initialValue: request.minutes)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    MoreTimePicker(minutes: $minutes, restLabel: MoreTime.restLabel(for: request.reason))
+                } header: {
+                    Text("How much more time")
+                } footer: {
+                    Text("\(kid) asked for \(MoreTime.describe(minutes: request.minutes)).")
+                }
+            }
+            .navigationTitle("Change the time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Approve") {
+                        give(minutes)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

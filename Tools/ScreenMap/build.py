@@ -231,10 +231,11 @@ k.edges[1]["pts"] = [(sh["x"] + W, yy), (ask["x"], yy)]
 p = Diagram("p")
 p.node("welcome", 0, 2, "Welcome", "RoleSelectionView", "first launch only", kind="root", tag="START")
 p.node("kids", 1, 2, "Kids", "ParentHomeView", "a card for each kid", kind="root", tag="TAB 1")
-p.node("alerts", 1, 3.25, "Alerts", "AlertsView", "requests: Approve, Decline", kind="root", tag="TAB 2")
+p.node("alerts", 1, 3.25, "Alerts", "AlertsView", "requests: Approve, Change, Decline", kind="root", tag="TAB 2")
 p.node("places", 1, 4.5, "Places", "PlacesView", "map of visits; places, spots", kind="root", tag="TAB 3")
 p.node("settings", 1, 6, "Settings", "ParentSettingsView", "family, you, kids, nearby", kind="root", tag="TAB 4")
 p.frame(["kids", "alerts", "places", "settings"], "Tab bar")
+p.node("changeTime", 2, 3.25, "Change the time", "ChangeTimeSheet", "Cancel / Approve", kind="sheet")
 p.node("placeEditor", 2, 4.5, "Name this place", "PlaceEditor", "name, fence, visits; Remove", kind="sheet")
 
 p.node("kidDay", 2, 2, "‹kid›", "KidDayView", "one day: totals, apps, sites")
@@ -289,6 +290,7 @@ p.edge("kidDay", "history", "Change history")
 p.edge("kidDay", "scanner", "Match ‹n› new apps\nwith camera")
 p.edge("kidDay", "kidSettings", "Rules and health", dp=-12)
 p.edge("kidDay", "locationDay", "Where › a place")
+p.edge("alerts", "changeTime", "Change", kind="sheet")
 p.edge("places", "placeEditor", "a spot or place", kind="sheet")
 p.edge("test", "replay", "Replay tool")
 p.edge("test", "toKid", "Role: Kid", kind="mode")
@@ -337,6 +339,7 @@ p.edge("policy", "history", "Change history",
 # Boxes with no Simulator screenshot, and why (shown on hover instead)
 LIMITS = "Shows only while a parent's limits are in force on the kid's phone, which the Simulator can't do."
 WHY.update({
+    ("p", "changeTime"): "Opens from a kid's request for more time, which test mode doesn't make.",
     ("k", "shield"): "Apple draws the block page over a blocked app, on a kid's phone with limits in force. The Simulator can't enforce limits.",
     ("k", "dtItems"): LIMITS, ("k", "allowed"): LIMITS, ("k", "blocked"): LIMITS,
     ("k", "auth"): "Apple's Screen Time approval prompt. It needs a real phone and a parent's approval.",
