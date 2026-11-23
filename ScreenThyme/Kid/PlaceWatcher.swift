@@ -4,16 +4,17 @@ import Observation
 import ThymeCore
 import UIKit
 
-/// The location test on a kid's phone (PLAN.md §19): geofences around the places marked here, plus iOS's visits,
-/// written to App Group `Places/events.jsonl`. Each place is watched by both of iOS's geofence APIs, `CLMonitor` and
-/// the older region monitoring, since `CLMonitor` once missed a whole day's crossings. iOS watches both itself, on Wi-Fi and cell towers, and wakes or
-/// relaunches the app only at a crossing or a visit, so there's no polling and no location background mode.
-/// Nothing leaves the phone yet.
+/// The location test on a kid's phone (PLAN.md §19): geofences around the places marked here (region monitoring:
+/// `CLMonitor` missed or delayed every crossing in the comparison), plus iOS's visits, written to App Group
+/// `Places/events.jsonl`. iOS watches both itself, on Wi-Fi and cell towers, and wakes or relaunches the app only at a
+/// crossing or a visit, so there's no polling and no location background mode. Nothing leaves the phone yet.
 @MainActor @Observable final class PlaceWatcher: NSObject, CLLocationManagerDelegate {
     static let shared = PlaceWatcher()
 
     private static let enabledKey = "placesTest"
-    private static let monitorName = "places"
+    /// `CLMonitor`'s name for the fences it held before it was dropped (`retireMonitor`).
+    private static let retiredMonitorName = "places"
+    private static let retiredMonitorKey = "placesMonitorRetired"
 
     private(set) var places: [Place] = AppGroup.load([Place].self, from: AppGroup.placesURL) ?? []
     private(set) var authorization: CLAuthorizationStatus = .notDetermined
@@ -21,9 +22,7 @@ import UIKit
     private(set) var problem: String?
     /// Bumped at each change to the events file, so views showing `events` redraw.
     private(set) var revision = 0
-    /// What iOS's fence monitor believes about each place now (`CLMonitor.record(for:)`), whatever reached `events`.
-    private(set) var fences: [UUID: Fence] = [:]
-    /// The older API's last answer for each place (`didDetermineState`), and when it came: it gives no date of its own.
+    /// Region monitoring's last answer for each place (`didDetermineState`), and when it came: it gives no date.
     private(set) var regions: [UUID: Fence] = [:]
 
     struct Fence: Hashable {
@@ -45,9 +44,7 @@ import UIKit
     }
 
     @ObservationIgnored private let manager = CLLocationManager()
-    @ObservationIgnored private var session: CLServiceSession?
-    @ObservationIgnored private var monitor: CLMonitor?
-    @ObservationIgnored private var tasks: [Task<Void, Never>] = []
+    @ObservationIgnored private var started = false
     @ObservationIgnored private var locating: CheckedContinuation<Fix, Error>?
 
     struct Fix: Sendable {
@@ -63,31 +60,18 @@ import UIKit
     }
 
     /// At every launch, background ones included: iOS relaunches the app for a crossing or a visit, and delivers it
-    /// only once the monitor and the visit delegate are set up again.
+    /// to this delegate.
     func start() {
-        guard isEnabled, tasks.isEmpty else { return }
+        guard isEnabled, !started else { return }
+        started = true
         log("started, \(UIApplication.shared.applicationState == .background ? "in the background" : "in the foreground"), "
             + "location \(authorization.label)\(manager.accuracyAuthorization == .fullAccuracy ? "" : ", not precise")")
         if authorization == .notDetermined || authorization == .authorizedWhenInUse {
             manager.requestAlwaysAuthorization()
         }
-        // Since iOS 18, CLMonitor events reach a backgrounded app only while it holds a session.
-        let session = CLServiceSession(authorization: .always)
-        self.session = session
         manager.startMonitoringVisits()
         syncRegions()
-        tasks = [
-            Task { await self.watchFences() },
-            Task {
-                do {
-                    for try await diagnostic in session.diagnostics {
-                        let problem = Self.describe(diagnostic)
-                        if problem != self.problem { self.log("session: \(problem ?? "fine")") }
-                        self.problem = problem
-                    }
-                } catch {}
-            },
-        ]
+        retireMonitor()
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -96,15 +80,10 @@ import UIKit
         if enabled {
             start()
         } else {
-            tasks.forEach { $0.cancel() }
-            tasks = []
+            started = false
             manager.stopMonitoringVisits()
-            session = nil
             problem = nil
-            if let monitor {
-                Task { for id in await monitor.identifiers { await monitor.remove(id) } }
-            }
-            manager.monitoredRegions.forEach(manager.stopMonitoring)
+            ownRegions.forEach(manager.stopMonitoring)
         }
     }
 
@@ -117,7 +96,6 @@ import UIKit
         places.append(place)
         save()
         log("marked \(name), \(Int(place.radius)) m")
-        if let monitor { await sync(monitor) }
         syncRegions()
     }
 
@@ -126,7 +104,6 @@ import UIKit
         save()
         log("removed \(place.name)")
         syncRegions()
-        if let monitor { Task { await monitor.remove(place.id.uuidString) } }
     }
 
     var events: [PlaceEvent] {
@@ -141,39 +118,19 @@ import UIKit
 
     // MARK: - Fences
 
-    private func watchFences() async {
-        let monitor = await CLMonitor(Self.monitorName)
-        self.monitor = monitor
-        await sync(monitor)
-        await refreshFences()
-        log("monitor opened: " + places.map { place in
-            fences[place.id].map { "\(place.name) \($0.state) since \(Self.stamp($0.since))" } ?? "\(place.name) not monitored"
-        }.joined(separator: "; "))
-        do {
-            for try await event in await monitor.events {
-                record(event)
-                await refreshFences()
-            }
-            log("monitor events ended")
-        } catch {
-            problem = "Geofences stopped: \(error.localizedDescription)"
-            log("monitor events failed: \(error)")
+    /// Removes the fences `CLMonitor` held before it was dropped, once: iOS keeps them across launches.
+    private func retireMonitor() {
+        guard !UserDefaults.standard.bool(forKey: Self.retiredMonitorKey) else { return }
+        Task {
+            let monitor = await CLMonitor(Self.retiredMonitorName)
+            let identifiers = await monitor.identifiers
+            for id in identifiers { await monitor.remove(id) }
+            UserDefaults.standard.set(true, forKey: Self.retiredMonitorKey)
+            log("CLMonitor retired: \(identifiers.count) fence(s) removed")
         }
     }
 
-    /// Reads the monitor's own record of each fence.
-    func refreshFences() async {
-        guard let monitor else { return }
-        var fences: [UUID: Fence] = [:]
-        for place in places {
-            if let event = await monitor.record(for: place.id.uuidString)?.lastEvent {
-                fences[place.id] = Fence(state: Self.label(event.state), since: event.date)
-            }
-        }
-        self.fences = fences
-    }
-
-    /// Every launch, monitor answer and problem, for when fences go quiet (PLAN.md §19).
+    /// Every launch, region answer and problem, for when fences go quiet (PLAN.md §19).
     private func log(_ line: String) {
         let url = AppGroup.placeDiagnosticsURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -203,36 +160,19 @@ import UIKit
         date.formatted(.dateTime.month(.abbreviated).day().hour().minute().second())
     }
 
-    static func label(_ state: CLMonitor.Event.State) -> String {
-        switch state {
-        case .unknown: "unknown"
-        case .satisfied: "inside"
-        case .unsatisfied: "outside"
-        case .unmonitored: "not monitored"
-        @unknown default: "state \(state.rawValue)"
-        }
+    /// Regions this app made: named by a place's id. iOS lists others among them too (`CLMonitor`'s own, once),
+    /// and touching those broke them.
+    private var ownRegions: [CLRegion] {
+        manager.monitoredRegions.filter { UUID(uuidString: $0.identifier) != nil }
     }
 
-    /// Makes the monitor's fences match `places`.
-    private func sync(_ monitor: CLMonitor) async {
-        let wanted = Dictionary(places.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
-        let existing = Set(await monitor.identifiers)
-        for id in existing where wanted[id] == nil {
-            await monitor.remove(id)
-        }
-        for (id, place) in wanted where !existing.contains(id) {
-            let center = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
-            await monitor.add(CLMonitor.CircularGeographicCondition(center: center, radius: place.radius), identifier: id)
-        }
-    }
-
-    /// Makes the older API's regions match `places`, then asks it where the phone is for each.
+    /// Makes our regions match `places`, then asks where the phone is for each.
     private func syncRegions() {
         let wanted = Set(places.map(\.id.uuidString))
-        for region in manager.monitoredRegions where !wanted.contains(region.identifier) {
+        for region in ownRegions where !wanted.contains(region.identifier) {
             manager.stopMonitoring(for: region)
         }
-        let existing = Set(manager.monitoredRegions.map(\.identifier))
+        let existing = Set(ownRegions.map(\.identifier))
         for place in places where !existing.contains(place.id.uuidString) {
             let center = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
             let region = CLCircularRegion(center: center, radius: min(place.radius, manager.maximumRegionMonitoringDistance),
@@ -242,12 +182,12 @@ import UIKit
             manager.startMonitoring(for: region)
             log("region added: \(place.name)")
         }
-        for region in manager.monitoredRegions {
+        for region in ownRegions {
             manager.requestState(for: region)
         }
     }
 
-    /// The older API's answer, at a crossing or when asked: a crossing when it differs from its last one.
+    /// Region monitoring's answer, at a crossing or when asked: a crossing when it differs from its last one.
     private func record(region identifier: String, state: CLRegionState) {
         guard let place = UUID(uuidString: identifier) else { return }
         let label = switch state {
@@ -266,26 +206,6 @@ import UIKit
         }
         if events.last(where: { $0.place == place && $0.source == .region })?.kind == kind { return }
         append(PlaceEvent(kind: kind, at: Date(), place: place, source: .region))
-    }
-
-    private func record(_ event: CLMonitor.Event) {
-        let name = places.first { $0.id.uuidString == event.identifier }?.name ?? "fence \(event.identifier.prefix(8))"
-        let issue = Self.describe(event)
-        log("event: \(name) \(Self.label(event.state)) at \(Self.stamp(event.date))\(issue.map { " (\($0))" } ?? "")")
-        if let issue {
-            problem = "Geofence: \(issue)"
-        }
-        guard let place = UUID(uuidString: event.identifier) else { return }
-        let kind: PlaceEvent.Kind
-        switch event.state {
-        case .satisfied: kind = .enter
-        case .unsatisfied: kind = .exit
-        default: return
-        }
-        // A relaunch can hand over the last event again.
-        if let last = events.last(where: { $0.place == place && ($0.source ?? .monitor) == .monitor }),
-           last.kind == kind, last.at == event.date { return }
-        append(PlaceEvent(kind: kind, at: event.date, place: place, source: .monitor))
     }
 
     // MARK: - Visits and one-off fixes (CLLocationManagerDelegate, on the main thread: the manager was made there)
@@ -312,7 +232,7 @@ import UIKit
                                      withError error: any Error) {
         let (identifier, text) = (region?.identifier ?? "?", error.localizedDescription)
         MainActor.assumeIsolated {
-            log("region \(identifier.prefix(8)) failed: \(text)")
+            log("region \(identifier) failed: \(text)")
             problem = "Region: \(text)"
         }
     }
@@ -363,26 +283,6 @@ import UIKit
         try? FileManager.default.createDirectory(at: AppGroup.placesURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         AppGroup.save(places, to: AppGroup.placesURL)
-    }
-
-    private static func describe(_ diagnostic: CLServiceSession.Diagnostic) -> String? {
-        if diagnostic.authorizationDeniedGlobally { return "Location Services are off" }
-        if diagnostic.authorizationRestricted { return "Location is restricted (Screen Time or a profile)" }
-        if diagnostic.authorizationDenied { return "Location is off for ScreenThyme" }
-        if diagnostic.alwaysAuthorizationDenied { return "Location is “While Using”, not “Always”" }
-        if diagnostic.insufficientlyInUse { return "Waiting to be opened" }
-        if diagnostic.authorizationRequestInProgress { return "Asking for location" }
-        return nil
-    }
-
-    private static func describe(_ event: CLMonitor.Event) -> String? {
-        if event.authorizationDenied { return "location is off" }
-        if event.authorizationRestricted { return "location is restricted" }
-        if event.accuracyLimited { return "Precise Location is off" }
-        if event.conditionLimitExceeded { return "too many fences (20 at most)" }
-        if event.serviceSessionRequired { return "no location session" }
-        if event.persistenceUnavailable { return "iOS can't save the fences" }
-        return nil
     }
 }
 

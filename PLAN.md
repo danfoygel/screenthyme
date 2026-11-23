@@ -992,5 +992,12 @@ Goal: say where each app was used ("YouTube: 50 min at home, 12 at school") with
   at every start. `PlaceEvent.source` says which API reported a crossing (nil before: the monitor); stays take
   either, a crossing that matches the current state changing nothing. The Places screen shows both APIs' state.
   A day out decides: fences from whichever works, or visits alone.
+- **The comparison (Nov 21, a kid's iPhone 15 Pro):** leaving home, region monitoring reported the exit about a
+  minute after the visit's departure; `CLMonitor` reported it six hours later, when the app was next in use. Worse,
+  region code that walked all of `manager.monitoredRegions` had asked about one that wasn't ours (`icom.dan…`,
+  `CLMonitor`'s own, it seems): that failed (`kCLErrorDomain` 5) and `CLMonitor`'s fence went "not monitored", and
+  our sync never re-added it. So `CLMonitor` is dropped: each phone removes its old fences once (`retireMonitor`),
+  and the region code touches only regions named by a place's id (`ownRegions`). Visits stayed reliable on a trip
+  too: departures 1–5 min late, arrivals 4–17 min in an unfamiliar area.
 - **Then, if it holds up:** places set on a parent's phone and synced like `Policy`, stays uploaded, the timeline
   split by place on parents' phones, and maybe rules by place.
