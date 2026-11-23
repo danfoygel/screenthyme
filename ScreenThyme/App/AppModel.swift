@@ -116,15 +116,16 @@ final class AppModel {
         defer { isRefreshing = false }
         if isParent { await PendingSaves.retry(store: store) }
         do {
-            // A full re-fetch keeps each page as it comes (`FamilyData.isRebuilding`).
-            let rebuilding = data.isRebuilding
-            if data.rebuildNeedsReset {
+            // Where each kid's phone was is for parents only: a kid's phone keeps none, its own included.
+            data.keepsPlaceEvents = isParent
+            // A mirror of another format is rebuilt from the records it kept, else fetched from scratch, keeping each
+            // page as it comes (`FamilyData.isRebuilding`).
+            if data.rebuildNeedsReset, await !data.rebuildLocally(token: ChangeFetcher.tokenData(for: store)) {
                 ChangeFetcher.resetToken(for: store)
                 data.rebuildStarted()
             }
+            let rebuilding = data.isRebuilding
             let known = Set(data.alerts.keys)
-            // Where each kid's phone was is for parents only: a kid's phone keeps none, its own included.
-            data.keepsPlaceEvents = isParent
             let batch = try await ChangeFetcher.fetch(store: store, page: rebuilding ? data.ingestRebuildPage : nil)
             let newAlerts: [AlertRecord]
             if rebuilding {
@@ -133,6 +134,7 @@ final class AppModel {
             } else {
                 newAlerts = data.ingest(batch)
             }
+            data.fetched(token: ChangeFetcher.tokenData(for: store))
             if data.linkKey == nil, let key = try? await LinkKeyService.fetchOrCreate(store: store) {
                 data.ingest(IngestBatch(linkKeys: [key]))
                 updateNearby()

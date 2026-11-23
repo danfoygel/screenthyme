@@ -152,7 +152,7 @@ enum ChangeFetcher {
                     received.add(modification.record)
                 }
             }
-            received.deletedRecordNames += changes.deletions.map(\.recordID.recordName)
+            for deletion in changes.deletions { received.addDeletion(deletion.recordID.recordName) }
             token = changes.changeToken
             moreComing = changes.moreComing
             if let page {
@@ -167,6 +167,11 @@ enum ChangeFetcher {
 
     static func resetToken(for store: CloudStore) {
         UserDefaults.standard.removeObject(forKey: "changeToken.\(store.zoneID.ownerName).\(store.zoneID.zoneName)")
+    }
+
+    /// The saved token, archived as saved: what the mirror's `RawRecordLog` notes after each fetch it keeps.
+    static func tokenData(for store: CloudStore) -> Data? {
+        UserDefaults.standard.data(forKey: "changeToken.\(store.zoneID.ownerName).\(store.zoneID.zoneName)")
     }
 
     private static func loadToken(_ key: String) -> CKServerChangeToken? {

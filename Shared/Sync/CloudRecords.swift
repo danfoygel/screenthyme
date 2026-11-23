@@ -25,7 +25,11 @@ extension CloudRecordable {
 
     static func decode(_ record: CKRecord) -> Self? {
         guard record.recordType == recordType, let data = record["payload"] as? Data else { return nil }
-        return try? JSONDecoder.thyme.decode(Self.self, from: data)
+        return decode(payload: data)
+    }
+
+    static func decode(payload: Data) -> Self? {
+        try? JSONDecoder.thyme.decode(Self.self, from: payload)
     }
 }
 

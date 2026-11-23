@@ -268,6 +268,11 @@ ScreenThyme.xcodeproj
   - Background Modes (remote notifications, background fetch)
 - **Deployment target:** iOS 26.0. Swift 6, strict concurrency.
 - **No third-party dependencies.** The parent-side mirror is plain JSON files (one per kid per day for fires), not SwiftData; the extension uses only JSONL files in the App Group.
+- The mirror also keeps every fetched record as CloudKit sent it (`RawRecordLog`, FamilyData/raw). A build that bumps
+  the snapshot version decodes those again on the phone (well under a second) instead of fetching the whole zone
+  (~15,000 records, about a minute in Nov 2026). The log is whole only after a full fetch it began, and only while the
+  change token is the one it noted after its last fetch: a build without it fetching in between moves the token, and
+  the next bump fetches from scratch.
 
 ## 6. Phases
 
