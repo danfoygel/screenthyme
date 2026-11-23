@@ -82,6 +82,7 @@ final class AppModel {
             await sendHeartbeat(.launch)
             await refresh()
             await KidSync.refreshIfDue(config: config, force: true)
+            PlaceWatcher.shared.reloadFamilyPlaces()
         case .parent:
             await refresh()
             await handleTestRuleArguments()
@@ -102,6 +103,7 @@ final class AppModel {
             await sampleNow()
             await flush()
             await sendHeartbeat(.backgroundRefresh)
+            PlaceWatcher.shared.reloadFamilyPlaces()
         }
         await refresh()
         await bugReports.sync(store: store)
@@ -121,6 +123,8 @@ final class AppModel {
                 data.rebuildStarted()
             }
             let known = Set(data.alerts.keys)
+            // Where each kid's phone was is for parents only: a kid's phone keeps none, its own included.
+            data.keepsPlaceEvents = isParent
             let batch = try await ChangeFetcher.fetch(store: store, page: rebuilding ? data.ingestRebuildPage : nil)
             let newAlerts: [AlertRecord]
             if rebuilding {
@@ -143,6 +147,10 @@ final class AppModel {
                 await Enforcer.offMain {
                     if let policy { KidSync.savePolicy(policy) }
                     for grant in grants { Enforcer.apply(grant) }
+                }
+                if let places = batch.familyPlaces.last {
+                    KidSync.saveFamilyPlaces(places)
+                    PlaceWatcher.shared.reloadFamilyPlaces()
                 }
                 if batch.pings.contains(where: { $0.kidID == kid.id && $0.at > (lastHeartbeatAt ?? .distantPast) }) {
                     await sendHeartbeat(.ping)

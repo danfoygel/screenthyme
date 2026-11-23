@@ -29,6 +29,9 @@ struct AppDetailsView: View {
                 }
             }
             usageSection(usage, details: details, data: data, name: AppCatalog.shared.name(of: shown, in: data.items))
+            if model.isParent {
+                AppLocationsSection(kid: item.kidID, ids: details.ids)
+            }
             if usage.last30Days > 0 {
                 Section {
                     UsageHeatmapView(heatmap: UsageHeatmap.build(today: today, now: Date(), samples: data.samples,

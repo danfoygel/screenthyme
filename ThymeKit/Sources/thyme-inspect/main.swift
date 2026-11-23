@@ -55,8 +55,8 @@ if arguments.count >= 5 {
     func placeName(_ whereabouts: Whereabouts) -> String {
         switch whereabouts {
         case let .place(id): places.first { $0.id == id }?.name ?? "removed place"
-        case .elsewhere: "Elsewhere"
-        case .unknown: "Unknown"
+        case .elsewhere: "Other locations"
+        case .unknown: "While moving"
         }
     }
     func late(_ event: PlaceEvent) -> String {

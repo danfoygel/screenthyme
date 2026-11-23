@@ -5,7 +5,8 @@ import ThymeCore
 /// Keeps a kid phone's rules, policy and answers to its requests current without relying on silent pushes, which
 /// iOS rations (PLAN.md §14, §15). The monitor extension fetches `RuleSet.<kid>` and `Policy.<kid>` by name at every
 /// wake (every minute of use; `interval` only skips back-to-back wakes), and `TimeGrant.<request>` for open requests.
-/// A parent's change reaches a phone in use within about a minute.
+/// A parent's change reaches a phone in use within about a minute. The family's places (`FamilyPlaces`) come the same
+/// way, for the app to fence (`PlaceWatcher`).
 enum KidSync {
     static let interval: TimeInterval = 45
 
@@ -22,8 +23,9 @@ enum KidSync {
         }
         let ruleSetID = id(RuleSet.recordType, kid.id)
         let policyID = id(Policy.recordType, kid.id)
+        let placesID = id(FamilyPlaces.recordType, FamilyPlaces.fixedID)
         var ids = open.map { id(TimeGrant.recordType, $0.id) }
-        if due { ids += [ruleSetID, policyID] }
+        if due { ids += [ruleSetID, policyID, placesID] }
         do {
             let results = try await store.database.records(for: ids)
             for (recordID, result) in results {
@@ -35,6 +37,8 @@ enum KidSync {
                         savePolicy(policy)
                     } else if let grant = TimeGrant.decode(record) {
                         Enforcer.apply(grant, now: now)
+                    } else if let places = FamilyPlaces.decode(record) {
+                        saveFamilyPlaces(places)
                     }
                 case let .failure(error as CKError) where error.code == .unknownItem:
                     // No RuleSet yet: keep what we have. No Policy: nothing to enforce. No grant: still waiting.
@@ -83,6 +87,16 @@ enum KidSync {
                 try? AppGroup.journal.append(.note("rules updated: \(set.rules.count)\(checkedAt == nil ? " (nearby)" : "")"))
             }
             AppGroup.saveRules(LocalRules(rules: set.rules, checkedAt: checked, updatedAt: set.updatedAt))
+        }
+    }
+
+    /// Stores the family's places if newer. The app fences them when it next runs (`PlaceWatcher`).
+    static func saveFamilyPlaces(_ places: FamilyPlaces) {
+        AppGroup.withLock("places") {
+            guard places.updatedAt > (AppGroup.familyPlaces()?.updatedAt ?? .distantPast) else { return }
+            try? FileManager.default.createDirectory(at: AppGroup.familyPlacesURL.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            AppGroup.save(places, to: AppGroup.familyPlacesURL)
         }
     }
 

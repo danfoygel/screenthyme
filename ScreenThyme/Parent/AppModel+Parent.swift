@@ -22,11 +22,11 @@ extension AppModel {
         }
     }
 
-    /// While the mirror is re-fetched (`FamilyData.isRebuilding`) it can lack a kid's policy and rules: a save built
-    /// from it would replace what the kid's phone has.
+    /// While the mirror is re-fetched (`FamilyData.isRebuilding`) it can lack a kid's policy and rules, or the
+    /// family's places: a save built from it would replace what the kid's phone has.
     var editsBlocked: Bool { data.isRebuilding }
 
-    private func refuseWhileRebuilding() -> Bool {
+    func refuseWhileRebuilding() -> Bool {
         guard editsBlocked else { return false }
         message = "Still syncing with iCloud. Try again once it finishes."
         return true

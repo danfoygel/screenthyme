@@ -1001,3 +1001,22 @@ Goal: say where each app was used ("YouTube: 50 min at home, 12 at school") with
   too: departures 1–5 min late, arrivals 4–17 min in an unfamiliar area.
 - **Then, if it holds up:** places set on a parent's phone and synced like `Policy`, stays uploaded, the timeline
   split by place on parents' phones, and maybe rules by place.
+- **Family places on parents' phones (Nov 21, 2026).** Kids' phones now upload every event (`PlaceEvent` records,
+  with the kid's id): right away from the app, which iOS woke for it, and with each upload from the monitor
+  extension otherwise (ledger `Places/events-uploaded.jsonl`). A kid's phone keeps no one's events from the zone.
+  Parents' mirror files them per kid per day of `at` (snapshot version 6, so phones re-fetch).
+  - **Places tab:** a map of the last 60 days' visits. Visits no place covers are grouped into spots
+    (`VisitClusters`): two visits are one spot when their centers are within the larger of their accuracies (50 m at
+    least), the most precise visits seeding spots so a vague one can't join two. Tapping a spot names it; the place
+    is centered on the spot (weighted by precision) with a fence of its median accuracy or spread (100 m to 1 km,
+    adjustable). The family's places are one record, `FamilyPlaces.<fixed id>`, last writer wins.
+  - **Kids' phones fence them:** `KidSync` fetches the record by name at every wake (App Group
+    `Places/family-places.json`), and `PlaceWatcher` fences the family's places before the test's own (20 at most),
+    re-adding a fence a parent moved or resized. Events of fences that aren't the family's are ignored by parents.
+  - **Usage by location (`LocationDay`):** stays from the week's events (`PlaceStays`, clipped to the day) share out
+    each block's seconds: a family place, other locations (a visit no place covers) or while moving (outside every
+    visit, including time iOS said nothing). Shown as a kid's day's Where section, each location's apps and times
+    (`LocationDayView`), and an app's Where in its details (today or the last 7 days).
+  - **Raw location** (Rules and health, and a day's Where): the day's visits on a map, the stays, and every event
+    with coordinates, accuracy, the place it matched, which fence API, and how late.
+  - The replay tool's school day comes with visits (spots in a public park) for the Simulator and the screen map.

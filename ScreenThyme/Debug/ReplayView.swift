@@ -114,7 +114,8 @@ struct ReplayView: View {
             return
         }
         kidID = kid.id
-        runner.run(trace: trace, kid: kid, day: day, speed: speed.value, destination: destination, model: model)
+        runner.run(trace: trace, kid: kid, day: day, speed: speed.value, destination: destination, model: model,
+                   placeEvents: scenario?.placeEvents(kid: kid, day: day) ?? [])
     }
 }
 
@@ -128,7 +129,9 @@ final class ReplayRunner {
     private(set) var status: String?
     private var task: Task<Void, Never>?
 
-    func run(trace: Trace, kid: Kid, day: DayKey, speed: ReplaySpeed, destination: Destination, model: AppModel) {
+    /// - Parameter placeEvents: where the phone was (a synthetic day's visits), sent with the first records.
+    func run(trace: Trace, kid: Kid, day: DayKey, speed: ReplaySpeed, destination: Destination, model: AppModel,
+             placeEvents: [PlaceEvent] = []) {
         let moved = Replay.retarget(trace, to: kid, day: day)
         let fires = moved.fires()
         let alertsByTime = Self.alerts(for: moved, rules: model.data.rules(for: kid.id))
@@ -145,7 +148,8 @@ final class ReplayRunner {
         task = Task {
             defer { isRunning = false }
             do {
-                try await send(IngestBatch(kids: [kid], items: moved.items, epochs: moved.epoch.map { [$0] } ?? []),
+                try await send(IngestBatch(kids: [kid], items: moved.items, epochs: moved.epoch.map { [$0] } ?? [],
+                                           placeEvents: placeEvents),
                                to: destination, model: model)
                 let start = Date()
                 // Batch records that are due within the same second.
@@ -159,7 +163,7 @@ final class ReplayRunner {
                                    to: destination, model: model)
                     sent += group.count
                 }
-                status = "Replayed \(fires.count) fires, \(moved.samples.count) samples and \(alertsByTime.values.joined().count) alerts as \(kid.displayName) on \(day)."
+                status = "Replayed \(fires.count) fires, \(moved.samples.count) samples, \(placeEvents.count) location events and \(alertsByTime.values.joined().count) alerts as \(kid.displayName) on \(day)."
             } catch is CancellationError {
                 status = "Stopped after \(sent) records."
             } catch {
@@ -184,6 +188,7 @@ final class ReplayRunner {
             try await store.save(batch.fires)
             try await store.save(batch.samples)
             try await store.save(batch.alerts)
+            try await store.save(batch.placeEvents)
         }
     }
 

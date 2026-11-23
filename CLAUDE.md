@@ -15,7 +15,8 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
   Details/           AppDetails: one app's groups, lists, Downtime, limits, use and requests (its details screen)
   Link/              nearby link protocol: LinkKey (family secret), LinkSession (hello, AES-GCM frames), LinkBundle
   Energy/            EnergyLedger: our processes' daily energy from kernel counters (sampled by Shared/Energy)
-  Places/            Place, PlaceEvent, PlaceStays: geofences and visits → stays → use by place (PLAN.md §19)
+  Places/            Place, FamilyPlaces, PlaceEvent, PlaceStays, LocationDay, VisitClusters: geofences and visits →
+                     stays → use by place; visits → spots to name (PLAN.md §19)
   BugReport/         a kid's bug report, the family's GitHub repo and token (IssueTracker), filing it (GitHubIssues)
   Replay/            Trace, retarget/schedule, synthetic traces and scenarios
 Shared/              compiled into the app AND the monitor extension: App Group files, SharedConfig, CloudKit records, Uploader

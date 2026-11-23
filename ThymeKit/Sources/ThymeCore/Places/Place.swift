@@ -1,6 +1,7 @@
 import Foundation
 
-/// A place a kid's phone watches with a geofence: home, school (PLAN.md §19).
+/// A place a kid's phone watches with a geofence: home, school (PLAN.md §19). The family's are named by parents, from
+/// where kids' phones stayed (`VisitClusters`); the location test also marks its own on the kid's phone.
 public struct Place: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
@@ -10,6 +11,9 @@ public struct Place: Codable, Sendable, Hashable, Identifiable {
     public var radius: Double
 
     public static let defaultRadius: Double = 150
+    /// The smallest fence a parent can set: iOS misses crossings of smaller ones.
+    public static let minimumRadius: Double = 100
+    public static let maximumRadius: Double = 1000
 
     public init(id: UUID = UUID(), name: String, latitude: Double, longitude: Double, radius: Double = Place.defaultRadius) {
         self.id = id
@@ -35,8 +39,26 @@ public struct Place: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// The family's places, one record for all of them under a fixed name: parents save it, kids' phones fetch it by name
+/// and watch each place with a fence (PLAN.md §19).
+public struct FamilyPlaces: Codable, Sendable, Hashable, Identifiable {
+    public static let fixedID = Replay.stableUUID("family-places")
+    /// A phone watches 20 fences at most, the location test's own included.
+    public static let limit = 20
+
+    public var id: UUID
+    public var places: [Place]
+    public var updatedAt: Date
+
+    public init(places: [Place], updatedAt: Date = Date()) {
+        self.id = Self.fixedID
+        self.places = places
+        self.updatedAt = updatedAt
+    }
+}
+
 /// What iOS told the kid app about where the phone is: a geofence crossing or a visit (PLAN.md §19).
-/// Kept on the phone only; never in the journal, whose notes go into bug reports.
+/// Uploaded to the family zone for parents; never in the journal, whose notes go into bug reports.
 public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
     public enum Kind: String, Codable, Sendable {
         /// The phone is inside `place`'s fence (also iOS's first answer after a fence is added).
@@ -56,6 +78,8 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var id: UUID
+    /// Whose phone: set when recorded, and at upload for events from before uploads.
+    public var kidID: UUID?
     public var kind: Kind
     /// When it happened, by iOS's account.
     public var at: Date
@@ -70,10 +94,11 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
     /// Meters.
     public var accuracy: Double?
 
-    public init(id: UUID = UUID(), kind: Kind, at: Date, observedAt: Date = Date(), place: UUID? = nil,
-                source: Source? = nil, departure: Date? = nil, latitude: Double? = nil, longitude: Double? = nil,
-                accuracy: Double? = nil) {
+    public init(id: UUID = UUID(), kidID: UUID? = nil, kind: Kind, at: Date, observedAt: Date = Date(),
+                place: UUID? = nil, source: Source? = nil, departure: Date? = nil, latitude: Double? = nil,
+                longitude: Double? = nil, accuracy: Double? = nil) {
         self.id = id
+        self.kidID = kidID
         self.kind = kind
         self.at = at
         self.observedAt = observedAt
@@ -86,4 +111,7 @@ public struct PlaceEvent: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var delay: TimeInterval { observedAt.timeIntervalSince(departure ?? at) }
+
+    /// The day the parents' mirror files it under: when it happened.
+    public var day: DayKey { DayKey(at) }
 }

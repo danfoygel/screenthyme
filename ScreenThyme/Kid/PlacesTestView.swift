@@ -2,7 +2,8 @@ import SwiftUI
 import ThymeCore
 import UIKit
 
-/// The location test (PLAN.md §19): mark places, then see what iOS reported, how late, and today's use by place.
+/// The location test (PLAN.md §19): mark places (besides the family's, which parents name), then see what iOS reported,
+/// how late, and today's use by place.
 struct PlacesTestView: View {
     @Environment(AppModel.self) private var model
     @State private var watcher = PlaceWatcher.shared
@@ -34,11 +35,12 @@ struct PlacesTestView: View {
                 }
             } footer: {
                 Text("iOS watches the fences and visits itself and wakes ScreenThyme only when something changes. "
-                     + "It all stays on this phone.")
+                     + "Parents see where the phone was, and where apps got used.")
             }
             Section {
                 ForEach(watcher.places) { place in
-                    LabeledContent(place.name) {
+                    let isFamily = watcher.familyPlaces.contains { $0.id == place.id }
+                    LabeledContent(isFamily ? "\(place.name) (family)" : place.name) {
                         VStack(alignment: .trailing) {
                             Text("\(Int(place.radius)) m")
                             if let region = watcher.regions[place.id] {
@@ -46,6 +48,7 @@ struct PlacesTestView: View {
                             }
                         }
                     }
+                    .deleteDisabled(isFamily)
                 }
                 .onDelete { offsets in offsets.map { watcher.places[$0] }.forEach(watcher.remove) }
                 HStack {
@@ -62,7 +65,8 @@ struct PlacesTestView: View {
             } header: {
                 Text("Places")
             } footer: {
-                Text("“Region:” is what iOS's region monitoring last said about the place.")
+                Text("“Region:” is what iOS's region monitoring last said about the place. Parents name the family's "
+                     + "places; those marked here are this phone's only.")
             }
             Section("Today by place") {
                 ForEach(byPlace.sorted { total($0.value) > total($1.value) }, id: \.key) { whereabouts, apps in
@@ -113,8 +117,8 @@ struct PlacesTestView: View {
     private func label(_ whereabouts: Whereabouts) -> String {
         switch whereabouts {
         case let .place(id): watcher.places.first { $0.id == id }?.name ?? "Removed place"
-        case .elsewhere: "Elsewhere"
-        case .unknown: "Unknown"
+        case .elsewhere: "Other locations"
+        case .unknown: "While moving"
         }
     }
 

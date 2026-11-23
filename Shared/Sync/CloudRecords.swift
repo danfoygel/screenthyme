@@ -163,6 +163,25 @@ extension IssueTracker: CloudRecordable {
     var ownerKidID: UUID { id }
 }
 
+/// Where a kid's phone was (PLAN.md §19): only parents' phones keep them.
+extension PlaceEvent: CloudRecordable {
+    static let recordType = "PlaceEvent"
+    var recordUUID: UUID { id }
+    /// `kidID` is set before upload (`Uploader`).
+    var ownerKidID: UUID { kidID ?? id }
+
+    func addFields(to record: CKRecord) {
+        record["day"] = day.description
+    }
+}
+
+/// One per family, under a fixed name; belongs to no kid. Kids' phones fetch it by name (`KidSync`).
+extension FamilyPlaces: CloudRecordable {
+    static let recordType = "FamilyPlaces"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { id }
+}
+
 /// Saves to the family zone. Used by the app and (for uploads) the monitor extension.
 struct CloudStore: Sendable {
     static let zoneName = "Family"
