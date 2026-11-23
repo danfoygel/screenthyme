@@ -277,6 +277,8 @@ replay tool and the screen map.
 - Places (§19): whether a child account can grant Always location, iOS's "keep allowing Always?" prompts, and
   `locationd`'s battery cost (Settings › Battery).
 - Website matching in token pairing when a page's embedded frames count toward other domains.
+- Self-approval and End now (§15.11, §15.12): the alert's push, the kid's phone picking up an end at its next wake,
+  and an ended limit grant shielding again.
 
 **To build:**
 - Token expiry: nothing handles `TokenExpiryMessage` (iOS 26.5) or prompts a rescan when tokens stop working.
@@ -601,6 +603,45 @@ only" ends at midnight). A temporary save adds a `TemporaryChange` to the policy
   first. Temporary changes follow new tokens like the rest of the policy.
 - **Change history:** the save says it's temporary and when it changes back; the change back is its own entry
   (`PolicyRevert`), shown under "Coming up" until then. The policy screen lists pending temporary changes.
+
+### 15.11 Self-approval
+
+When no parent can answer (no signal, nobody picks up), the kid can approve their own request for more time, for
+what they asked. It's for real emergencies, and the screen says so bluntly; what keeps it rare is that parents see
+every use, not a count.
+- **Where:** under a request that's waiting, in Ask for more time and in the kid's Screen Time section: "Can't reach
+  a parent? Approve it myself…" opens `SelfApproveView`: the warning, what it would approve, a required reason (at least
+  `TimeGrant.minimumSelfApprovalReason` characters) and a second "Is this really an emergency?" confirmation. So the
+  parents always got the request first.
+- **What:** Downtime and limit requests only (`TimeRequest.canSelfApprove`); never Blocked apps (as with one more
+  minute) or Always Allow, which changes the policy.
+- **How:** a `TimeGrant` the kid's phone writes itself, with `selfApproval` (the reason) and `by` the kid's name. The
+  Enforcer applies it like a parent's answer; `Enforcer.apply` refuses a request that already has one, so a parent's
+  answer that got there first wins. It's queued in `Outbox/self-grants.jsonl`, uploaded as `TimeGrant.<request id>` (so
+  parents' phones see the request as answered) and sent nearby; parents' phones take only self-approved grants from a
+  kid's phone.
+- **Alert:** "⚠️ <kid> self-approved more time", with what and the reason, at once (pushed like any alert).
+- **Parents' phones mark it** in orange: the alert (`TimeGrant.selfApproved(with:from:)` finds its grant by moment), the
+  ask alert's outcome ("self-approved, no parent answered"), Change history (with the reason), the app's details and
+  the kid's card on Home ("Self-approved more time today"). Usage during the time is recorded as always.
+- **Not yet:** there's no cap or switch to turn it off per kid. A parent can end it early (§15.12).
+- Race: a parent answering in the same seconds overwrites the `TimeGrant` record; the kid's phone keeps what it
+  applied first and the alert stays.
+
+### 15.12 Ending more time early
+
+A parent can end any approval that may still be running, theirs, another parent's or the kid's own.
+- **Where:** Alerts › "More time running now" (approvals today still within their minutes of the clock, or for the
+  rest of the day or window: `TimeGrant.mightBeRunning`), and an app's details under More time. "End now" asks first.
+- **How:** the parent saves the same `TimeGrant.<request id>` again with `endedAt` and `endedBy`; everything else
+  stays, so a self-approval stays marked. It goes nearby too. The kid's phone fetches today's running approvals by name
+  at its wakes (`KidSync.runningGrants`, with the policy), and `Enforcer.apply` records the end on the grant it
+  applied and reconciles: from `endedAt` the grant lets nothing through (`EnforcementPlanner.isLeft`). A limit grant
+  for no app (extra minutes on the limit) keeps only the minutes of the clock it ran, at most its own, so the limit
+  is used up again at once unless other time is left.
+- An end is final: a parent's mirror doesn't take a copy without it over one with it (the kid's phone resends its
+  self-approvals nearby).
+- Shown as "‹parent› ended it early" in Alerts, Change history, the app's details and the kid's Screen Time section.
 
 ## 16. Losing data access, and iOS's count restarting
 

@@ -33,7 +33,8 @@ public struct LinkHello: Codable, Sendable, Hashable {
 }
 
 /// Records one phone sends another: what the other phone would otherwise fetch from CloudKit. A kid phone sends its
-/// usage, heartbeat, alerts, requests for more time and one more minute; a parent phone sends that kid's rules, policy and answers.
+/// usage, heartbeat, alerts, requests for more time (and its own approvals of them) and one more minute; a parent phone
+/// sends that kid's rules, policy and answers.
 /// Every record has the same id it has in CloudKit, so the CloudKit copy that arrives later just overwrites it.
 public struct LinkBundle: Codable, Sendable, Hashable {
     public var kids: [Kid] = []

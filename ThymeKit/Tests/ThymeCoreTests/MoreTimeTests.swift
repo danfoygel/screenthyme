@@ -35,6 +35,48 @@ struct MoreTimeTests {
         #expect(MoreTime.outcome(of: request, answer: answer(true, nil))
             == "Asked for 1 more hour · Mom gave the rest of today")
         #expect(MoreTime.outcome(of: request, answer: answer(false, nil)) == "Asked for 1 more hour · Mom said no")
+        #expect(MoreTime.outcome(of: request, answer: answer(true, 30).ending(at: at(16, 50), by: "Dad"))
+            == "Asked for 1 more hour · Mom gave 30 more minutes · Dad ended it early")
+    }
+
+    @Test func selfApprovalGivesWhatWasAskedAndSaysSo() {
+        let grant = TimeGrant.selfApproved(request, by: "Sam", because: "Need the map to get home", at: at(16, 50))
+        #expect(grant.approved && grant.minutes == 60 && grant.requestID == request.id && grant.itemID == request.itemID)
+        #expect(grant.isSelfApproved && grant.by == "Sam")
+        #expect(MoreTime.outcome(of: request, answer: grant) == "Asked for 1 more hour · self-approved, no parent answered")
+        #expect(MoreTime.outcome(of: request, answer: grant.ending(at: at(16, 55), by: "Mom"))
+            == "Asked for 1 more hour · self-approved, no parent answered · Mom ended it early")
+        let parents = TimeGrant(request: request, approved: true, minutes: 60, at: at(16, 50), by: "Mom")
+        #expect(!parents.isSelfApproved)
+    }
+
+    @Test func onlyDowntimeAndLimitRequestsCanBeSelfApproved() {
+        func request(_ reason: BlockReason) -> TimeRequest {
+            TimeRequest(kidID: testKid.id, itemID: UUID(), reason: reason, minutes: 15, at: at(16, 41))
+        }
+        #expect(request(.downtime(UUID())).canSelfApprove)
+        #expect(request(.limit(UUID())).canSelfApprove)
+        #expect(!request(.blocked).canSelfApprove)
+        #expect(!request(.alwaysAllow).canSelfApprove)
+    }
+
+    @Test func grantsSavedBeforeSelfApprovalStillDecode() throws {
+        let old = TimeGrant(request: request, approved: true, minutes: 30, at: at(16, 42), by: "Mom")
+        var json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder.thyme.encode(old)) as? [String: Any])
+        json["selfApproval"] = nil
+        let decoded = try JSONDecoder.thyme.decode(TimeGrant.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded == old && !decoded.isSelfApproved)
+    }
+
+    @Test func selfApprovalAlertsFindTheirGrant() {
+        let grant = TimeGrant.selfApproved(request, by: "Sam", because: "Need the map to get home", at: at(16, 50))
+        let parents = TimeGrant(request: request, approved: true, minutes: 60, at: at(16, 50), by: "Mom")
+        let alert = AlertRecord(kidID: testKid.id, ruleID: nil, itemID: request.itemID, at: grant.at, title: "", body: "")
+        #expect(TimeGrant.selfApproved(with: alert, from: [parents, grant]) == grant)
+        #expect(TimeGrant.selfApproved(with: alert, from: [parents]) == nil)
+        var asked = alert
+        asked.at = request.at
+        #expect(TimeGrant.selfApproved(with: asked, from: [grant]) == nil)
     }
 
     @Test func alertsFindTheRequestTheyWereSentWith() {

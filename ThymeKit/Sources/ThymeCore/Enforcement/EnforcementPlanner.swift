@@ -304,10 +304,16 @@ public enum EnforcementPlanner {
     }
 
     /// Minutes parents' approved `grants` add to limit `limitID`; nil when one gave the rest of the day. Only grants
-    /// that name nothing raise the limit: one for an app lets that app through instead.
+    /// that name nothing raise the limit: one for an app lets that app through instead. One ended early adds only the
+    /// minutes of the clock it ran, at most its own: no more use than that can have come from it.
     public static func extraMinutes(for limitID: UUID, grants: some Sequence<TimeGrant>) -> Int? {
         var total = 0
         for grant in grants where grant.approved && grant.reason == .limit(limitID) && grant.itemID == nil {
+            if let ended = grant.endedAt {
+                let ran = max(0, Int((ended.timeIntervalSince(grant.at) / 60).rounded(.up)))
+                total += min(grant.minutes ?? ran, ran)
+                continue
+            }
             guard let minutes = grant.minutes else { return nil }
             total += minutes
         }
@@ -362,8 +368,9 @@ public enum EnforcementPlanner {
     }
 
     /// A grant still has time left: minutes of the item's use, or of the clock for the whole phone or a scanned item,
-    /// whose use Apple's data doesn't report (always, for a grant until the window or day ends).
+    /// whose use Apple's data doesn't report (always, for a grant until the window or day ends), unless a parent ended it.
     static func isLeft(_ applied: AppliedGrant, usage: [UUID: Double], now: Date) -> Bool {
+        guard !applied.grant.isEnded(at: now) else { return false }
         guard let minutes = applied.grant.minutes else { return true }
         guard let item = applied.grant.itemID, let used = usage[item] else {
             return now < applied.appliedAt.addingTimeInterval(Double(minutes) * 60)
