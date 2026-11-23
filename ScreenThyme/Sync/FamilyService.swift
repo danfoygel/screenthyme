@@ -128,7 +128,9 @@ enum PushDiagnostics {
 
 /// Incremental fetch of the family zone, with the change token kept per zone.
 enum ChangeFetcher {
-    static func fetch(store: CloudStore) async throws -> IngestBatch {
+    /// With `page`, each page goes to it as it arrives and the token is saved after it, so an interrupted fetch
+    /// resumes where it stopped (for a full re-fetch, which takes long).
+    static func fetch(store: CloudStore, page: (@MainActor (IngestBatch) -> Void)? = nil) async throws -> IngestBatch {
         let key = "changeToken.\(store.zoneID.ownerName).\(store.zoneID.zoneName)"
         var token = loadToken(key)
         var batch = IngestBatch()
@@ -144,14 +146,20 @@ enum ChangeFetcher {
                 token = nil
                 continue
             }
+            var received = IngestBatch()
             for (_, result) in changes.modificationResultsByID {
                 if case let .success(modification) = result {
-                    batch.add(modification.record)
+                    received.add(modification.record)
                 }
             }
-            batch.deletedRecordNames += changes.deletions.map(\.recordID.recordName)
+            received.deletedRecordNames += changes.deletions.map(\.recordID.recordName)
             token = changes.changeToken
             moreComing = changes.moreComing
+            if let page {
+                await page(received)
+                saveToken(token, key: key)
+            }
+            batch.append(received)
         }
         saveToken(token, key: key)
         return batch

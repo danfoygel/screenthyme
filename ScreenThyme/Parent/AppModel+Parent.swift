@@ -22,7 +22,18 @@ extension AppModel {
         }
     }
 
+    /// While the mirror is re-fetched (`FamilyData.isRebuilding`) it can lack a kid's policy and rules: a save built
+    /// from it would replace what the kid's phone has.
+    var editsBlocked: Bool { data.isRebuilding }
+
+    private func refuseWhileRebuilding() -> Bool {
+        guard editsBlocked else { return false }
+        message = "Still syncing with iCloud. Try again once it finishes."
+        return true
+    }
+
     func save(_ rule: Rule) async {
+        guard !refuseWhileRebuilding() else { return }
         data.ingest(IngestBatch(rules: [rule]))
         do {
             if let store { try await PendingSaves.save([rule], to: store) }
@@ -35,6 +46,7 @@ extension AppModel {
     /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`) or gets it nearby. Notes the
     /// change, with who made it, in the kid's change history.
     func save(_ policy: Policy) async {
+        guard !refuseWhileRebuilding() else { return }
         var policy = policy
         policy.updatedAt = Date()
         let before = data.storedPolicy(for: policy.kidID)
@@ -58,7 +70,10 @@ extension AppModel {
         let grant = TimeGrant(request: request, approved: approved, minutes: minutes, at: Date(), by: senderName)
         let policy = data.policy(for: request.kidID)
         let allowing = policy.applying(grant)
-        if allowing != policy { await save(allowing) }
+        if allowing != policy {
+            guard !refuseWhileRebuilding() else { return }
+            await save(allowing)
+        }
         data.ingest(IngestBatch(grants: [grant]))
         nearby.sendUpdates()
         guard let store else { return }
@@ -126,6 +141,7 @@ extension AppModel {
     }
 
     func delete(_ rule: Rule) async {
+        guard !refuseWhileRebuilding() else { return }
         let name = "\(Rule.recordType).\(rule.id.uuidString)"
         data.ingest(IngestBatch(deletedRecordNames: [name]))
         // The rule set is what kid phones read, so it goes out even when the deletion can't (offline).
