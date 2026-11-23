@@ -553,6 +553,10 @@ until the window ends (a press on a category shield can't say which app, §15.3)
   allowed ones: they also count toward Safari), and shield `.all(except: allowed)` in the `limits` store, like
   Downtime. They get no `lim.` activity: an event over all activity can't leave out Always Allowed, so the wakes
   reconcile them. Their shield names only a category, so one more minute or a request is for the whole phone.
+- **A limit whose categories hold an Always Allowed app** (Apple Music under Entertainment) gets no `lim.` activity
+  either, and a fire recorded earlier that day is ignored: iOS's event would count that app, which our count leaves out,
+  and end the limit early. The wakes end it, up to a minute of use late (`EnforcementPlanner.eventCountsAlwaysAllowed`).
+  An unmatched scanned app has no known category, so one that's Always Allowed still counts in the event.
 - `Roller.registerAll` no longer stops every activity, only the wake alarm's.
 - Block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
   "Time limit: Social (1 h)", "Not allowed". The secondary button "Ask for more time" opens ScreenThyme (§15.4), or
