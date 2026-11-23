@@ -139,8 +139,9 @@ enum Enforcer {
                               use: [UUID: ShieldBudget.Use]) -> Set<UUID> {
         let tokens = Tokens(items: items)
         let exempt = exemptItems(items)
-        // ScreenThyme's own token, from the app scan.
-        let exemptApps = Set((AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []).compactMap(TokenCoding.application))
+        // ScreenThyme's own token, from the app scan. One app or none: more would let others through every shield.
+        let picked = AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []
+        let exemptApps = picked.count == 1 ? Set(picked.compactMap(TokenCoding.application)) : []
         let allowedIDs = tokens.expandingCategories(plan.alwaysAllowed).union(exempt)
         var allowed = tokens.split(allowedIDs)
         allowed.apps.formUnion(exemptApps)

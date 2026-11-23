@@ -43,7 +43,14 @@ struct PairingScannerView: View {
         .bugButton()
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.success, trigger: sent.count)
-        .onAppear { model.pairingPeers[kid.id]?.result = nil }
+        .onAppear {
+            model.pairingPeers[kid.id]?.result = nil
+            model.startCameraPairing(on: kid.id)
+        }
+        // A kid's phone that connects while the camera is open opens its side too.
+        .onChange(of: model.nearby.isConnected(kid: kid.id)) { _, connected in
+            if connected { model.startCameraPairing(on: kid.id) }
+        }
         .onChange(of: read) { sendComplete() }
         // The kid's phone asks again for a report already read (it reopened, or a message was lost): send it again.
         .onChange(of: peer?.showing) { sendComplete(again: true) }
@@ -55,7 +62,7 @@ struct PairingScannerView: View {
         }
         if let result = peer?.result { return result }
         guard let peer, peer.total > 0 else {
-            return "On \(kid.displayName)'s phone, open Apps for Screen Time → Match with a parent's camera."
+            return "Opening matching on \(kid.displayName)'s phone…"
         }
         guard peer.showing != nil else { return "Matching on \(kid.displayName)'s phone…" }
         return "Hold the camera over \(kid.displayName)'s screen: report \(peer.done + 1) of \(peer.total)."

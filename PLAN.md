@@ -220,7 +220,18 @@ A plain status screen: Screen Time access, monitoring, last upload, and how long
 links to the kid's Apps (used in the last 30 days, each to its details), the day's timeline and Time by category
 (built from this phone's App Group as parents see it), the Screen Time section (limits, Always Allowed and Blocked,
 ask to always allow), and Report a problem. Setup is for a parent: Screen Time permission, joining the family, the
-app scan, and matching by screenshot or camera. Debug holds the wake alarm's state, Apple's report for a day (to
+app scan, and matching by screenshot or camera.
+
+**Parent controls** are locked once the phone has the family's link key (§17): the app scan, matching by screenshot,
+choosing ScreenThyme, starting monitoring, one more minute's length and Debug. Each of them let a kid get around
+enforcement: a "ScreenThyme" pick of other apps let them through every shield, Debug's Stop monitoring stopped every
+activity with no alert, a scan that left an app out unshielded it. A parent unlocks them from their own phone, nearby
+(Settings › Kids › the kid › Unlock), for 15 minutes (`ParentUnlock`, `LinkUnlock`); only a parent's phone sends it,
+so there's no request to approve by mistake. The kid's phone keeps the unlock in memory and times it by its own clock
+from when it arrived, so it locks when ScreenThyme leaves the foreground, and setting the clock only ends it sooner.
+Locking goes back to the top of the screen. Each unlock goes in the journal and in heartbeats
+(`Heartbeat.lastParentUnlock`), so the other parent sees it. Camera matching needs a parent anyway and stays open.
+Before the link key arrives (first setup) and in single-phone test mode they're open. Debug holds the wake alarm's state, Apple's report for a day (to
 compare with ours), the data access test, raw usage, the Places test, uploads, battery use, the journal,
 Permissions and CloudKit records.
 
@@ -462,6 +473,8 @@ approves the amount asked or changes it, saved as `TimeGrant.<request id>`.
 - On the kid's phone a parent selects All Apps & Categories once: a token for every installed app, website and
   category, each a `TrackedItem` with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). A second pick
   of ScreenThyme alone gives its own token, which Downtime and limits always let through (`exempt-tokens.json`).
+  The pick must be one app, no categories or websites, and the Enforcer ignores a file with more (an older build took
+  any pick). It's a parent control (§4.9): once at setup, again only if its token stops working.
   Apps installed later are covered by their category until the next scan.
 - The shield extensions can read the App Group but the configuration one can't write it; the action extension can.
 - A press on a category shield (Downtime's `.all(except:)`, category limits) calls
@@ -538,7 +551,9 @@ several reports run on one screen, so iOS does the comparison:
   Settings → the kid): the kid's phone shows one report at a time (`TokenPairing.Display`; at most 600 bytes a code,
   cycling every 0.7 s), the parent's reads them with VisionKit's live scanner and sends each complete report's codes
   over the nearby link (`LinkBundle.pairing`); the kid's phone moves to the next, tells parents its progress, and
-  sends the result. Needs both apps open and the link up.
+  sends the result. Needs both apps open and the link up. Opening the camera on the parent's phone opens the kid's
+  side too (`LinkBundle.open`, also sent when the kid's phone connects while the camera is open), unless it's showing
+  already; a field of its own, since a bundle an older build can't decode closes the connection.
 - **Modes** (`TokenPairing.Mode`, the default `unmatched`): numbers go only to scanned items with no match and the
   reports leave out what's matched, so new apps take one screenshot; `all` checks every match again. The mode and
   display are saved in the App Group (`token-pairing-mode.json`, `token-pairing-display.json`) before the reports
@@ -663,6 +678,8 @@ phone.
   hour old.
 - Parent → kid: the kid's policy (newer `updatedAt` wins), the last rule set this phone published (an older set from a
   parent nearby can't replace a newer one from CloudKit), answers from the last two days, and pairing codes (§15.6).
+- Parent controls (§4.9): a parent's phone sends `.unlock` or `.lock` to one kid's phone at once; the kid's phone
+  says whether they're unlocked (`.state`) in every bundle and whenever that changes.
 
 **Pairing is the family zone.** The owner creates `LinkKey.<fixed id>` (32 random bytes, create-only so two launches
 can't race); every phone fetches it by name at refresh (`LinkKeyService`), so each needs the internet once. The

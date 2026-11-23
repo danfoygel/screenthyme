@@ -166,6 +166,24 @@ struct KidSettingsView: View {
                     }
                 }
             }
+            Section {
+                if !model.nearby.isConnected(kid: kid.id) {
+                    Text("Open ScreenThyme on \(kid.displayName)'s phone, near this one, to unlock them.")
+                        .foregroundStyle(.secondary)
+                } else if let until = model.kidUnlocks[kid.id], until > Date() {
+                    LabeledContent("Unlocked until", value: until.formatted(date: .omitted, time: .shortened))
+                    Button("Lock now") { model.setParentControls(unlocked: false, on: kid.id) }
+                } else {
+                    Button("Unlock for \(ParentUnlock.minutes) minutes") { model.setParentControls(unlocked: true, on: kid.id) }
+                }
+                if let unlock = heartbeat?.lastParentUnlock {
+                    LabeledContent("Last unlocked", value: "\(unlock.by), \(Format.relative(unlock.at))")
+                }
+            } header: {
+                Text("Parent controls on \(kid.displayName)'s phone")
+            } footer: {
+                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring, the length of one more minute and Debug. They lock again when ScreenThyme leaves the screen there.")
+            }
             let energy = model.data.energyReports(for: kid.id)
             Section {
                 if let today = energy.first(where: { $0.day == DayKey(Date()) }) {
