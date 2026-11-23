@@ -33,6 +33,8 @@ struct ScreenThymeApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // The screen map's UI test (ScreenTour): no animations to wait out after each tap.
+        if ProcessInfo.processInfo.arguments.contains("-screenTour") { UIView.setAnimationsEnabled(false) }
         BackgroundRefresh.register()
         UNUserNotificationCenter.current().delegate = self
         application.registerForRemoteNotifications()
