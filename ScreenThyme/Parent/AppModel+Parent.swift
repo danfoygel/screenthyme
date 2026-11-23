@@ -44,13 +44,22 @@ extension AppModel {
     }
 
     /// Sends a kid's Screen Time policy; the kid's phone fetches it by name (`KidSync`) or gets it nearby. Notes the
-    /// change, with who made it, in the kid's change history.
-    func save(_ policy: Policy) async {
+    /// change, with who made it, in the kid's change history. With `until`, the change is temporary: the kid's phone
+    /// changes it back then by itself (`TemporaryChange`, PLAN.md §15.10).
+    func save(_ policy: Policy, until: Date? = nil) async {
         guard !refuseWhileRebuilding() else { return }
-        var policy = policy
-        policy.updatedAt = Date()
-        let before = data.storedPolicy(for: policy.kidID)
-        let change = PolicyChange(kidID: policy.kidID, at: policy.updatedAt, by: senderName, before: before, after: policy)
+        let now = Date()
+        var policy = policy.current(at: now)
+        policy.updatedAt = now
+        let before = data.storedPolicy(for: policy.kidID)?.current(at: now)
+        let id = UUID()
+        if let until {
+            policy.temporary.append(TemporaryChange(id: id, until: until, before: before ?? Policy(kidID: policy.kidID),
+                                                    after: policy))
+        }
+        policy.dropSpentTemporaryChanges()
+        let change = PolicyChange(id: id, kidID: policy.kidID, at: now, by: senderName, before: before, after: policy,
+                                  until: until)
         let changes = change.edits.isEmpty ? [] : [change]
         data.ingest(IngestBatch(policies: [policy], policyChanges: changes))
         nearby.sendUpdates()

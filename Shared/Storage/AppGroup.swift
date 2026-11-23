@@ -118,7 +118,9 @@ enum AppGroup {
         try? JSONEncoder.thyme.encode(rules).write(to: rulesURL, options: .atomic)
     }
 
-    static func loadPolicy() -> Policy? { load(Policy.self, from: policyURL) }
+    /// The policy in force at `now`: temporary changes that ended are changed back (`Policy.current(at:)`). The file
+    /// keeps them until the next fetch replaces it.
+    static func loadPolicy(now: Date = Date()) -> Policy? { load(Policy.self, from: policyURL)?.current(at: now) }
     static func savePolicy(_ policy: Policy) { save(policy, to: policyURL) }
 
     static func load<T: Decodable>(_ type: T.Type, from url: URL) -> T? {

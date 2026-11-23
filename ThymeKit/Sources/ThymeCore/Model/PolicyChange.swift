@@ -12,14 +12,17 @@ public struct PolicyChange: Codable, Sendable, Hashable, Identifiable {
     /// `nil` for the kid's first policy, which was edited from an empty one.
     public var before: Policy?
     public var after: Policy
+    /// A save for some days only: when it changes back (its `TemporaryChange` in `after.temporary`, same id).
+    public var until: Date?
 
-    public init(id: UUID = UUID(), kidID: UUID, at: Date, by: String, before: Policy?, after: Policy) {
+    public init(id: UUID = UUID(), kidID: UUID, at: Date, by: String, before: Policy?, after: Policy, until: Date? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
         self.by = by
         self.before = before
         self.after = after
+        self.until = until
     }
 
     public var edits: [PolicyEdit] {
@@ -27,11 +30,12 @@ public struct PolicyChange: Codable, Sendable, Hashable, Identifiable {
     }
 
     /// The policy in force at `date`: the last save before it, or the first save's `before` (nil when the kid had none
-    /// yet). `current` when nothing was saved since `date`, or no saves are known.
+    /// yet). `current` when nothing was saved since `date`, or no saves are known. Temporary changes that ended by
+    /// `date` are changed back.
     public static func policy(at date: Date, changes: [PolicyChange], current: Policy?) -> Policy? {
         let sorted = changes.sorted { $0.at < $1.at }
-        guard let next = sorted.first(where: { $0.at > date }) else { return current }
-        return sorted.last { $0.at <= date }?.after ?? next.before
+        guard let next = sorted.first(where: { $0.at > date }) else { return current?.current(at: date) }
+        return (sorted.last { $0.at <= date }?.after ?? next.before)?.current(at: date)
     }
 }
 

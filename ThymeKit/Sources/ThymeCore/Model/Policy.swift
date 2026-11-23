@@ -16,10 +16,12 @@ public struct Policy: Codable, Sendable, Hashable {
     public var restrictions: Restrictions
     /// The parents' own categories, used in Downtime, limits, Always Allowed and Blocked (PLAN.md §15.8).
     public var groups: [ItemGroup]
+    /// Saves made for some days only, each changing back at its end (`current(at:)`, PLAN.md §15.10).
+    public var temporary: [TemporaryChange]
 
     public init(kidID: UUID, updatedAt: Date = Date(), enabled: Bool = true, downtime: [DowntimeWindow] = [],
                 alwaysAllowed: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
-                restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = []) {
+                restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = [], temporary: [TemporaryChange] = []) {
         self.kidID = kidID
         self.updatedAt = updatedAt
         self.enabled = enabled
@@ -29,6 +31,7 @@ public struct Policy: Codable, Sendable, Hashable {
         self.blocked = blocked
         self.restrictions = restrictions
         self.groups = groups
+        self.temporary = temporary
     }
 
     /// Policies saved before a field existed still load.
@@ -43,6 +46,7 @@ public struct Policy: Codable, Sendable, Hashable {
         blocked = try container.decode(Set<UUID>.self, forKey: .blocked)
         restrictions = try container.decode(Restrictions.self, forKey: .restrictions)
         groups = try container.decodeIfPresent([ItemGroup].self, forKey: .groups) ?? []
+        temporary = try container.decodeIfPresent([TemporaryChange].self, forKey: .temporary) ?? []
     }
 
     /// `ids` with each group's id replaced by its items.
@@ -84,6 +88,11 @@ public struct Policy: Codable, Sendable, Hashable {
             replacements[item.id] = ids
         }
         guard !replacements.isEmpty else { return self }
+        return replacingItems(replacements)
+    }
+
+    /// Temporary changes follow too, so what they added or removed still changes back.
+    private func replacingItems(_ replacements: [UUID: [UUID]]) -> Policy {
         func follow(_ ids: Set<UUID>) -> Set<UUID> {
             Set(ids.flatMap { replacements[$0] ?? [$0] })
         }
@@ -93,6 +102,10 @@ public struct Policy: Codable, Sendable, Hashable {
         for index in policy.limits.indices { policy.limits[index].items = follow(limits[index].items) }
         for index in policy.downtime.indices { policy.downtime[index].items = follow(downtime[index].items) }
         for index in policy.groups.indices { policy.groups[index].items = follow(groups[index].items) }
+        for index in policy.temporary.indices {
+            policy.temporary[index].before = temporary[index].before.replacingItems(replacements)
+            policy.temporary[index].after = temporary[index].after.replacingItems(replacements)
+        }
         return policy
     }
 
@@ -102,12 +115,13 @@ public struct Policy: Codable, Sendable, Hashable {
         ids.filter { id in items[id].map { $0.isScanned && $0.tokenData == nil } ?? false }
     }
 
-    /// Every item id the policy names, in groups too.
+    /// Every item id the policy names, in groups and temporary changes too.
     var allItemIDs: Set<UUID> {
         var ids = alwaysAllowed.union(blocked)
         for limit in limits { ids.formUnion(limit.items) }
         for window in downtime { ids.formUnion(window.items) }
         for group in groups { ids.formUnion(group.items) }
+        for change in temporary { ids.formUnion(change.before.allItemIDs.union(change.after.allItemIDs)) }
         return ids
     }
 

@@ -813,6 +813,24 @@ Its Raw usage opens the raw list (`RawUsageView`) narrowed to the app, on the la
   limit counts.
 - The kid's phone keeps every answer it applied (App Group `grants.jsonl`): the enforcement state keeps only today's.
 
+### 15.10 Temporary changes (Nov 22, 2026)
+
+Save on the policy screen asks whether the changes are permanent or temporary, for 1–30 days counting today ("Today
+only" ends at midnight tonight). A temporary save adds a `TemporaryChange` to the policy (`Policy.temporary`): its id
+(the `PolicyChange`'s), the midnight it ends, and the policy before and after it.
+- **The kid's phone changes back by itself**, offline too: `AppGroup.loadPolicy` returns `Policy.current(at:)`, the
+  policy with each ended change undone, so the Enforcer, block page and kid screens all see it. The wake alarm's
+  midnight restart reconciles, so it takes effect then. Parents' phones work it out the same way
+  (`FamilyData.policy(for:)`); their next save drops ended changes from the record.
+- **Only what the change changed goes back** (`Policy.reverting`), and only where it still holds: a window, limit or
+  group it added goes unless edited since, one it removed comes back, one it changed goes back field by field; items it
+  added to a list go and items it removed come back; Content & Privacy settings go back one by one. A later save of the
+  same thing wins. Changes ending together unwind latest first. A save drops temporary changes left with nothing to
+  change back. Temporary changes follow new tokens like the rest of the policy.
+- **Change history:** the save says it's temporary and when it changes back; the change back is its own entry at that
+  midnight (`PolicyRevert`, worked out from the policy saved last before it), shown under "Coming up" until then.
+  `PolicyChange.until` marks the save. The policy screen lists pending temporary changes.
+
 ## 16. Losing data access, and iOS's count restarting (Nov 15, 2026, the kid's iPhone SE)
 
 A parent's Always Allowed change didn't reach the kid's phone for over an hour: the monitor extension hadn't woken

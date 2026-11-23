@@ -193,6 +193,9 @@ final class ScreenTour: XCTestCase {
         snap("p-downtime")
         tap("Done")
         tap("Save")  // a change for Change history
+        tap("Temporary")  // and its change back, still to come
+        snap("p-save")
+        tap("Save")
         Thread.sleep(forTimeInterval: 1)
         snap("p-policy")
         tap("Add limit")

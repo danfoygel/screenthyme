@@ -34,7 +34,7 @@ enum Enforcer {
             change?(&state)
             AppGroup.save(state, to: AppGroup.enforcementStateURL)
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-            let policy = (AppGroup.loadPolicy() ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
+            let policy = (AppGroup.loadPolicy(now: now) ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows,
@@ -76,7 +76,7 @@ enum Enforcer {
         let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
         // The occurrence of the window it answers, even while Downtime is paused.
         var windowStart: Date?
-        if case let .downtime(windowID) = grant.reason, let window = AppGroup.loadPolicy()?.downtime.first(where: { $0.id == windowID }) {
+        if case let .downtime(windowID) = grant.reason, let window = AppGroup.loadPolicy(now: now)?.downtime.first(where: { $0.id == windowID }) {
             windowStart = window.daily.occurrence(containing: now)?.start
         }
         reconcile(now: now) { state in

@@ -88,7 +88,7 @@ final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: a snapshot of another version (or an unreadable one) triggers a full
         /// re-fetch, shown meanwhile.
-        static let currentVersion = 6
+        static let currentVersion = 7
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -152,12 +152,14 @@ final class FamilyData {
     private(set) var linkKey: LinkKey?
     @ObservationIgnored private let linkKeyURL = URL.applicationSupportDirectory.appending(path: "link-key.json")
 
-    /// The kid's policy, or an empty one to start editing. Apps the kid's phone gave new tokens are named by those
-    /// (`Policy.followingNewTokens`), so a save stores them.
-    func policy(for kid: UUID) -> Policy {
-        snapshot.policies[kid]?.followingNewTokens(items: snapshot.items) ?? Policy(kidID: kid)
+    /// The kid's policy in force now (temporary changes that ended changed back, as on the kid's phone), or an empty
+    /// one to start editing. Apps the kid's phone gave new tokens are named by those (`Policy.followingNewTokens`), so
+    /// a save stores them.
+    func policy(for kid: UUID, now: Date = Date()) -> Policy {
+        snapshot.policies[kid]?.current(at: now).followingNewTokens(items: snapshot.items) ?? Policy(kidID: kid)
     }
 
+    /// As saved: with temporary changes that ended, until the next save drops them.
     func storedPolicy(for kid: UUID) -> Policy? {
         snapshot.policies[kid]
     }
@@ -168,11 +170,14 @@ final class FamilyData {
                             current: storedPolicy(for: kid))
     }
 
-    /// Saved policies and answered requests for more time, oldest first.
+    /// Saved policies, temporary changes changing back (those still to come too) and answered requests for more time,
+    /// oldest first.
     func policyHistory(for kid: UUID) -> [PolicyHistoryEntry] {
-        let changes = snapshot.policyChanges.values.filter { $0.kidID == kid }.map(PolicyHistoryEntry.change)
+        let saves = snapshot.policyChanges.values.filter { $0.kidID == kid }
+        let changes = saves.map(PolicyHistoryEntry.change)
+        let reverts = PolicyRevert.all(changes: Array(saves), current: storedPolicy(for: kid)).map(PolicyHistoryEntry.revert)
         let grants = snapshot.grants.values.filter { $0.kidID == kid }.map(PolicyHistoryEntry.grant)
-        return (changes + grants).sorted { ($0.at, $0.id.uuidString) < ($1.at, $1.id.uuidString) }
+        return (changes + reverts + grants).sorted { ($0.at, $0.id.uuidString) < ($1.at, $1.id.uuidString) }
     }
 
     /// Requests no parent has answered yet, newest first.
@@ -356,14 +361,17 @@ final class FamilyData {
     }
 }
 
-/// One line of a kid's change history: a parent's save of the policy, or their answer to a request for more time.
+/// One line of a kid's change history: a parent's save of the policy, a temporary one changing back, or a parent's
+/// answer to a request for more time.
 enum PolicyHistoryEntry: Identifiable {
     case change(PolicyChange)
+    case revert(PolicyRevert)
     case grant(TimeGrant)
 
     var id: UUID {
         switch self {
         case let .change(change): change.id
+        case let .revert(revert): revert.id
         case let .grant(grant): grant.requestID
         }
     }
@@ -371,6 +379,7 @@ enum PolicyHistoryEntry: Identifiable {
     var at: Date {
         switch self {
         case let .change(change): change.at
+        case let .revert(revert): revert.at
         case let .grant(grant): grant.at
         }
     }
@@ -378,6 +387,7 @@ enum PolicyHistoryEntry: Identifiable {
     var by: String {
         switch self {
         case let .change(change): change.by
+        case let .revert(revert): revert.change.by
         case let .grant(grant): grant.by
         }
     }

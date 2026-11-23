@@ -247,7 +247,7 @@ p.node("report", 2, 11, "Report a problem", "BugReportView", "the bug, top right
 p.node("perms", 2, 12.25, "Permissions", "PermissionsView", "this phone's, each kid's")
 
 p.node("timeline", 3, 0.5, "Timeline", "KidTimelineView", "zoom, Options menu")
-p.node("history", 3, 2, "Change history", "PolicyHistoryView", "every policy save and answer")
+p.node("history", 3, 2, "Change history", "PolicyHistoryView", "saves, changes back, answers")
 p.node("locationDay", 3, 3.1, "‹place›", "LocationDayView", "apps used there, times there")
 p.node("scanner", 3, 4.25, "Match ‹kid›'s apps", "PairingScannerView", "camera reads the kid's codes")
 p.node("kidSettings", 3, 6, "‹kid›", "KidSettingsView", "rules and health")
@@ -256,7 +256,7 @@ p.node("replay", 3, 9, "Replay", "ReplayView")
 p.node("toKid", 3, 10, "Kid mode  ›", kind="mode")
 
 p.node("popover", 4, 0.5, "Block details", "UsageCalendar popover", kind="popover")
-p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "edits a draft; Save sends it")
+p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "edits a draft; Save asks how long")
 p.node("apps", 4, 5, "‹kid›'s apps", "TrackedItemsView", "every app and site seen")
 p.node("raw", 4, 6, "Raw usage", "RawUsageView")
 p.node("matches", 4, 7, "App matches", "TokenMatchesView", "also Website, Category matches")
@@ -269,6 +269,7 @@ p.node("group", 5, 3, "Group", "GroupEditor", "Cancel / Done", kind="sheet")
 p.node("allowed", 5, 4, "Always Allowed", "SelectedItemsView", "read-only list, Edit")
 p.node("blocked", 5, 5, "Blocked", "SelectedItemsView", "read-only list, Edit")
 p.node("content", 5, 6, "Content & Privacy", "RestrictionsView")
+p.node("save", 5, 7, "Save changes", "SavePolicySheet", "Permanent or Temporary", kind="sheet")
 p.node("what", 5, 9, "What", "navigationLink Picker", "daily-limit rules only")
 
 p.node("select", 6, 0, "‹list name›", "ItemSelectionView",
@@ -307,6 +308,7 @@ p.edge("policy", "group", "a group, Add group", kind="sheet")
 p.edge("policy", "allowed", "Always Allowed")
 p.edge("policy", "blocked", "Blocked")
 p.edge("policy", "content", "Content & Privacy")
+p.edge("policy", "save", "Save", kind="sheet")
 p.edge("rule", "what", "What")
 for src, lab in (("downtime", "Included · Some apps"), ("limit", "Included · not all apps"), ("group", "Included"),
                  ("allowed", "Edit"), ("blocked", "Edit")):
