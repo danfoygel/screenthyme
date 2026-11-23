@@ -76,6 +76,8 @@ enum AppGroup {
     static var enforcementActivitiesURL: URL { container.appending(path: "enforcement-activities.json") }
     /// Encoded ApplicationTokens Downtime and limits never shield: ScreenThyme's own, from the app scan.
     static var exemptTokensURL: URL { container.appending(path: "exempt-tokens.json") }
+    /// When the `Enforcer` emptied the overflow stores from before `ShieldBudget`, once per phone.
+    static var retiredStoresClearedURL: URL { container.appending(path: "retired-stores-cleared.json") }
     /// `Sampler`'s last fetch of Apple's per-hour, per-app totals, to take differences from.
     static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
     /// Apps whose use is Safari's on their website (`WebMirror`): the `Sampler` adds to it, the `Enforcer` reads it.

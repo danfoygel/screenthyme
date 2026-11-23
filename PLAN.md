@@ -599,7 +599,8 @@ through (`exempt-tokens.json`). Apps installed later are covered by their catego
 - Downtime shields every category except Always Allowed: no app list, so no cap.
 - Blocked apps and exhausted limits' apps are shielded one by one in `restrictions`/`limits`, 50 apps and 50
   websites at most with `downtime.some` (`ShieldBudget`). Past that, the ones used most recently today: any other
-  that's opened moves up at the next wake, about a minute of use. The overflow stores (`.2`…`.6`) are emptied.
+  that's opened moves up at the next wake, about a minute of use. The overflow stores (`.2`…`.6`) are emptied once per
+  phone (App Group `retired-stores-cleared.json`; the journal notes "cleared retired overflow stores").
 - Grants on scanned items and the whole phone run by the clock: Apple's data has no usage for them.
 
 ### 15.4 Ask for more time in ScreenThyme
