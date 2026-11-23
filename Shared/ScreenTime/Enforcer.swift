@@ -36,6 +36,7 @@ enum Enforcer {
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             let policy = (AppGroup.loadPolicy(now: now) ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
+            clearRetiredStores(now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows,
                                                exempt: exemptItems(items).union(webMirrored(items, now: now)))
@@ -143,7 +144,6 @@ enum Enforcer {
         let allowedIDs = tokens.expandingCategories(plan.alwaysAllowed).union(exempt)
         var allowed = tokens.split(allowedIDs)
         allowed.apps.formUnion(exemptApps)
-        clearRetiredStores()
 
         // Apps and websites shielded one by one, within iOS's cap for all stores together.
         let exemptIDs = tokens.ids(of: exemptApps)
@@ -221,14 +221,17 @@ enum Enforcer {
         store.shield.webDomains = split.domains.isEmpty ? nil : split.domains
     }
 
-    /// Overflow stores (`limits.2` …) from before `ShieldBudget`: iOS ignored what they held past the cap. Emptied.
-    private static func clearRetiredStores() {
+    /// Overflow stores (`limits.2` …) from before `ShieldBudget`: what they held counted against iOS's cap for all
+    /// stores. Emptied once per phone; remove this once every kid phone's journal notes it.
+    private static func clearRetiredStores(now: Date) {
+        guard !FileManager.default.fileExists(atPath: AppGroup.retiredStoresClearedURL.path()) else { return }
         for name in ["restrictions", "downtime.some", "limits"] {
             for index in 2...6 {
-                let store = ManagedSettingsStore(named: .init("\(name).\(index)"))
-                if store.shield.applications != nil || store.shield.webDomains != nil { store.clearAllSettings() }
+                ManagedSettingsStore(named: .init("\(name).\(index)")).clearAllSettings()
             }
         }
+        AppGroup.save(now, to: AppGroup.retiredStoresClearedURL)
+        try? AppGroup.journal.append(.note("shields: cleared retired overflow stores"))
     }
 
     private static func apply(_ r: Restrictions, to store: ManagedSettingsStore) {
