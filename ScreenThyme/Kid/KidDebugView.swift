@@ -17,6 +17,7 @@ struct KidDebugView: View {
         Form {
             Section {
                 NavigationLink("Permissions") { PermissionsView() }
+                NavigationLink("CloudKit records") { CloudRecordsView() }
             }
             Section {
                 HStack {

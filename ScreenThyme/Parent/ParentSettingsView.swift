@@ -64,6 +64,7 @@ struct ParentSettingsView: View {
                 }
                 Section {
                     NavigationLink("Permissions") { PermissionsView() }
+                    NavigationLink("CloudKit records") { CloudRecordsView() }
                     Button("Allow notifications") { Task { await Notifier.requestPermission() } }
                     Button("Re-install push subscriptions") { Task { await model.reinstallSubscriptions() } }
                 }
