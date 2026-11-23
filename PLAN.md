@@ -530,8 +530,8 @@ again, or it takes the data back. The kid's phone reports that as a health issue
 Targets are TrackedItems with tokens: the app scan's apps, websites and categories (§15.3). Items from Apple's data
 have bundle IDs but no tokens, so they can't be shielded.
 
-Ask for more time: the kid's **TimeRequest** (item, reason, 15 min / 1 h / rest of day) becomes an Alert (banner on
-parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, a grant that names an app (or
+Ask for more time: the kid's **TimeRequest** (item, reason, 5 min to 4 h or the rest of the day) becomes an Alert (banner
+on parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, a grant that names an app (or
 a category) lets only that through the limit for its minutes of use: the limit stays used up for everything else, its
 category and all-apps shields leave the app out, and its use still counts. One that names nothing (an all-apps limit's
 category shield) adds minutes to that limit today. For Downtime, one that names an app lets only that app through
@@ -604,7 +604,9 @@ confirmed on the kid's phone). Just before, the action extension writes what was
 category ids) for the app, which shows `AskForTimeView`:
 - From a limit or Blocked page the app is known. From a Downtime page only the category is, so the kid picks the app
   in Apple's picker (names, icons, search); its token matches a scanned item, or becomes one.
-- How much (15 min, 1 hour, until Downtime ends or the rest of today) and an optional note for the parents.
+- How much (a stepper from 5 minutes to 4 hours, `MoreTime.steps`, or until Downtime ends / the rest of today) and an
+  optional note for the parents. A parent approves that, or changes it (the same stepper) before approving. The
+  Alerts list says what was asked and what was given (`MoreTime.outcome`), finding each alert's request by its moment.
 - The request names the app: a Downtime or limit grant lets that app through (`.all(except:)`), not the whole phone
   or everything the limit counts. With no app chosen, Downtime pauses for the whole phone.
 - The screen uploads the request and checks for the answer every 5 s while open. ScreenThyme is exempt from

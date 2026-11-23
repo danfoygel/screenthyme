@@ -46,13 +46,7 @@ struct AskForTimeView: View {
                     }
                     if sent == nil {
                         Section("How much more time") {
-                            Picker("Time", selection: $minutes) {
-                                ForEach(ShieldContext.requestChoices, id: \.self) { choice in
-                                    Text(label(choice, reason)).tag(choice)
-                                }
-                            }
-                            .pickerStyle(.inline)
-                            .labelsHidden()
+                            MoreTimePicker(minutes: $minutes, restLabel: MoreTime.restLabel(for: reason))
                         }
                         Section("Note for your parents") {
                             TextField("Optional", text: $note, axis: .vertical)
@@ -75,6 +69,10 @@ struct AskForTimeView: View {
                             if answer.approved {
                                 Label("\(answer.by) said yes: \(ShieldContext.describe(minutes: answer.minutes)).",
                                       systemImage: "checkmark.circle").foregroundStyle(.green)
+                                if answer.minutes != sent.minutes {
+                                    Text("You asked for \(ShieldContext.describe(minutes: sent.minutes)).")
+                                        .foregroundStyle(.secondary)
+                                }
                             } else {
                                 Label("\(answer.by) said no.", systemImage: "xmark.circle")
                             }
@@ -103,11 +101,6 @@ struct AskForTimeView: View {
             }
             .task(id: sent?.id) { await waitForAnswer() }
         }
-    }
-
-    private func label(_ minutes: Int?, _ reason: BlockReason) -> String {
-        if minutes == nil, case .downtime = reason { return "Until Downtime ends" }
-        return ShieldContext.describe(minutes: minutes).capitalizedFirst
     }
 
     private func send(_ target: ShieldContext.Target, _ context: ShieldContext) {
