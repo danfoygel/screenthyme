@@ -121,14 +121,17 @@ struct KidSettingsView: View {
                 }
                 LabeledContent("Last heartbeat", value: heartbeat.map { Format.relative($0.at) } ?? "never")
                 LabeledContent("Last usage event", value: model.data.lastFireAt[kid.id].map(Format.relative) ?? "never")
+                if let battery = model.battery(for: kid) {
+                    LabeledContent("Phone battery") {
+                        Text("\(Format.battery(battery.level)) · \(Format.relative(battery.at))")
+                            .foregroundStyle(battery.isLow ? .red : .secondary)
+                    }
+                }
                 if let heartbeat {
                     LabeledContent("Screen Time access", value: heartbeat.authStatus)
                     LabeledContent("Schedules", value: "\(heartbeat.activeActivities.count) running / \(heartbeat.expectedActivities.count) expected")
                     LabeledContent("Waiting to upload", value: "\(heartbeat.backlogCount)")
                     LabeledContent("App version", value: heartbeat.appVersion)
-                    if let level = heartbeat.batteryLevel {
-                        LabeledContent("Phone battery", value: level.formatted(.percent.precision(.fractionLength(0))))
-                    }
                     ForEach(DevicePermission.allCases, id: \.self) { permission in
                         if let state = permission.state(in: heartbeat) {
                             LabeledContent(permission.title, value: state.label)

@@ -22,6 +22,27 @@ struct EnergyRows: View {
     }
 }
 
+/// A kid phone's charge as a battery icon and percentage, red when low.
+struct BatteryLabel: View {
+    let reading: BatteryReading
+
+    var body: some View {
+        Label(Format.battery(reading.level), systemImage: symbol)
+            .monospacedDigit()
+            .foregroundStyle(reading.isLow ? .red : .secondary)
+    }
+
+    private var symbol: String {
+        switch reading.level {
+        case ..<0.13: "battery.0percent"
+        case ..<0.38: "battery.25percent"
+        case ..<0.63: "battery.50percent"
+        case ..<0.88: "battery.75percent"
+        default: "battery.100percent"
+        }
+    }
+}
+
 /// Every day the parent's phone has, newest first.
 struct EnergyHistoryView: View {
     let reports: [EnergyReport]
@@ -39,6 +60,10 @@ struct EnergyHistoryView: View {
 }
 
 extension Format {
+    static func battery(_ level: Double) -> String {
+        level.formatted(.percent.precision(.fractionLength(0)))
+    }
+
     /// "0.4% of battery · 31 mWh", or "31 mWh" for phones whose battery size we don't know.
     static func energy(_ usage: EnergyUsage, batteryFraction: Double? = nil) -> String {
         let mWh = usage.milliwattHours

@@ -313,8 +313,12 @@ public struct EnergyReport: Codable, Sendable, Hashable, Identifiable {
     public var deviceModel: String
     public var monitor: EnergyUsage
     public var app: EnergyUsage
+    /// The phone's charge, 0–1, at `updatedAt`: the report goes up with the extension's uploads, so parents see it
+    /// within about 15 minutes while the phone is in use. Nil if iOS didn't say, and from older builds.
+    public var batteryLevel: Double?
 
-    public init(kidID: UUID, day: DayKey, updatedAt: Date, deviceModel: String, monitor: EnergyUsage, app: EnergyUsage) {
+    public init(kidID: UUID, day: DayKey, updatedAt: Date, deviceModel: String, monitor: EnergyUsage, app: EnergyUsage,
+                batteryLevel: Double? = nil) {
         self.id = Replay.stableUUID("energy", kidID.uuidString, day.description)
         self.kidID = kidID
         self.day = day
@@ -322,6 +326,7 @@ public struct EnergyReport: Codable, Sendable, Hashable, Identifiable {
         self.deviceModel = deviceModel
         self.monitor = monitor
         self.app = app
+        self.batteryLevel = batteryLevel
     }
 
     public var total: EnergyUsage { monitor + app }
@@ -330,6 +335,30 @@ public struct EnergyReport: Codable, Sendable, Hashable, Identifiable {
     public var batteryFraction: Double? {
         BatteryCapacity.wattHours[deviceModel].map { total.joules / ($0 * 3600) }
     }
+}
+
+/// A kid phone's charge as parents last heard it, from its heartbeat or its energy report, whichever is newer.
+public struct BatteryReading: Sendable, Hashable {
+    public var level: Double
+    public var at: Date
+
+    public init(level: Double, at: Date) {
+        self.level = level
+        self.at = at
+    }
+
+    public static func latest(heartbeat: Heartbeat?, reports: [EnergyReport]) -> BatteryReading? {
+        let fromHeartbeat = heartbeat.flatMap { beat in beat.batteryLevel.map { BatteryReading(level: $0, at: beat.at) } }
+        let fromReports = reports.compactMap { report in report.batteryLevel.map { BatteryReading(level: $0, at: report.updatedAt) } }
+        return ([fromHeartbeat].compactMap { $0 } + fromReports).max { $0.at < $1.at }
+    }
+
+    /// Recent enough to show without its age; a phone left idle sends nothing.
+    public func isRecent(now: Date, within: TimeInterval = 2 * 3600) -> Bool {
+        now.timeIntervalSince(at) < within
+    }
+
+    public var isLow: Bool { level <= 0.2 }
 }
 
 public enum BatteryCapacity {
