@@ -114,7 +114,7 @@ final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: a snapshot of another version (or an unreadable one) is rebuilt from the
         /// raw records (`rebuildLocally`), or when those aren't whole, fetched again from scratch, shown meanwhile.
-        static let currentVersion = 7
+        static let currentVersion = 8
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -302,7 +302,10 @@ final class FamilyData {
         }
         for change in batch.policyChanges { snapshot.policyChanges[change.id] = change }
         for request in batch.requests { snapshot.requests[request.id] = request }
-        for grant in batch.grants { snapshot.grants[grant.requestID] = grant }
+        // An end is final: a copy from before it (the kid's phone resending its self-approval) doesn't undo it.
+        for grant in batch.grants where grant.endedAt != nil || snapshot.grants[grant.requestID]?.endedAt == nil {
+            snapshot.grants[grant.requestID] = grant
+        }
         for use in batch.extraMinutes { snapshot.extraMinutes[use.id] = use }
         if let key = batch.linkKeys.last, key != linkKey { saveLinkKey(key) }
         for places in batch.familyPlaces where places.updatedAt >= (snapshot.familyPlaces?.updatedAt ?? .distantPast) {

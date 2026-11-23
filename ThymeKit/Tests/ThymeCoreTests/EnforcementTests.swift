@@ -198,6 +198,52 @@ struct EnforcementTests {
         #expect(EnforcementPlanner.extraMinutes(for: limit, grants: grants + [grant(.limit(limit), nil)]) == nil)
     }
 
+    @Test func endedGrantsLetNothingThroughFromTheirEnd() {
+        let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
+        let policy = Policy(kidID: kid, downtime: [window], blocked: [snapchat.id])
+        let request = TimeRequest(kidID: kid, itemID: nil, reason: .downtime(window.id), minutes: nil, at: at(21, 0))
+        let grant = TimeGrant(request: request, approved: true, minutes: nil, at: at(21, 1), by: "Parent")
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [AppliedGrant(grant: grant.ending(at: at(21, 30), by: "Parent B"), appliedAt: at(21, 1),
+                                     windowStart: at(20, 0)),
+                        applied(.blocked, snapchat.id, minutes: 60, at: at(21, 1))]
+        state.grants[1].grant = state.grants[1].grant.ending(at: at(21, 30), by: "Parent B")
+        // Until the window ends, or for an hour, but ended at 21:30.
+        let before = plan(policy, state: state, at: at(21, 29))
+        #expect(before.downtime == nil && before.blockedItems.isEmpty)
+        let after = plan(policy, state: state, at: at(21, 30))
+        #expect(after.downtime?.windowID == window.id && after.blockedItems == [snapchat.id])
+    }
+
+    @Test func endedLimitGrantsAddOnlyTheMinutesTheyRan() {
+        let limit = UUID()
+        func grant(_ minutes: Int?, endedAfter ran: Double) -> TimeGrant {
+            TimeGrant(request: TimeRequest(kidID: kid, itemID: nil, reason: .limit(limit), minutes: minutes, at: at(12, 0)),
+                      approved: true, minutes: minutes, at: at(12, 0), by: "Parent")
+                .ending(at: at(12, 0).addingTimeInterval(ran * 60), by: "Parent B")
+        }
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: [grant(30, endedAfter: 10)]) == 10)
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: [grant(30, endedAfter: 9.5)]) == 10)
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: [grant(30, endedAfter: 45)]) == 30)
+        // The rest of the day, ended: what it ran, no longer unlimited.
+        #expect(EnforcementPlanner.extraMinutes(for: limit, grants: [grant(nil, endedAfter: 20)]) == 20)
+    }
+
+    @Test func onlyApprovalsThatMayStillRunCanBeEnded() {
+        let request = TimeRequest(kidID: kid, itemID: nil, reason: .limit(UUID()), minutes: 30, at: at(12, 0))
+        let grant = TimeGrant(request: request, approved: true, minutes: 30, at: at(12, 0), by: "Parent")
+        #expect(grant.mightBeRunning(at: at(12, 29), calendar: utc))
+        #expect(!grant.mightBeRunning(at: at(12, 30), calendar: utc))
+        #expect(!grant.ending(at: at(12, 10), by: "Parent").mightBeRunning(at: at(12, 11), calendar: utc))
+        let rest = TimeGrant(request: request, approved: true, minutes: nil, at: at(12, 0), by: "Parent")
+        #expect(rest.mightBeRunning(at: at(23, 0), calendar: utc))
+        #expect(!rest.mightBeRunning(at: at(12, 0).addingTimeInterval(86_400), calendar: utc))
+        #expect(!TimeGrant(request: request, approved: false, minutes: nil, at: at(12, 0), by: "Parent")
+            .mightBeRunning(at: at(12, 1), calendar: utc))
+        let ended = grant.ending(at: at(12, 10), by: "Parent B")
+        #expect(ended.isEnded(at: at(12, 10)) && !ended.isEnded(at: at(12, 9)) && ended.endedBy == "Parent B")
+    }
+
     @Test func downtimeGrantLastsForItsMinutesOfUse() {
         let window = DowntimeWindow(name: "Night", startMinute: 20 * 60, endMinute: 23 * 60)
         let request = TimeRequest(kidID: kid, itemID: instagram.id, reason: .downtime(window.id), minutes: 15, at: at(21, 0))

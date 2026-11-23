@@ -140,6 +140,10 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   minute-of-use matcher (`tm`) is retired: launch stops it (`RetiredTokenMatcher`).
 - A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
   `AskForTimeView` (PLAN.md §15.4).
+- **Parent controls on a kid's phone** (scan, match by screenshot, choose ScreenThyme, start monitoring, one more
+  minute's length, Debug) are locked once it has the family's link key; a parent's phone nearby unlocks them for 15
+  minutes (Settings › Kids › the kid), and they lock when the app leaves the foreground (`ParentUnlock`, PLAN.md
+  §4.9). A new kid-side setup or debugging control belongs behind `parentControlsOpen`.
 - Token `Label`s don't render inside menus (menu-style `Picker`); use lists.
 - Quick simulator taps don't flip SwiftUI `Toggle`s; use a ~0.2 s press.
 - `DeviceActivityEvent` with no tokens means all activity (the wake alarm).

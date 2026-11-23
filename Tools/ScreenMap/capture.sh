@@ -30,7 +30,7 @@ xcrun simctl privacy "$UDID" reset all $BUNDLE 2>/dev/null || true
 xcodegen generate >/dev/null
 xcodebuild build-for-testing -project ScreenThyme.xcodeproj -scheme ScreenThyme -destination "id=$UDID" \
   -derivedDataPath build -quiet
-# Installed first, for the App Group's path: the last test leaves a block page's request there.
+# Installed first, for the App Group's path: the last tests leave a block page's request and a waiting request there.
 xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/ScreenThyme.app
 GROUP=$(xcrun simctl get_app_container "$UDID" $BUNDLE group.com.danfoygel.screenthyme)
 ONLY=""

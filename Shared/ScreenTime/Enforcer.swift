@@ -70,23 +70,36 @@ enum Enforcer {
         reconcile(now: now) { $0.limitFires[limitID] = budget }
     }
 
-    /// Records a parent's answer and applies it.
-    static func apply(_ grant: TimeGrant, now: Date = Date()) {
+    /// Records a parent's answer (or the kid's own approval) and applies it, or a parent's end of one already applied
+    /// (PLAN.md §15.12). False when there was nothing new.
+    @discardableResult
+    static func apply(_ grant: TimeGrant, now: Date = Date()) -> Bool {
         let config = SharedConfig.load()
-        guard let kid = config.kid else { return }
+        guard let kid = config.kid else { return false }
         let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
         // The occurrence of the window it answers, even while Downtime is paused.
         var windowStart: Date?
         if case let .downtime(windowID) = grant.reason, let window = AppGroup.loadPolicy(now: now)?.downtime.first(where: { $0.id == windowID }) {
             windowStart = window.daily.occurrence(containing: now)?.start
         }
+        var applied = false
         reconcile(now: now) { state in
-            guard !state.grants.contains(where: { $0.grant.requestID == grant.requestID }) else { return }
+            if let index = state.grants.firstIndex(where: { $0.grant.requestID == grant.requestID }) {
+                guard let ended = grant.endedAt, state.grants[index].grant.endedAt == nil else { return }
+                state.grants[index].grant = state.grants[index].grant.ending(at: ended, by: grant.endedBy ?? "A parent")
+                applied = true
+                try? AppGroup.grantHistory.append(state.grants[index].grant)
+                try? AppGroup.journal.append(.note("grant ended early by \(grant.endedBy ?? "a parent")"))
+                return
+            }
             let baseline = grant.itemID.flatMap { usage[$0] } ?? 0
             state.grants.append(AppliedGrant(grant: grant, appliedAt: now, baselineSeconds: baseline, windowStart: windowStart))
+            applied = true
             try? AppGroup.grantHistory.append(grant)
-            try? AppGroup.journal.append(.note("grant \(grant.approved ? "approved" : "declined"): \(grant.minutes.map { "\($0) min" } ?? "rest of day")"))
+            let answer = grant.isSelfApproved ? "self-approved" : grant.approved ? "approved" : "declined"
+            try? AppGroup.journal.append(.note("grant \(answer): \(grant.minutes.map { "\($0) min" } ?? "rest of day")"))
         }
+        return applied
     }
 
     /// "One more minute" from a block page: lets `itemID` (or with none, what `reason` blocks) through for the kid
@@ -139,8 +152,9 @@ enum Enforcer {
                               use: [UUID: ShieldBudget.Use]) -> Set<UUID> {
         let tokens = Tokens(items: items)
         let exempt = exemptItems(items)
-        // ScreenThyme's own token, from the app scan.
-        let exemptApps = Set((AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []).compactMap(TokenCoding.application))
+        // ScreenThyme's own token, from the app scan. One app or none: more would let others through every shield.
+        let picked = AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []
+        let exemptApps = picked.count == 1 ? Set(picked.compactMap(TokenCoding.application)) : []
         let allowedIDs = tokens.expandingCategories(plan.alwaysAllowed).union(exempt)
         var allowed = tokens.split(allowedIDs)
         allowed.apps.formUnion(exemptApps)

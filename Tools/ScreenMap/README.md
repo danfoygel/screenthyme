@@ -19,7 +19,7 @@ Tools/ScreenMap/publish.sh /tmp/screen-map                 # push to gh-pages
   screen to the tour when you add a box.
 - The tour is a few tests, run in name order in one `xcodebuild` run: `test1Setup` (Welcome, the parent role, Leo's
   day and a named place), then one per part of the app (`test2Kids`, `test3ScreenTime`, `test4Rules`,
-  `test5Settings`, `test6Kid`, `test7AskSheet`). Name tests after the site dir to capture only those, after
+  `test5Settings`, `test6Kid`, `test7AskSheet`, `test8SelfApprove`). Name tests after the site dir to capture only those, after
   `test1Setup`; the site's other screenshots stay:
 
   ```bash

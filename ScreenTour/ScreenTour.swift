@@ -411,17 +411,33 @@ final class ScreenTour: XCTestCase {
         }
     }
 
-    /// The app opens Ask for more time from a request left in the App Group (SCREEN_TOUR_GROUP), as from a block page.
-    func test7AskSheet() {
+    /// Leaves `json` at `path` in the App Group (SCREEN_TOUR_GROUP) for a kid's phone, then relaunches the app to read
+    /// it, as when a block page opens ScreenThyme.
+    func relaunchAsKid(leaving json: String, at path: String, appending: Bool = false) {
         // Still a parent's phone when test6Kid didn't run.
         wait(5) { app.tabBars.firstMatch.exists || app.navigationBars.firstMatch.exists }
         if app.tabBars.firstMatch.exists { becomeKid() }
         guard let group = env["SCREEN_TOUR_GROUP"] else { return XCTFail("SCREEN_TOUR_GROUP: the App Group's path") }
-        // What a block page's "Ask for more time" leaves for the app, which opens the sheet if it's under a minute old.
-        let at = ISO8601DateFormatter.string(from: Date(), timeZone: .gmt, formatOptions: [.withInternetDateTime, .withFractionalSeconds])
-        try? Data("{\"at\":\"\(at)\"}".utf8).write(to: URL(fileURLWithPath: "\(group)/Library/ScreenThyme/ask.json"))
+        let url = URL(fileURLWithPath: "\(group)/Library/ScreenThyme/\(path)")
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if appending, let file = try? FileHandle(forWritingTo: url) {
+            _ = try? file.seekToEnd()
+            try? file.write(contentsOf: Data(json.utf8))
+            try? file.close()
+        } else {
+            try? Data(json.utf8).write(to: url)
+        }
         app.terminate()
         app.launch()
+    }
+
+    var now: String {
+        ISO8601DateFormatter.string(from: Date(), timeZone: .gmt, formatOptions: [.withInternetDateTime, .withFractionalSeconds])
+    }
+
+    /// The app opens Ask for more time from a block page's request, which it takes if it's under a minute old.
+    func test7AskSheet() {
+        relaunchAsKid(leaving: "{\"at\":\"\(now)\"}", at: "ask.json")
         guard appear(app.navigationBars["Ask for more time"], 10) else {
             return XCTFail("No Ask for more time sheet: ask.json missing or over a minute old")
         }
@@ -430,5 +446,16 @@ final class ScreenTour: XCTestCase {
         // Apple's picker draws its list a moment after it opens.
         if !appear(app.staticTexts["All Apps & Categories"], 8) { print("TOUR Apple's picker stayed empty") }
         snap("k-choose")
+    }
+
+    /// Approve it yourself, under a request for more time waiting for an answer (made-up test data).
+    func test8SelfApprove() {
+        let ids = (0..<3).map { _ in UUID().uuidString }
+        let request = "{\"at\":\"\(now)\",\"id\":\"\(ids[0])\",\"kidID\":\"\(ids[1])\",\"minutes\":30,"
+            + "\"reason\":{\"downtime\":{\"_0\":\"\(ids[2])\"}}}\n"
+        relaunchAsKid(leaving: request, at: "Outbox/requests.jsonl", appending: true)
+        guard tap("Can't reach a parent?", wait: 5) else { return XCTFail("No waiting request: requests.jsonl missing or not today's") }
+        guard appear(app.navigationBars["Approve it yourself"]) else { return XCTFail("No Approve it yourself sheet") }
+        snap("k-selfApprove")
     }
 }

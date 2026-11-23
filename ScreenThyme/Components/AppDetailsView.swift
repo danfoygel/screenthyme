@@ -246,7 +246,7 @@ struct AppDetailsView: View {
         } header: {
             Text("More time")
         } footer: {
-            Text("Asking a parent, and One more minute on the block page, for this app or its category, for more time on a limit that counts it, or for the whole phone.")
+            Text("Asking a parent (or self-approving, when no parent answers), and One more minute on the block page, for this app or its category, for more time on a limit that counts it, or for the whole phone.")
         }
     }
 
@@ -390,12 +390,26 @@ private struct RequestHistoryRow: View {
                     Text(asked.reason == .alwaysAllow ? "Asked to always allow it"
                         : "Asked for \(ShieldContext.describe(minutes: asked.minutes)) \(reason(asked.reason, asked.itemID))")
                 } icon: {
-                    Image(systemName: grant == nil ? "hourglass" : grant!.approved ? "checkmark.circle" : "xmark.circle")
-                        .foregroundStyle(grant == nil ? Color.secondary : grant!.approved ? Color.green : Color.red)
+                    if grant?.isSelfApproved == true {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    } else {
+                        Image(systemName: grant == nil ? "hourglass" : grant!.approved ? "checkmark.circle" : "xmark.circle")
+                            .foregroundStyle(grant == nil ? Color.secondary : grant!.approved ? Color.green : Color.red)
+                    }
                 }
                 otherItem(asked.itemID)
                 if let note = asked.note { Text("\u{201C}\(note)\u{201D}").italic().font(.subheadline) }
-                Text(answer(grant)).font(.subheadline).foregroundStyle(.secondary)
+                Text(answer(grant)).font(.subheadline)
+                    .foregroundStyle(grant?.isSelfApproved == true ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                if let reason = grant?.selfApproval {
+                    Text("Why: \u{201C}\(reason)\u{201D}").italic().font(.subheadline)
+                }
+                if let grant, let ended = grant.endedAt {
+                    Text("\(grant.endedBy ?? "A parent") ended it early at \(ended.formatted(date: .omitted, time: .shortened))")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                } else if let grant, data.canEnd, grant.mightBeRunning(at: Date()) {
+                    EndGrantButton(grant: grant)
+                }
             case let .extraMinute(use):
                 Label {
                     Text("\(ShieldContext.MoreTime.oneMoreMinute.title(minutes: use.minutes)) \(reason(use.reason, use.itemID))")
@@ -406,6 +420,12 @@ private struct RequestHistoryRow: View {
             }
             Text(request.at.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
         }
+        .listRowBackground(isSelfApproved ? SelfApproval.background : nil)
+    }
+
+    private var isSelfApproved: Bool {
+        guard case let .asked(_, grant) = request else { return false }
+        return grant?.isSelfApproved == true
     }
 
     /// The app the kid asked from, when it's another one that shares a limit.
@@ -433,6 +453,9 @@ private struct RequestHistoryRow: View {
         if grant.reason == .alwaysAllow {
             return grant.approved ? "\(grant.by) allowed it always at \(when)" : "\(grant.by) said no at \(when)"
         }
+        if grant.isSelfApproved {
+            return "Self-approved by \(grant.by) at \(when), with no parent's answer"
+        }
         return grant.approved ? "\(grant.by) gave \(ShieldContext.describe(minutes: grant.minutes)) at \(when)"
             : "\(grant.by) said no at \(when)"
     }
@@ -440,6 +463,8 @@ private struct RequestHistoryRow: View {
 
 /// What the details are made from: a parent's mirror of the family zone, or the kid's own App Group.
 struct AppDetailsData {
+    /// A parent's phone: running approvals can be ended from the details.
+    var canEnd = false
     var items: [UUID: TrackedItem] = [:]
     var policy: Policy
     var hasPolicy = false
@@ -460,7 +485,7 @@ struct AppDetailsData {
         let policy = family.policy(for: kid)
         let uses = family.extraMinutes.values.filter { $0.kidID == kid }
         let plan = parentPlan(family, kid: kid, items: items, policy: policy, now: now)
-        return AppDetailsData(items: items, policy: policy, hasPolicy: family.storedPolicy(for: kid) != nil, plan: plan,
+        return AppDetailsData(canEnd: true, items: items, policy: policy, hasPolicy: family.storedPolicy(for: kid) != nil, plan: plan,
                               samples: { family.samples(kid: kid, day: $0) },
                               requests: family.requests.values.filter { $0.kidID == kid },
                               grants: family.grants.values.filter { $0.kidID == kid }, extraMinutes: Array(uses),
@@ -493,8 +518,9 @@ struct AppDetailsData {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let stored = AppGroup.loadPolicy()?.followingNewTokens(items: items)
         let samples = Dictionary(grouping: AppGroup.samples.readAll(), by: \.day)
+        // The latest copy of each: a parent's end follows the answer.
+        var grants = Dictionary(AppGroup.grantHistory.readAll().map { ($0.requestID, $0) }, uniquingKeysWith: { _, b in b })
         // Answers applied before the history file existed are still in today's state.
-        var grants = Dictionary(AppGroup.grantHistory.readAll().map { ($0.requestID, $0) }, uniquingKeysWith: { a, _ in a })
         for applied in Enforcer.loadState().grants { grants[applied.grant.requestID] = applied.grant }
         let config = SharedConfig.load()
         return AppDetailsData(items: items, policy: stored ?? Policy(kidID: config.kid?.id ?? UUID(), enabled: false),

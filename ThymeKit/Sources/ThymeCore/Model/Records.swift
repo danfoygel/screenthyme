@@ -198,13 +198,17 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
     /// since (`TokenPairing.unmatched`). Nil before the first match, and from older builds.
     public var lastTokenPairing: Date?
+    /// The last time a parent's phone unlocked this phone's parent controls (`ParentUnlock`), so the other parent
+    /// sees it. Nil before the first, and from older builds.
+    public var lastParentUnlock: ParentUnlock?
 
     public init(id: UUID = UUID(), kidID: UUID, at: Date, source: HeartbeatSource, authStatus: String,
                 activeActivities: [String], expectedActivities: [String], appVersion: String,
                 backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
                 backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
                 bluetooth: PermissionState? = nil, localNetwork: PermissionState? = nil, iCloud: PermissionState? = nil,
-                location: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil) {
+                location: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil,
+                lastParentUnlock: ParentUnlock? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -224,6 +228,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.location = location
         self.lowPowerMode = lowPowerMode
         self.lastTokenPairing = lastTokenPairing
+        self.lastParentUnlock = lastParentUnlock
     }
 }
 

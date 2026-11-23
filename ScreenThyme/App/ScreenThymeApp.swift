@@ -19,6 +19,8 @@ struct ScreenThymeApp: App {
             if phase == .active {
                 Task { await AppModel.shared.launched() }
             } else if phase == .background {
+                // Before the link closes, so a parent's phone hears of it.
+                AppModel.shared.lockParentControls()
                 // iOS suspends the sockets anyway; closing them lets the other phone notice at once.
                 AppModel.shared.stopNearby()
                 if AppModel.shared.isKid {

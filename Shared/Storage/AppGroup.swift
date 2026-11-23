@@ -108,7 +108,10 @@ enum AppGroup {
     /// Every "one more minute" taken (`ExtraMinuteUse`), for the parents and the app's details.
     static var extraMinuteUses: JSONLinesFile<ExtraMinuteUse> { JSONLinesFile(url: container.appending(path: "Outbox/extra-minutes.jsonl")) }
     static var extraMinuteUsesLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/extra-minutes-uploaded.jsonl")) }
-    /// Every parent's answer this phone applied; the enforcement state keeps only today's.
+    /// The kid's approvals of their own requests (`TimeGrant.isSelfApproved`), for the parents.
+    static var selfGrants: JSONLinesFile<TimeGrant> { JSONLinesFile(url: container.appending(path: "Outbox/self-grants.jsonl")) }
+    static var selfGrantsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/self-grants-uploaded.jsonl")) }
+    /// Every answer this phone applied, a parent's or the kid's own; the enforcement state keeps only today's.
     static var grantHistory: JSONLinesFile<TimeGrant> { JSONLinesFile(url: container.appending(path: "grants.jsonl")) }
 
     static func loadRules() -> LocalRules? {

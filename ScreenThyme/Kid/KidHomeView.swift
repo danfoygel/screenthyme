@@ -53,7 +53,11 @@ struct KidHomeView: View {
                     }
                 }
                 Section {
-                    Stepper(value: extraMinutes, in: ExtraMinute.allowedMinutes) {
+                    if open {
+                        Stepper(value: extraMinutes, in: ExtraMinute.allowedMinutes) {
+                            LabeledContent("One more minute", value: "\(model.config.extraMinuteLength) min")
+                        }
+                    } else {
                         LabeledContent("One more minute", value: "\(model.config.extraMinuteLength) min")
                     }
                 } header: {
@@ -67,7 +71,7 @@ struct KidHomeView: View {
                             Task { await model.requestAuthorization() }
                         }
                     }
-                    if model.config.epoch == nil {
+                    if open, model.config.epoch == nil {
                         Button("Start monitoring") { Task { await model.startMonitoring() } }
                             .disabled(!model.hasDataAccess)
                     }
@@ -86,7 +90,9 @@ struct KidHomeView: View {
                 }
                 if model.hasDataAccess, let kid = model.config.kid {
                     Section {
-                        Button("Scan apps (\(scan.all.applicationTokens.count) apps)") { pickingAll = true }
+                        if open {
+                            Button("Scan apps (\(scan.all.applicationTokens.count) apps)") { pickingAll = true }
+                        }
                         NavigationLink {
                             CameraPairingView()
                         } label: {
@@ -98,9 +104,12 @@ struct KidHomeView: View {
                             LabeledContent("Match with a parent's camera", value: count == 0 ? "" : "\(count) new")
                                 .foregroundStyle(count == 0 ? Color.primary : .orange)
                         }
-                        NavigationLink("Match apps by screenshot") { TokenPairingView() }
-                        Button(scan.screenThyme.applicationTokens.isEmpty ? "Choose ScreenThyme" : "ScreenThyme chosen") {
-                            pickingSelf = true
+                        if open {
+                            NavigationLink("Match apps by screenshot") { TokenPairingView() }
+                            // Once, at setup; again only if its token stops working (a new authorization can void it).
+                            Button(scan.screenThyme.applicationTokens.isEmpty ? "Choose ScreenThyme" : "ScreenThyme chosen: choose again") {
+                                pickingSelf = true
+                            }
                         }
                     } header: {
                         Text("Apps for Screen Time")
@@ -112,7 +121,18 @@ struct KidHomeView: View {
                     .familyActivityPicker(headerText: "Select ScreenThyme only", isPresented: $pickingSelf,
                                           selection: $scan.screenThyme)
                     .onChange(of: pickingAll) { if !pickingAll { save(kid) } }
-                    .onChange(of: pickingSelf) { if !pickingSelf { save(kid) } }
+                    .onChange(of: pickingSelf) {
+                        guard !pickingSelf else { return }
+                        // Whatever is picked here passes Downtime, limits and Blocked: ScreenThyme alone, or nothing.
+                        let pick = scan.screenThyme
+                        guard pick.applicationTokens.count == 1, pick.categoryTokens.isEmpty, pick.webDomainTokens.isEmpty
+                        else {
+                            scan.screenThyme = AppScan.load().screenThyme
+                            model.message = "Choose ScreenThyme alone: one app, no categories or websites."
+                            return
+                        }
+                        save(kid)
+                    }
                 }
                 if model.config.family == nil {
                     Section("Join the family") {
@@ -124,9 +144,7 @@ struct KidHomeView: View {
                         }
                     }
                 }
-                Section {
-                    NavigationLink("Debug") { KidDebugView() }
-                }
+                ParentControlsSection()
                 // A kid could otherwise switch on test mode and make this phone a parent's (PLAN.md §7.1).
                 if model.config.testMode {
                     TestModeSection()
@@ -134,6 +152,10 @@ struct KidHomeView: View {
             }
             .navigationTitle("ScreenThyme")
             .bugButton()
+            // A parent's phone nearby opened its camera to match apps.
+            .navigationDestination(isPresented: Binding { model.cameraPairingRequested } set: { model.cameraPairingRequested = $0 }) {
+                CameraPairingView()
+            }
             .sheet(item: $ask) { AskForTimeView(ask: $0.ask) }
             .onChange(of: scenePhase, initial: true) {
                 if scenePhase == .active, let taken = ShieldContext.Ask.take() { ask = AskSheet(ask: taken) }
@@ -146,7 +168,11 @@ struct KidHomeView: View {
                 await model.refresh()
             }
         }
+        // Locking goes back to the top, out of Debug or matching.
+        .id(open)
     }
+
+    private var open: Bool { model.parentControlsOpen }
 
     private var extraMinutes: Binding<Int> {
         Binding { model.config.extraMinuteLength } set: { minutes in model.update { $0.extraMinutes = minutes } }
@@ -159,6 +185,31 @@ struct KidHomeView: View {
     private var familyStatus: String {
         guard let family = model.config.family else { return "not joined" }
         return family.isOwner ? "owner (this account)" : "joined"
+    }
+}
+
+/// The parent controls' state, and Debug while they're open (`ParentUnlock`).
+private struct ParentControlsSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Section {
+            if let unlock = model.parentUnlock {
+                LabeledContent("Unlocked by \(unlock.by)", value: "until \(unlock.until.formatted(date: .omitted, time: .shortened))")
+                Button("Lock now") { model.lockParentControls() }
+            } else if !model.parentControlsOpen {
+                Label("Locked", systemImage: "lock")
+            }
+            if model.parentControlsOpen {
+                NavigationLink("Debug") { KidDebugView() }
+            }
+        } header: {
+            Text("Parent controls")
+        } footer: {
+            if !model.parentControlsOpen {
+                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring, the length of one more minute and Debug. A parent unlocks them from their phone, near this one: Settings › Kids › \(model.config.kid?.displayName ?? "this kid") › Unlock.")
+            }
+        }
     }
 }
 

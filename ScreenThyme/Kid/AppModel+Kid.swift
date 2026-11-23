@@ -156,7 +156,8 @@ extension AppModel {
                          iCloud: DevicePermissions.iCloud,
                          location: DevicePermissions.location,
                          lowPowerMode: DevicePermissions.lowPowerMode,
-                         lastTokenPairing: TokenPairingView.lastImport())
+                         lastTokenPairing: TokenPairingView.lastImport(),
+                         lastParentUnlock: lastParentUnlock)
     }
 
     /// A day of this phone's capture as a trace file, for the replay tool and test fixtures (PLAN.md §7.2).
