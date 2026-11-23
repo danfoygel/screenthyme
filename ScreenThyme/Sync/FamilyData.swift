@@ -24,29 +24,53 @@ struct IngestBatch: Sendable {
     var placeEvents: [PlaceEvent] = []
     var familyPlaces: [FamilyPlaces] = []
     var deletedRecordNames: [String] = []
+    /// The fetched records as CloudKit sent them, for the mirror's `RawRecordLog`.
+    var raw: [RawRecord] = []
 
+    /// A fetched record: decoded, and kept as it came.
     mutating func add(_ record: CKRecord) {
-        switch record.recordType {
-        case Kid.recordType: Kid.decode(record).map { kids.append($0) }
-        case TrackedItem.recordType: TrackedItem.decode(record).map { items.append($0) }
-        case LadderEpoch.recordType: LadderEpoch.decode(record).map { epochs.append($0) }
-        case UsageFire.recordType: UsageFire.decode(record).map { fires.append($0) }
-        case UsageSample.recordType: UsageSample.decode(record).map { samples.append($0) }
-        case Heartbeat.recordType: Heartbeat.decode(record).map { heartbeats.append($0) }
-        case AlertRecord.recordType: AlertRecord.decode(record).map { alerts.append($0) }
-        case Rule.recordType: Rule.decode(record).map { rules.append($0) }
-        case Ping.recordType: Ping.decode(record).map { pings.append($0) }
-        case EnergyReport.recordType: EnergyReport.decode(record).map { energy.append($0) }
-        case Policy.recordType: Policy.decode(record).map { policies.append($0) }
-        case PolicyChange.recordType: PolicyChange.decode(record).map { policyChanges.append($0) }
-        case TimeRequest.recordType: TimeRequest.decode(record).map { requests.append($0) }
-        case TimeGrant.recordType: TimeGrant.decode(record).map { grants.append($0) }
-        case ExtraMinuteUse.recordType: ExtraMinuteUse.decode(record).map { extraMinutes.append($0) }
-        case LinkKey.recordType: LinkKey.decode(record).map { linkKeys.append($0) }
-        case PlaceEvent.recordType: PlaceEvent.decode(record).map { placeEvents.append($0) }
-        case FamilyPlaces.recordType: FamilyPlaces.decode(record).map { familyPlaces.append($0) }
+        guard let payload = record["payload"] as? Data else { return }
+        raw.append(RawRecord(name: record.recordID.recordName, type: record.recordType, payload: payload))
+        add(type: record.recordType, payload: payload)
+    }
+
+    mutating func addDeletion(_ recordName: String) {
+        deletedRecordNames.append(recordName)
+        raw.append(.deletion(recordName))
+    }
+
+    /// Decodes a record's payload (from CloudKit, or kept in the `RawRecordLog`); other types are skipped.
+    mutating func add(type: String, payload: Data) {
+        switch type {
+        case Kid.recordType: Kid.decode(payload: payload).map { kids.append($0) }
+        case TrackedItem.recordType: TrackedItem.decode(payload: payload).map { items.append($0) }
+        case LadderEpoch.recordType: LadderEpoch.decode(payload: payload).map { epochs.append($0) }
+        case UsageFire.recordType: UsageFire.decode(payload: payload).map { fires.append($0) }
+        case UsageSample.recordType: UsageSample.decode(payload: payload).map { samples.append($0) }
+        case Heartbeat.recordType: Heartbeat.decode(payload: payload).map { heartbeats.append($0) }
+        case AlertRecord.recordType: AlertRecord.decode(payload: payload).map { alerts.append($0) }
+        case Rule.recordType: Rule.decode(payload: payload).map { rules.append($0) }
+        case Ping.recordType: Ping.decode(payload: payload).map { pings.append($0) }
+        case EnergyReport.recordType: EnergyReport.decode(payload: payload).map { energy.append($0) }
+        case Policy.recordType: Policy.decode(payload: payload).map { policies.append($0) }
+        case PolicyChange.recordType: PolicyChange.decode(payload: payload).map { policyChanges.append($0) }
+        case TimeRequest.recordType: TimeRequest.decode(payload: payload).map { requests.append($0) }
+        case TimeGrant.recordType: TimeGrant.decode(payload: payload).map { grants.append($0) }
+        case ExtraMinuteUse.recordType: ExtraMinuteUse.decode(payload: payload).map { extraMinutes.append($0) }
+        case LinkKey.recordType: LinkKey.decode(payload: payload).map { linkKeys.append($0) }
+        case PlaceEvent.recordType: PlaceEvent.decode(payload: payload).map { placeEvents.append($0) }
+        case FamilyPlaces.recordType: FamilyPlaces.decode(payload: payload).map { familyPlaces.append($0) }
         default: break
         }
+    }
+
+    /// Decodes what a `RawRecordLog` holds.
+    static func decoding(_ records: [RawRecord]) -> IngestBatch {
+        var batch = IngestBatch()
+        for record in records {
+            if let type = record.type, let payload = record.payload { batch.add(type: type, payload: payload) }
+        }
+        return batch
     }
 
     /// Adds another batch's records after this one's.
@@ -70,6 +94,7 @@ struct IngestBatch: Sendable {
         placeEvents += other.placeEvents
         familyPlaces += other.familyPlaces
         deletedRecordNames += other.deletedRecordNames
+        raw += other.raw
     }
 
     var isEmpty: Bool {
@@ -77,17 +102,18 @@ struct IngestBatch: Sendable {
             && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
             && extraMinutes.isEmpty && linkKeys.isEmpty && placeEvents.isEmpty && familyPlaces.isEmpty
-            && deletedRecordNames.isEmpty
+            && deletedRecordNames.isEmpty && raw.isEmpty
     }
 }
 
 /// The local mirror of the family zone (PLAN.md §4.4). Fires are stored one file per kid per day and loaded lazily;
-/// everything else is one small snapshot.
+/// everything else is one small snapshot. Every fetched record is also kept as it came (`RawRecordLog`), so a build
+/// that changes the stored types decodes them again instead of fetching the zone.
 @MainActor @Observable
 final class FamilyData {
     private struct Snapshot: Codable {
-        /// Bump when stored types change: a snapshot of another version (or an unreadable one) triggers a full
-        /// re-fetch, shown meanwhile.
+        /// Bump when stored types change: a snapshot of another version (or an unreadable one) is rebuilt from the
+        /// raw records (`rebuildLocally`), or when those aren't whole, fetched again from scratch, shown meanwhile.
         static let currentVersion = 7
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
@@ -128,6 +154,7 @@ final class FamilyData {
     @ObservationIgnored private lazy var sampleStore = KidDayStore<UsageSample>(directory: directory.appending(path: "samples"))
     /// Where kids' phones were (PLAN.md §19), filed by the day each happened.
     @ObservationIgnored private lazy var placeEventStore = KidDayStore<PlaceEvent>(directory: directory.appending(path: "places"))
+    @ObservationIgnored private lazy var rawLog = RawRecordLog(directory: directory.appending(path: "raw"))
 
     var kids: [UUID: Kid] { snapshot.kids }
     var items: [UUID: TrackedItem] { snapshot.items }
@@ -216,9 +243,27 @@ final class FamilyData {
         if linkKey == nil, let key = snapshot.linkKey { saveLinkKey(key) }
     }
 
+    /// The change token was dropped: the zone is fetched from scratch, and the raw records with it.
     func rebuildStarted() {
+        rawLog.startFullFetch()
         snapshot.rebuild?.started = true
         saveSnapshot()
+    }
+
+    /// Rebuilds the mirror from the raw records instead of fetching the zone, when they hold all of it as of `token`
+    /// (the change token saved now). False when they don't: fetch from scratch.
+    func rebuildLocally(token: Data?) async -> Bool {
+        guard rebuildNeedsReset, rawLog.covers(token: token) else { return false }
+        let log = rawLog
+        let batch = await Task.detached(priority: .userInitiated) { IngestBatch.decoding(log.records()) }.value
+        ingestRebuildPage(batch)
+        rebuildDone()
+        return true
+    }
+
+    /// A fetch ended at `token` (archived, as saved) and everything it brought was ingested.
+    func fetched(token: Data?) {
+        rawLog.fetched(token: token)
     }
 
     /// One page of the re-fetch, kept as it arrives so an interrupted re-fetch loses none of it.
@@ -234,6 +279,7 @@ final class FamilyData {
         snapshot.rules = snapshot.rules.filter { seen.contains($0.key) }
         snapshot.pings = snapshot.pings.filter { seen.contains($0.key) }
         snapshot.rebuild = nil
+        rawLog.markComplete()
         saveSnapshot()
         revision += 1
     }
@@ -242,6 +288,7 @@ final class FamilyData {
     @discardableResult
     func ingest(_ batch: IngestBatch) -> [AlertRecord] {
         guard !batch.isEmpty else { return [] }
+        rawLog.append(keepsPlaceEvents ? batch.raw : batch.raw.filter { $0.type != PlaceEvent.recordType })
         for kid in batch.kids { snapshot.kids[kid.id] = kid }
         for item in batch.items { snapshot.items[item.id] = item }
         for epoch in batch.epochs { snapshot.epochs[epoch.id] = epoch }

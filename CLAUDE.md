@@ -154,5 +154,6 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   token in the family zone's `IssueTracker` record (Settings › Bug reports on a parent's phone); screenshots are
   committed under `reports/` in that repo, since GitHub's API can't attach images to issues. A new screen gets
   `.bugButton()` beside its `navigationTitle`.
-- A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change, so phones re-fetch.
+- A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change. Phones then decode
+  again the records they kept as fetched (`RawRecordLog`), and fetch the whole zone only when that log isn't whole.
 - Record names are `<Type>.<uuid>`, saved with `.allKeys`, so every upload is idempotent.
