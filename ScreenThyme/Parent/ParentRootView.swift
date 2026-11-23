@@ -198,6 +198,9 @@ struct KidDayView: View {
                 NavigationLink { KidTimelineView(source: .family(kid), day: day) } label: {
                     Label("Day timeline", systemImage: "calendar.day.timeline.left")
                 }
+                NavigationLink { CategoryTimeView(source: .family(kid), day: day) } label: {
+                    Label("Time by category", systemImage: "chart.bar.horizontal.page")
+                }
                 NavigationLink { PolicyHistoryView(kid: kid) } label: {
                     Label("Change history", systemImage: "clock.arrow.circlepath")
                 }
