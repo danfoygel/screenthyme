@@ -52,6 +52,11 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     public var pairing: [LinkPairing]?
     /// Optional, so a bundle from a build without it still opens.
     public var extraMinutes: [ExtraMinuteUse]?
+    /// Parent controls (`ParentUnlock`), like `pairing`. Optional, so a bundle from a build without it still opens.
+    public var unlock: [LinkUnlock]?
+    /// Screens to open on the kid's phone, like `pairing`. A field of its own, not a new `LinkPairing` case: a build
+    /// that can't decode a bundle closes the connection, and one without this field ignores it.
+    public var open: [LinkOpen]?
 
     public init() {}
 
@@ -60,7 +65,7 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     public var count: Int {
         kids.count + items.count + epochs.count + fires.count + samples.count + heartbeats.count + alerts.count
             + requests.count + ruleSets.count + policies.count + grants.count + (pairing?.count ?? 0)
-            + (extraMinutes?.count ?? 0)
+            + (extraMinutes?.count ?? 0) + (unlock?.count ?? 0) + (open?.count ?? 0)
     }
 
     /// Keeps only the records about one kid: a phone accepts nothing about other kids from a peer.
@@ -95,6 +100,12 @@ public enum LinkPairing: Codable, Sendable, Hashable {
     case result(String)
 }
 
+/// Parent → kid: open the kid phone's side of what the parent just started on theirs.
+public enum LinkOpen: Codable, Sendable, Hashable {
+    /// The parent opened the camera to match apps (PLAN.md §15.6): show the pairing reports.
+    case cameraPairing
+}
+
 /// What a connection already carried, so later bundles hold only new or changed records.
 public struct LinkSentFilter: Sendable {
     private var sent: [String: Int] = [:]
@@ -116,6 +127,8 @@ public struct LinkSentFilter: Sendable {
         out.policies = filter(bundle.policies, "Policy", id: \.kidID)
         out.grants = filter(bundle.grants, "TimeGrant", id: \.requestID)
         out.pairing = bundle.pairing
+        out.unlock = bundle.unlock
+        out.open = bundle.open
         out.extraMinutes = bundle.extraMinutes.map { filter($0, "ExtraMinuteUse", id: \.id) }
         return out
     }

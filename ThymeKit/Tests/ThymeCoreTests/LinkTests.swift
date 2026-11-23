@@ -157,4 +157,16 @@ struct LinkTests {
         #expect(only.requests.isEmpty)
         #expect(only.grants == grantBundle.grants)
     }
+
+    /// Opening the kid's camera matching travels on its own, every time it's sent, through a real session.
+    @Test func openingAScreenTravels() throws {
+        var (kid, parent) = try connect()
+        var bundle = LinkBundle()
+        bundle.open = [.cameraPairing]
+        #expect(!bundle.isEmpty)
+        var filter = LinkSentFilter()
+        #expect(filter.unsent(bundle).open == [.cameraPairing])
+        #expect(filter.unsent(bundle).open == [.cameraPairing])
+        #expect(try kid.receive(parent.send(bundle)) == [.bundle(bundle)])
+    }
 }

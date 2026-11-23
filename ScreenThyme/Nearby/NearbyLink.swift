@@ -119,6 +119,24 @@ final class NearbyLink {
     func send(_ pairing: [LinkPairing], to accepts: (LinkHello) -> Bool) {
         var bundle = LinkBundle()
         bundle.pairing = pairing
+        send(bundle, to: accepts)
+    }
+
+    /// Sends parent-control messages now, like pairing ones.
+    func send(_ unlock: [LinkUnlock], to accepts: (LinkHello) -> Bool) {
+        var bundle = LinkBundle()
+        bundle.unlock = unlock
+        send(bundle, to: accepts)
+    }
+
+    /// Asks phones to open a screen, like pairing messages.
+    func send(_ open: [LinkOpen], to accepts: (LinkHello) -> Bool) {
+        var bundle = LinkBundle()
+        bundle.open = open
+        send(bundle, to: accepts)
+    }
+
+    private func send(_ bundle: LinkBundle, to accepts: (LinkHello) -> Bool) {
         for connection in connections.values where connection.session.isReady && isPreferred(connection) {
             if let peer = connection.session.peer, accepts(peer) { send(bundle, on: connection) }
         }
