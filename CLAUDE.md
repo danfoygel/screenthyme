@@ -126,7 +126,9 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   re-registration (`ensureMonitoring` is throttled).
 - After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
 - **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses the app scan's items
-  (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing.
+  (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing, and
+  50 apps (and 50 websites) one by one is the cap for all stores together: overflow stores don't add room
+  (`ShieldBudget`).
 - Scanned tokens are matched to Apple's bundle IDs by a parent's camera or by screenshot (`TokenPairing`, PLAN.md §15.6): the report
   extension's tokens use another key than the scan's and never compare equal, but a report filtered by scanned tokens
   honors them, so one filtered report per bit of each item's number draws a QR code (our own `QRCode`: Core Image

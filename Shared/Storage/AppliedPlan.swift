@@ -7,4 +7,6 @@ struct AppliedPlan: Codable, Sendable {
     var at: Date
     /// Limit id → name, for "Time limit: Social".
     var limitNames: [UUID: String]
+    /// Apps and websites due a shield that iOS's cap left out (`ShieldBudget`); nil in plans saved before it.
+    var unshielded: Set<UUID>?
 }

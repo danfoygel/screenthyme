@@ -230,7 +230,10 @@ public enum EnforcementPlanner {
             guard let extra = Self.extraMinutes(for: limit.id, grants: grants.map(\.grant)) else { continue }  // the rest of today
             let budget = limit.minutes(on: weekday) + extra
             plan.budgets[limit.id] = budget
-            if used >= budget || limitFires[limit.id] == budget {
+            // iOS's event counts a category's Always Allowed apps too; then only our own count ends the limit.
+            let fired = limitFires[limit.id] == budget
+                && !eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: policy.alwaysAllowed)
+            if used >= budget || fired {
                 plan.exhaustedLimits.insert(limit.id)
                 let passes = Set(grants.filter { $0.grant.reason == .limit(limit.id) && isLeft($0, usage: usage, now: now) }
                     .compactMap(\.grant.itemID))
@@ -283,6 +286,21 @@ public enum EnforcementPlanner {
         let categories = categoryNames(limit.items, items: items)
         let own = ids.compactMap { items[$0] }.compactMap { $0.kind == .category ? $0.identifier : $0.category }
         return own.contains(where: categories.contains)
+    }
+
+    /// Whether iOS's threshold event for `limit` would count an Always Allowed app or website: one (or its match) in a
+    /// category the limit holds. An event can't leave anything out of a category, so such a limit has none: the wake
+    /// alarm's wakes (every minute of use) end it from our own count, which leaves Always Allowed out. Unmatched
+    /// scanned apps have no known category and can't be seen here.
+    public static func eventCountsAlwaysAllowed(_ limit: AppLimit, items: [UUID: TrackedItem],
+                                                alwaysAllowed: Set<UUID>) -> Bool {
+        guard !limit.allApps else { return false }
+        let categories = categoryNames(limit.items, items: items)
+        guard !categories.isEmpty else { return false }
+        return alwaysAllowed.contains { id in
+            [id, items[id]?.match].compactMap { $0 }.compactMap { items[$0] }
+                .contains { $0.kind != .category && $0.category.map(categories.contains) == true }
+        }
     }
 
     /// Minutes parents' approved `grants` add to limit `limitID`; nil when one gave the rest of the day. Only grants
