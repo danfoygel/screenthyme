@@ -83,6 +83,16 @@ enum AppGroup {
     /// Which scanned items screenshot matching pairs (`TokenPairing.Mode`): the app sets it, the report extension draws by it.
     static var tokenPairingModeURL: URL { container.appending(path: "token-pairing-mode.json") }
     static func tokenPairingMode() -> TokenPairing.Mode { load(TokenPairing.Mode.self, from: tokenPairingModeURL) ?? .unmatched }
+    /// The places the location test marked on this phone (`[Place]`), and what iOS said about where the phone is
+    /// (PLAN.md §19): crossings of every fence and visits, uploaded for parents.
+    static var placesURL: URL { container.appending(path: "Places/places.json") }
+    static var placeEvents: JSONLinesFile<PlaceEvent> { JSONLinesFile(url: container.appending(path: "Places/events.jsonl")) }
+    static var placeEventsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Places/events-uploaded.jsonl")) }
+    /// The family's places, as parents named them (`FamilyPlaces`): `KidSync` fetches them, `PlaceWatcher` fences them.
+    static var familyPlacesURL: URL { container.appending(path: "Places/family-places.json") }
+    static func familyPlaces() -> FamilyPlaces? { load(FamilyPlaces.self, from: familyPlacesURL) }
+    /// What the fence monitor said and believed, line by line (`PlaceWatcher.log`): no coordinates.
+    static var placeDiagnosticsURL: URL { container.appending(path: "Places/diagnostics.txt") }
 
     /// Records waiting to be uploaded, and the ids already uploaded (uploads are idempotent).
     static var outbox: JSONLinesFile<AlertRecord> { JSONLinesFile(url: container.appending(path: "Outbox/alerts.jsonl")) }

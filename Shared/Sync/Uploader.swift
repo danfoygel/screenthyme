@@ -31,7 +31,27 @@ enum Uploader {
         _ = try await Outbox.send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
         _ = try await Outbox.send(AppGroup.extraMinuteUses, ledger: AppGroup.extraMinuteUsesLedger, to: store)
         let alerts = try await Outbox.send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
+        try await sendPlaceEvents(kid: kid, store: store)
         return Result(fires: fires.count, samples: samples, alerts: alerts, energyReports: energy.count)
+    }
+
+    /// Where the phone was (PLAN.md §19), as soon as the app hears: iOS wakes it for a visit or a crossing for a few
+    /// seconds, and the next minute of use may be hours away. Events from before uploads get the kid's id now.
+    static func flushPlaces(config: SharedConfig) async throws {
+        guard let family = config.family, let kid = config.kid else { return }
+        try await sendPlaceEvents(kid: kid, store: CloudStore(family: family))
+    }
+
+    private static func sendPlaceEvents(kid: Kid, store: CloudStore) async throws {
+        let uploaded = Set(AppGroup.placeEventsLedger.readAll())
+        let pending = AppGroup.placeEvents.readAll().filter { !uploaded.contains($0.id) }.map { event in
+            var event = event
+            event.kidID = event.kidID ?? kid.id
+            return event
+        }
+        guard !pending.isEmpty else { return }
+        try await store.save(pending)
+        try AppGroup.placeEventsLedger.append(contentsOf: pending.map(\.id))
     }
 
     /// Total fires, and tracking starts as minute-0 fires. Item fires from the old per-app ladders are dropped.

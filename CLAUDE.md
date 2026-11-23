@@ -15,6 +15,8 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
   Details/           AppDetails: one app's groups, lists, Downtime, limits, use and requests (its details screen)
   Link/              nearby link protocol: LinkKey (family secret), LinkSession (hello, AES-GCM frames), LinkBundle
   Energy/            EnergyLedger: our processes' daily energy from kernel counters (sampled by Shared/Energy)
+  Places/            Place, FamilyPlaces, PlaceEvent, PlaceStays, LocationDay, VisitClusters: geofences and visits →
+                     stays → use by place; visits → spots to name (PLAN.md §19)
   BugReport/         a kid's bug report, the family's GitHub repo and token (IssueTracker), filing it (GitHubIssues)
   Replay/            Trace, retarget/schedule, synthetic traces and scenarios
 Shared/              compiled into the app AND the monitor extension: App Group files, SharedConfig, CloudKit records, Uploader
@@ -55,7 +57,7 @@ xcodegen generate
 # Pull the App Group off a phone (Xcode 27's devicectl only copies from Library/) and reconstruct
 xcrun devicectl device copy from --device <udid> --domain-type appGroupDataContainer \
   --domain-identifier group.com.danfoygel.screenthyme --source Library/ScreenThyme --destination /tmp/st
-(cd ThymeKit && swift run thyme-inspect /tmp/st/Journal/journal-YYYY-MM-DD.jsonl /tmp/st/Outbox/samples.jsonl /tmp/st/items.json)
+(cd ThymeKit && swift run thyme-inspect /tmp/st/Journal/journal-YYYY-MM-DD.jsonl /tmp/st/Outbox/samples.jsonl /tmp/st/items.json [/tmp/st/Places])
 
 # A parent's local mirror of the family zone
 xcrun devicectl device copy from --device <udid> --domain-type appDataContainer \

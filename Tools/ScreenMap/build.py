@@ -174,9 +174,10 @@ k.node("day", 3, 10.25, "‹date›", "UsageCalendar", "the day as a calendar")
 k.node("s4", 3, 11.25, "Data access (S4)", "DataAccessView")
 k.node("apple", 3, 12.25, "Apple's numbers", "AppleReportView", "ThymeReport extension")
 k.node("raw", 3, 13.25, "Raw usage", "RawUsageView")
-k.node("share", 3, 14.25, "Share sheet", "ShareLink", "after Export day as trace", kind="apple")
-k.node("replay", 3, 15.5, "Replay", "ReplayView")
-k.node("toParent", 3, 16.5, "Parent mode  ›", kind="mode")
+k.node("places", 3, 14.25, "Places", "PlacesTestView", "the location test")
+k.node("share", 3, 15.25, "Share sheet", "ShareLink", "after Export day as trace", kind="apple")
+k.node("replay", 3, 16.5, "Replay", "ReplayView")
+k.node("toParent", 3, 17.5, "Parent mode  ›", kind="mode")
 
 k.node("popover", 4, 10.25, "Block details", "UsageCalendar popover", kind="popover")
 k.node("auth2", 4, 11.25, "Screen Time access", "Apple's approval prompt", kind="apple")
@@ -209,6 +210,7 @@ k.edge("debug", "day", "Day timeline")
 k.edge("debug", "s4", "Data access test")
 k.edge("debug", "apple", "Apple's report")
 k.edge("debug", "raw", "Raw usage")
+k.edge("debug", "places", "Places (location test)")
 k.edge("debug", "share", "Share ‹file›", kind="apple")
 k.edge("test", "replay", "Replay tool")
 k.edge("test", "toParent", "Role: Parent", kind="mode")
@@ -229,9 +231,11 @@ k.edges[1]["pts"] = [(sh["x"] + W, yy), (ask["x"], yy)]
 p = Diagram("p")
 p.node("welcome", 0, 2, "Welcome", "RoleSelectionView", "first launch only", kind="root", tag="START")
 p.node("kids", 1, 2, "Kids", "ParentHomeView", "a card for each kid", kind="root", tag="TAB 1")
-p.node("alerts", 1, 4, "Alerts", "AlertsView", "requests: Approve, Decline", kind="root", tag="TAB 2")
-p.node("settings", 1, 6, "Settings", "ParentSettingsView", "family, you, kids, nearby", kind="root", tag="TAB 3")
-p.frame(["kids", "alerts", "settings"], "Tab bar")
+p.node("alerts", 1, 3.25, "Alerts", "AlertsView", "requests: Approve, Decline", kind="root", tag="TAB 2")
+p.node("places", 1, 4.5, "Places", "PlacesView", "map of visits; places, spots", kind="root", tag="TAB 3")
+p.node("settings", 1, 6, "Settings", "ParentSettingsView", "family, you, kids, nearby", kind="root", tag="TAB 4")
+p.frame(["kids", "alerts", "places", "settings"], "Tab bar")
+p.node("placeEditor", 2, 4.5, "Name this place", "PlaceEditor", "name, fence, visits; Remove", kind="sheet")
 
 p.node("kidDay", 2, 2, "‹kid›", "KidDayView", "one day: totals, apps, sites")
 p.node("sharing", 2, 7, "Share the family", "UICloudSharingController", "family owner only", kind="apple")
@@ -243,8 +247,10 @@ p.node("perms", 2, 12.25, "Permissions", "PermissionsView", "this phone's, each 
 
 p.node("timeline", 3, 0.5, "Timeline", "KidTimelineView", "zoom, Options menu")
 p.node("history", 3, 2, "Change history", "PolicyHistoryView", "every policy save and answer")
+p.node("locationDay", 3, 3.1, "‹place›", "LocationDayView", "apps used there, times there")
 p.node("scanner", 3, 4.25, "Match ‹kid›'s apps", "PairingScannerView", "camera reads the kid's codes")
 p.node("kidSettings", 3, 6, "‹kid›", "KidSettingsView", "rules and health")
+p.node("rawLocation", 3, 7.5, "Raw location", "RawLocationView", "visits, fences; also a day's Where")
 p.node("replay", 3, 9, "Replay", "ReplayView")
 p.node("toKid", 3, 10, "Kid mode  ›", kind="mode")
 
@@ -282,6 +288,8 @@ p.edge("kidDay", "timeline", "Day timeline")
 p.edge("kidDay", "history", "Change history")
 p.edge("kidDay", "scanner", "Match ‹n› new apps\nwith camera")
 p.edge("kidDay", "kidSettings", "Rules and health", dp=-12)
+p.edge("kidDay", "locationDay", "Where › a place")
+p.edge("places", "placeEditor", "a spot or place", kind="sheet")
 p.edge("test", "replay", "Replay tool")
 p.edge("test", "toKid", "Role: Kid", kind="mode")
 p.edge("timeline", "popover", "tap a block", kind="sheet")
@@ -315,6 +323,10 @@ sx = p.nodes["kidSettings"]["x"] + 30
 p.edge("kidSettings", "scanner", "Match apps\nwith camera",
        pts=[(sx, p.nodes["kidSettings"]["y"]), (sx, p.nodes["scanner"]["y"] + H)],
        lpos=(sx + 10, (p.nodes["kidSettings"]["y"] + p.nodes["scanner"]["y"] + H) / 2 + 6, "start"))
+# Rules and health's Raw location: straight down the column
+ks, rl = p.nodes["kidSettings"], p.nodes["rawLocation"]
+p.edge("kidSettings", "rawLocation", "Raw location", pts=[(sx, ks["y"] + ks["h"]), (sx, rl["y"])],
+       lpos=(sx + 10, (ks["y"] + ks["h"] + rl["y"]) / 2 + 6, "start"))
 # Screen Time's own link back to Change history: up from its top, left into history's right side
 pol, his = p.nodes["policy"], p.nodes["history"]
 bx = pol["x"] + 30
@@ -344,8 +356,9 @@ WHY.update({
 
 kid_svg = k.render("Kid mode screen flow: Welcome leads to the ScreenThyme home screen, which links to the kid's Screen Time lists, "
                    "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, the day timeline, and Test mode; the block page outside the app also opens Ask for more time.")
-parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts and Settings; a kid's day leads to the timeline, "
-                      "change history, camera matching, an app's details and rules and health, which leads to the Screen Time editor and its sheets and item picker.")
+parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts, Places and Settings; Places names spots on its map; "
+                      "a kid's day leads to the timeline, change history, a place's use, camera matching, an app's details and rules and health, "
+                      "which leads to the Screen Time editor and its sheets and item picker, and raw location.")
 
 commit = subprocess.run(["git", "-C", HERE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 source = f"Traced from the SwiftUI sources at {commit} · {datetime.date.today():%-d %b %Y}"

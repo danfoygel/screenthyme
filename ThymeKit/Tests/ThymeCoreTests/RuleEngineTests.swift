@@ -135,6 +135,16 @@ struct HealthEvaluatorTests {
         latest.iCloud = .denied
         #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc)
             == [.permissionDenied(.backgroundRefresh), .permissionDenied(.localNetwork), .permissionDenied(.iCloud)])
+        // Location counts only on a phone watching places: elsewhere heartbeats leave it nil.
+        latest.backgroundRefresh = .allowed
+        latest.localNetwork = .allowed
+        latest.iCloud = .allowed
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc).isEmpty)
+        latest.location = .notAsked
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc).isEmpty)
+        latest.location = .denied
+        #expect(HealthEvaluator.issues(latest: latest, lastFireAt: nil, now: at(10, 5), calendar: utc)
+            == [.permissionDenied(.location)])
     }
 
     @Test func permissionCatalogue() {
@@ -148,7 +158,8 @@ struct HealthEvaluatorTests {
         let all: PermissionState = .denied
         let heartbeat = Heartbeat(kidID: testKid.id, at: at(10, 0), source: .launch, authStatus: "", activeActivities: [],
                                   expectedActivities: [], appVersion: "", backlogCount: 0, lastFireAt: nil,
-                                  backgroundRefresh: all, cellularData: all, bluetooth: all, localNetwork: all, iCloud: all)
+                                  backgroundRefresh: all, cellularData: all, bluetooth: all, localNetwork: all, iCloud: all,
+                                  location: all)
         let reported = DevicePermission.allCases.filter { $0.state(in: heartbeat) != nil }
         let kidNeeds = DevicePermission.allCases.filter { $0.purpose(onKidPhone: true) != nil && $0 != .screenTime }
         #expect(reported == kidNeeds)
