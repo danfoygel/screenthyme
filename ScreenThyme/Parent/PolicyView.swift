@@ -2,7 +2,8 @@ import SwiftUI
 import ThymeCore
 
 /// ScreenThyme's replacement for Apple's Screen Time settings for one kid (PLAN.md §15): Downtime, App Limits,
-/// Always Allowed, blocked apps and Content & Privacy. Edits a draft; Save sends it to the kid's phone.
+/// Always Allowed, blocked apps and Content & Privacy. Edits a draft; Save asks whether it's for good or for some days
+/// (PLAN.md §15.10), then sends it to the kid's phone.
 struct PolicyView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
@@ -10,6 +11,7 @@ struct PolicyView: View {
     @State private var editingWindow: DowntimeWindow?
     @State private var editingLimit: AppLimit?
     @State private var editingGroup: ItemGroup?
+    @State private var saving = false
 
     var body: some View {
         let stored = model.data.policy(for: kid.id)
@@ -21,6 +23,24 @@ struct PolicyView: View {
                 Toggle("Enforce on \(kid.displayName)'s phone", isOn: binding(policy, \.enabled))
             } footer: {
                 Text("ScreenThyme blocks apps itself because it holds \(kid.displayName)'s usage data, which Apple's Screen Time then can't use. Don't set up Screen Time for \(kid.displayName) in Settings: it would take the data back.")
+            }
+            let reverts = stored.reverts(through: .distantFuture).filter { !$0.edits.isEmpty }
+            if !reverts.isEmpty {
+                Section {
+                    ForEach(reverts, id: \.change.id) { step in
+                        let name = PolicyHistoryRow.namer(groups: step.before.groups + step.after.groups, items: items)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label("Changes back \(PolicyHistoryRow.end(step.change.until))", systemImage: "timer")
+                            ForEach(Array(step.edits.enumerated()), id: \.offset) { _, edit in
+                                Text(edit.describe(name: name).title).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Temporary changes")
+                } footer: {
+                    Text("Each changes back by itself at midnight, on \(kid.displayName)'s phone too. What's changed again before then stays.")
+                }
             }
             Section("Downtime") {
                 ForEach(policy.downtime) { window in
@@ -113,14 +133,21 @@ struct PolicyView: View {
         .toolbar {
             if let draft, draft != stored {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            await model.save(draft)
-                            self.draft = nil
-                        }
-                    }
+                    Button("Save") { saving = true }
                 }
                 ToolbarItem(placement: .cancellationAction) { Button("Revert") { self.draft = nil } }
+            }
+        }
+        .sheet(isPresented: $saving) {
+            if let draft {
+                let name = PolicyHistoryRow.namer(groups: draft.groups + stored.groups, items: items)
+                SavePolicySheet(kidName: kid.displayName,
+                                changes: PolicyEdit.between(stored, draft).map { $0.describe(name: name) }) { until in
+                    Task {
+                        await model.save(draft, until: until)
+                        self.draft = nil
+                    }
+                }
             }
         }
         .sheet(item: $editingWindow) { window in
@@ -183,6 +210,60 @@ struct PolicyView: View {
     private func binding<Value>(_ policy: Policy, _ keyPath: WritableKeyPath<Policy, Value>) -> Binding<Value> {
         Binding(get: { (draft ?? policy)[keyPath: keyPath] }, set: { value in update(policy) { $0[keyPath: keyPath] = value } })
     }
+}
+
+/// Asks on Save whether the changes are permanent or for some days, and lists them.
+struct SavePolicySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let kidName: String
+    let changes: [(title: String, details: [String])]
+    /// The midnight the changes end, or nil for permanent ones.
+    let onSave: (Date?) -> Void
+    @State private var temporary = false
+    @State private var days = 1
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Keep", selection: $temporary) {
+                        Text("Permanent").tag(false)
+                        Text("Temporary").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    if temporary {
+                        Stepper(days == 1 ? "Today only" : "For \(days) days, from today", value: $days, in: 1...30)
+                    }
+                } footer: {
+                    Text(temporary ? "Changes back by itself \(PolicyHistoryRow.end(until)), on \(kidName)'s phone too. What's changed again before then stays."
+                         : "Stays until someone changes it.")
+                }
+                Section("Changes") {
+                    ForEach(Array(changes.enumerated()), id: \.offset) { _, line in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(line.title)
+                            ForEach(line.details, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Save changes")
+            .navigationBarTitleDisplayMode(.inline)
+            .bugButton()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(temporary ? until : nil)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var until: Date { TemporaryChange.until(days: days, from: Date()) }
 }
 
 struct DowntimeEditor: View {
