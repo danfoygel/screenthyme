@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import ThymeCore
+import UIKit
 
 /// Measures this process with the kernel's own per-task counters (the numbers behind Xcode's energy gauge) and adds
 /// them to the day's `EnergyLedger` in the App Group. Sample after a callback's work, so the work is counted.
@@ -39,7 +40,30 @@ enum EnergyMeter {
 
     private static func report(kid: Kid, day: DayKey, ledger: EnergyLedger, now: Date) -> EnergyReport {
         EnergyReport(kidID: kid.id, day: day, updatedAt: now, deviceModel: deviceModel,
-                     monitor: ledger.usage(on: day, source: .monitor), app: ledger.usage(on: day, source: .app))
+                     monitor: ledger.usage(on: day, source: .monitor), app: ledger.usage(on: day, source: .app),
+                     batteryLevel: batteryLevel())
+    }
+
+    /// The phone's charge, 0–1, or nil if iOS didn't say. `UIDevice` belongs to the main thread; off it (the extension's
+    /// callbacks and uploads) this asks the main thread and waits briefly, never long enough to hold up an upload.
+    static func batteryLevel() -> Double? {
+        let read: @MainActor @Sendable () -> Double? = {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            let level = UIDevice.current.batteryLevel
+            return level >= 0 ? Double(level) : nil
+        }
+        if Thread.isMainThread { return MainActor.assumeIsolated(read) }
+        let box = BatteryBox()
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async {
+            box.level = MainActor.assumeIsolated(read)
+            done.signal()
+        }
+        return done.wait(timeout: .now() + 0.2) == .success ? box.level : nil
+    }
+
+    private final class BatteryBox: @unchecked Sendable {
+        var level: Double?  // written before the semaphore's signal, read after its wait
     }
 
     /// `task_energy` is in nanojoules. The CPU times in the same struct are Mach ticks, so CPU time comes from

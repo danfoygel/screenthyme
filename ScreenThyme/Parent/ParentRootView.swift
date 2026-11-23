@@ -89,6 +89,9 @@ struct KidCard: View {
                 Text(kid.displayName).font(.headline)
                 if kid.isTest { Text("TEST").font(.caption2.bold()).foregroundStyle(.orange) }
                 Spacer()
+                if let battery = model.battery(for: kid), battery.isRecent(now: Date()) {
+                    BatteryLabel(reading: battery).font(.caption)
+                }
                 if model.nearby.isConnected(kid: kid.id) {
                     Label("Nearby", systemImage: "antenna.radiowaves.left.and.right")
                         .font(.caption).foregroundStyle(.secondary)

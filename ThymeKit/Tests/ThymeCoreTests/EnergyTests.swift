@@ -106,4 +106,35 @@ struct EnergyTests {
         unknown.deviceModel = "iPhone99,1"
         #expect(unknown.batteryFraction == nil)
     }
+
+    @Test func batteryComesFromTheNewerOfHeartbeatAndReports() {
+        let kid = UUID()
+        let heartbeat = Heartbeat(kidID: kid, at: at(9, 0), source: .launch, authStatus: "approved", activeActivities: [],
+                                  expectedActivities: [], appVersion: "1", backlogCount: 0, lastFireAt: nil,
+                                  batteryLevel: 0.9)
+        let report = { (hour: Int, level: Double?) in
+            EnergyReport(kidID: kid, day: testDay, updatedAt: at(hour, 0), deviceModel: "", monitor: EnergyUsage(),
+                         app: EnergyUsage(), batteryLevel: level)
+        }
+        #expect(BatteryReading.latest(heartbeat: heartbeat, reports: [report(8, 0.95), report(11, 0.6)])
+                == BatteryReading(level: 0.6, at: at(11, 0)))
+        // A report without a level (an older build, or iOS didn't say) leaves the heartbeat's.
+        #expect(BatteryReading.latest(heartbeat: heartbeat, reports: [report(11, nil)]) == BatteryReading(level: 0.9, at: at(9, 0)))
+        #expect(BatteryReading.latest(heartbeat: nil, reports: []) == nil)
+
+        let reading = BatteryReading(level: 0.2, at: at(9, 0))
+        #expect(reading.isLow)
+        #expect(reading.isRecent(now: at(10, 59)))
+        #expect(!reading.isRecent(now: at(11, 0)))
+    }
+
+    @Test func reportsFromOlderBuildsDecodeWithoutBattery() throws {
+        let report = EnergyReport(kidID: UUID(), day: testDay, updatedAt: at(12, 0), deviceModel: "", monitor: EnergyUsage(),
+                                  app: EnergyUsage(), batteryLevel: 0.5)
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder.thyme.encode(report)) as? [String: Any])
+        json["batteryLevel"] = nil
+        let old = try JSONDecoder.thyme.decode(EnergyReport.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.batteryLevel == nil)
+        #expect(old.monitor == report.monitor)
+    }
 }

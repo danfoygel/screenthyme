@@ -141,8 +141,6 @@ extension AppModel {
     func makeHeartbeat(_ source: HeartbeatSource) -> Heartbeat? {
         guard isKid, let kid = config.kid else { return nil }
         authorizationStatus = AuthorizationCenter.shared.authorizationStatus
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        let batteryLevel = UIDevice.current.batteryLevel
         return Heartbeat(id: Replay.stableUUID("heartbeat", kid.id.uuidString), kidID: kid.id, at: Date(),
                          source: source, authStatus: authorizationLabel,
                          activeActivities: DeviceActivityCenter().activities.map(\.rawValue),
@@ -150,7 +148,7 @@ extension AppModel {
                          appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?",
                          backlogCount: Uploader.backlogCount(),
                          lastFireAt: AppGroup.journal.lastThresholdAt(),
-                         batteryLevel: batteryLevel >= 0 ? Double(batteryLevel) : nil,
+                         batteryLevel: EnergyMeter.batteryLevel(),
                          backgroundRefresh: DevicePermissions.backgroundRefresh,
                          cellularData: DevicePermissions.cellularData,
                          bluetooth: DevicePermissions.bluetooth,

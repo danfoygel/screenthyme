@@ -174,6 +174,11 @@ extension AppModel {
         return unmatched
     }
 
+    /// The kid phone's charge from its heartbeat or its energy reports, whichever came last.
+    func battery(for kid: Kid) -> BatteryReading? {
+        BatteryReading.latest(heartbeat: data.heartbeats[kid.id], reports: data.energyReports(for: kid.id))
+    }
+
     func healthIssues(for kid: Kid, now: Date = Date()) -> [HealthIssue] {
         let staleness = data.rules(for: kid.id).lazy.compactMap { rule -> (Int, Int, Int)? in
             guard rule.enabled, case let .staleness(hours, start, end) = rule.condition else { return nil }
