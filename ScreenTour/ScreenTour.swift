@@ -3,7 +3,8 @@ import XCTest
 /// The screen map's screenshots (Tools/ScreenMap): walks every screen the Simulator can reach, in single-phone test
 /// mode with a replayed synthetic day for a test kid, and saves each as <SCREEN_TOUR_OUT>/<k|p>-<key>.png, named
 /// after its box in Tools/ScreenMap/build.py. Run by Tools/ScreenMap/capture.sh, from a fresh install, in order:
-/// test1Parent, test2Kid, then test3AskSheet once the script has left a block page's request for the app.
+/// test1Parent, test2Kid, then test3AskSheet once the script has left a block page's request for the app, and
+/// test4SelfApprove once it has left a waiting request.
 final class ScreenTour: XCTestCase {
     let out = ProcessInfo.processInfo.environment["SCREEN_TOUR_OUT"] ?? NSTemporaryDirectory()
     var app: XCUIApplication!
@@ -315,5 +316,14 @@ final class ScreenTour: XCTestCase {
         tap("Choose the app")
         Thread.sleep(forTimeInterval: 2)
         snap("k-choose")
+    }
+
+    /// Approve it yourself, from the waiting request capture.sh left (made-up test data).
+    func test4SelfApprove() {
+        guard tap("Can't reach a parent?") else { return XCTFail("No waiting request: requests.jsonl missing or not today's") }
+        guard app.navigationBars["Approve it yourself"].waitForExistence(timeout: 5) else {
+            return XCTFail("No Approve it yourself sheet")
+        }
+        snap("k-selfApprove")
     }
 }

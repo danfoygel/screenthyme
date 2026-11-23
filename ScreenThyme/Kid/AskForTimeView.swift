@@ -15,6 +15,7 @@ struct AskForTimeView: View {
     @State private var note = ""
     @State private var sent: TimeRequest?
     @State private var answer: TimeGrant?
+    @State private var selfApproving = false
 
     init(ask: ShieldContext.Ask? = nil) {
         let target = ask.map { ShieldContext().target($0) }
@@ -66,7 +67,10 @@ struct AskForTimeView: View {
                 if let sent {
                     Section("Your request") {
                         if let answer {
-                            if answer.approved {
+                            if answer.isSelfApproved {
+                                Label("You approved \(ShieldContext.describe(minutes: answer.minutes)) yourself. Your parents have been told.",
+                                      systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            } else if answer.approved {
                                 Label("\(answer.by) said yes: \(ShieldContext.describe(minutes: answer.minutes)).",
                                       systemImage: "checkmark.circle").foregroundStyle(.green)
                                 if answer.minutes != sent.minutes {
@@ -86,6 +90,9 @@ struct AskForTimeView: View {
                             }
                         }
                     }
+                    if answer == nil, sent.canSelfApprove {
+                        SelfApproveButton { selfApproving = true }
+                    }
                 }
             }
             .navigationTitle("Ask for more time")
@@ -100,6 +107,9 @@ struct AskForTimeView: View {
                 item = AppScan.item(for: token, kid: kid)
             }
             .task(id: sent?.id) { await waitForAnswer() }
+            .sheet(isPresented: $selfApproving) {
+                if let sent { SelfApproveView(request: sent) { answer = $0 } }
+            }
         }
     }
 

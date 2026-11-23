@@ -37,6 +37,11 @@ run test2Kid
 GROUP=$(xcrun simctl get_app_container "$UDID" $BUNDLE group.com.danfoygel.screenthyme)
 printf '{"at":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > "$GROUP/Library/ScreenThyme/ask.json"
 run test3AskSheet
+# A request for more time waiting for an answer (made up), under which the kid's home offers to approve it oneself.
+mkdir -p "$GROUP/Library/ScreenThyme/Outbox"
+printf '{"at":"%s","id":"%s","kidID":"%s","minutes":30,"reason":{"downtime":{"_0":"%s"}}}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$(uuidgen)" "$(uuidgen)" "$(uuidgen)" >> "$GROUP/Library/ScreenThyme/Outbox/requests.jsonl"
+run test4SelfApprove
 xcrun simctl status_bar "$UDID" clear
 
 # 960 px tall JPEGs; the screens both maps show get both names.

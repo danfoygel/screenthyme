@@ -3,7 +3,7 @@ import ThymeCore
 
 /// Everything that changed what a kid's phone enforces, oldest first: each parent's saves of the policy (Downtime,
 /// limits, Always Allowed, blocked apps, Content & Privacy), temporary ones changing back (those still to come last,
-/// as scheduled) and their answers to requests for more time.
+/// as scheduled) and their answers to requests for more time, with the kid's own approvals marked.
 struct PolicyHistoryView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
@@ -44,6 +44,7 @@ struct PolicyHistoryRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Label(header, systemImage: icon).font(.subheadline.bold())
+                    .foregroundStyle(isSelfApproved ? .orange : .primary)
                 Spacer()
                 Text(Format.time(entry.at)).font(.caption).foregroundStyle(.secondary)
             }
@@ -63,14 +64,29 @@ struct PolicyHistoryRow: View {
             case let .revert(revert):
                 Text("Ends \(revert.change.by)'s change of \(revert.change.at.formatted(.dateTime.weekday(.abbreviated).month().day())), made for \(Self.days(from: revert.change.at, to: revert.at)).")
                     .font(.caption).foregroundStyle(.secondary)
-            case .grant:
-                EmptyView()
+            case let .grant(grant):
+                if let reason = grant.selfApproval {
+                    Text("Why: \u{201C}\(reason)\u{201D}").italic().font(.subheadline)
+                    Label("No parent answered: \(grant.by) approved this without a parent", systemImage: "person.fill.questionmark")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if let ended = grant.endedAt {
+                    Label("Ended early by \(grant.endedBy ?? "a parent") at \(Format.time(ended))", systemImage: "stop.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)
+        .listRowBackground(isSelfApproved ? SelfApproval.background : nil)
+    }
+
+    private var isSelfApproved: Bool {
+        guard case let .grant(grant) = entry else { return false }
+        return grant.isSelfApproved
     }
 
     private var header: String {
+        if isSelfApproved { return "\(entry.by) · self-approved" }
         guard case let .revert(revert) = entry else { return entry.by }
         return revert.at > Date() ? "Scheduled: changes back" : "Changed back"
     }
@@ -79,7 +95,7 @@ struct PolicyHistoryRow: View {
         switch entry {
         case .change: "slider.horizontal.3"
         case let .revert(revert): revert.at > Date() ? "calendar.badge.clock" : "arrow.uturn.backward.circle"
-        case let .grant(grant): grant.approved ? "checkmark.circle" : "xmark.circle"
+        case let .grant(grant): grant.isSelfApproved ? "exclamationmark.triangle.fill" : grant.approved ? "checkmark.circle" : "xmark.circle"
         }
     }
 
@@ -128,7 +144,8 @@ struct PolicyHistoryRow: View {
             }
             let what = grant.itemID.map { " for \(name($0))" } ?? ""
             let reason = RequestRow.describe(grant.reason, itemID: grant.itemID, policy: model.data.policy(for: kid.id))
-            let title = grant.approved ? "Gave \(ShieldContext.describe(minutes: grant.minutes))\(what) \(reason)"
+            let title = grant.isSelfApproved ? "Took \(ShieldContext.describe(minutes: grant.minutes))\(what) \(reason)"
+                : grant.approved ? "Gave \(ShieldContext.describe(minutes: grant.minutes))\(what) \(reason)"
                 : "Said no to more time\(what) \(reason)"
             return [(title, [])]
         }
