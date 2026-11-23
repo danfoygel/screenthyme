@@ -112,7 +112,10 @@ struct AskForTimeView: View {
 
     private func send(_ target: ShieldContext.Target, _ context: ShieldContext) {
         let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        sent = context.request(target, minutes: minutes, note: note.isEmpty ? nil : note)
+        let items = Dictionary(context.items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // An unmatched scanned app has no name; the alert then says "this app".
+        let name = target.item.map { AppCatalog.shared.name(of: $0, in: items) } ?? target.category.map(context.name(of:))
+        sent = context.request(target, name: name, minutes: minutes, note: note.isEmpty ? nil : note)
         model.nearby.sendUpdates()
     }
 

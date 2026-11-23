@@ -534,8 +534,9 @@ Ask for more time: the kid's **TimeRequest** (item, reason, 15 min / 1 h / rest 
 parents' phones). A parent answers with a **TimeGrant** saved as `TimeGrant.<request id>`. For a limit, a grant that names an app (or
 a category) lets only that through the limit for its minutes of use: the limit stays used up for everything else, its
 category and all-apps shields leave the app out, and its use still counts. One that names nothing (an all-apps limit's
-category shield) adds minutes to that limit today. For Downtime, it pauses Downtime on the whole phone for that many minutes of the clock, or
-until the window ends (a press on a category shield can't say which app, §15.3).
+category shield) adds minutes to that limit today. For Downtime, one that names an app lets only that app through
+(§15.4); one that names nothing pauses Downtime on the whole phone for that many minutes of the clock, or until the
+window ends. The alert names what the time is for, and parents' Alerts list shows the app.
 
 ### 15.2 Kid phone
 

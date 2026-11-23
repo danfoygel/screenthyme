@@ -197,16 +197,20 @@ struct ShieldContext {
         return state?.grants.last { $0.grant.reason == scope.reason && $0.grant.itemID == scope.itemID }?.grant
     }
 
-    /// Queues a request for more time and an alert for the parents, for the app to upload.
-    func request(_ target: Target, minutes: Int?, note: String? = nil) -> TimeRequest? {
+    /// Queues a request for more time and an alert for the parents, for the app to upload. `name` is what the request
+    /// names (the app, or the category), so parents see what the time is for.
+    func request(_ target: Target, name: String?, minutes: Int?, note: String? = nil) -> TimeRequest? {
         guard let kid = config.kid, let scope = requestScope(for: target) else { return nil }
         let request = TimeRequest(kidID: kid.id, itemID: scope.itemID, reason: scope.reason, minutes: minutes, at: Date(),
                                   note: note)
         let amount = Self.describe(minutes: minutes).capitalizedFirst
+        let what = name ?? (items.first { $0.id == scope.itemID }?.kind == .category ? "this category" : "this app")
         var body = switch scope.reason {
-        case .downtime: scope.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) during Downtime."
-        case let .limit(id): "\(amount) on the \(applied?.limitNames[id] ?? "time") limit."
-        case .blocked: "\(amount), though it isn't allowed."
+        case .downtime: scope.itemID == nil ? "\(amount) of Downtime off, for the whole phone." : "\(amount) for \(what) during Downtime."
+        case let .limit(id):
+            scope.itemID == nil ? "\(amount) on the \(applied?.limitNames[id] ?? "time") limit, for everything it counts."
+                : "\(amount) for \(what) only, over the \(applied?.limitNames[id] ?? "time") limit."
+        case .blocked: "\(amount) for \(what), though it isn't allowed."
         case .alwaysAllow: "To always allow it."
         }
         if let note { body += " \u{201C}\(note)\u{201D}" }

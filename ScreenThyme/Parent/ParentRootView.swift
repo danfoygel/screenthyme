@@ -323,6 +323,8 @@ struct AlertsView: View {
                 ForEach(alerts) { alert in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(alert.title).font(.headline)
+                        // What it's about: older kid builds' requests name only the limit, not what the time is for.
+                        if let item = alert.itemID.flatMap({ model.data.items[$0] }) { ItemName(item: item) }
                         Text(alert.body)
                         Text(alert.at.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption).foregroundStyle(.secondary)
