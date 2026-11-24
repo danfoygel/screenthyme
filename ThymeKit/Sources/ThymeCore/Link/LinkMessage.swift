@@ -53,6 +53,8 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     public var pairing: [LinkPairing]?
     /// Optional, so a bundle from a build without it still opens.
     public var extraMinutes: [ExtraMinuteUse]?
+    /// Optional, so a bundle from a build without it still opens.
+    public var limitsReached: [LimitReached]?
     /// Parent controls (`ParentUnlock`), like `pairing`. Optional, so a bundle from a build without it still opens.
     public var unlock: [LinkUnlock]?
     /// Screens to open on the kid's phone, like `pairing`. A field of its own, not a new `LinkPairing` case: a build
@@ -66,7 +68,7 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     public var count: Int {
         kids.count + items.count + epochs.count + fires.count + samples.count + heartbeats.count + alerts.count
             + requests.count + ruleSets.count + policies.count + grants.count + (pairing?.count ?? 0)
-            + (extraMinutes?.count ?? 0) + (unlock?.count ?? 0) + (open?.count ?? 0)
+            + (extraMinutes?.count ?? 0) + (limitsReached?.count ?? 0) + (unlock?.count ?? 0) + (open?.count ?? 0)
     }
 
     /// Keeps only the records about one kid: a phone accepts nothing about other kids from a peer.
@@ -84,6 +86,7 @@ public struct LinkBundle: Codable, Sendable, Hashable {
         copy.policies = policies.filter { $0.kidID == kid }
         copy.grants = grants.filter { $0.kidID == kid }
         copy.extraMinutes = extraMinutes?.filter { $0.kidID == kid }
+        copy.limitsReached = limitsReached?.filter { $0.kidID == kid }
         return copy
     }
 }
@@ -131,6 +134,7 @@ public struct LinkSentFilter: Sendable {
         out.unlock = bundle.unlock
         out.open = bundle.open
         out.extraMinutes = bundle.extraMinutes.map { filter($0, "ExtraMinuteUse", id: \.id) }
+        out.limitsReached = bundle.limitsReached.map { filter($0, "LimitReached", id: \.id) }
         return out
     }
 

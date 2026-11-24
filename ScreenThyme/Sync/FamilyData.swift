@@ -20,6 +20,7 @@ struct IngestBatch: Sendable {
     var requests: [TimeRequest] = []
     var grants: [TimeGrant] = []
     var extraMinutes: [ExtraMinuteUse] = []
+    var limitsReached: [LimitReached] = []
     var linkKeys: [LinkKey] = []
     var placeEvents: [PlaceEvent] = []
     var familyPlaces: [FamilyPlaces] = []
@@ -57,6 +58,7 @@ struct IngestBatch: Sendable {
         case TimeRequest.recordType: TimeRequest.decode(payload: payload).map { requests.append($0) }
         case TimeGrant.recordType: TimeGrant.decode(payload: payload).map { grants.append($0) }
         case ExtraMinuteUse.recordType: ExtraMinuteUse.decode(payload: payload).map { extraMinutes.append($0) }
+        case LimitReached.recordType: LimitReached.decode(payload: payload).map { limitsReached.append($0) }
         case LinkKey.recordType: LinkKey.decode(payload: payload).map { linkKeys.append($0) }
         case PlaceEvent.recordType: PlaceEvent.decode(payload: payload).map { placeEvents.append($0) }
         case FamilyPlaces.recordType: FamilyPlaces.decode(payload: payload).map { familyPlaces.append($0) }
@@ -90,6 +92,7 @@ struct IngestBatch: Sendable {
         requests += other.requests
         grants += other.grants
         extraMinutes += other.extraMinutes
+        limitsReached += other.limitsReached
         linkKeys += other.linkKeys
         placeEvents += other.placeEvents
         familyPlaces += other.familyPlaces
@@ -101,7 +104,7 @@ struct IngestBatch: Sendable {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
             && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
-            && extraMinutes.isEmpty && linkKeys.isEmpty && placeEvents.isEmpty && familyPlaces.isEmpty
+            && extraMinutes.isEmpty && limitsReached.isEmpty && linkKeys.isEmpty && placeEvents.isEmpty && familyPlaces.isEmpty
             && deletedRecordNames.isEmpty && raw.isEmpty
     }
 }
@@ -114,7 +117,7 @@ final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: a snapshot of another version (or an unreadable one) is rebuilt from the
         /// raw records (`rebuildLocally`), or when those aren't whole, fetched again from scratch, shown meanwhile.
-        static let currentVersion = 9
+        static let currentVersion = 10
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -130,6 +133,7 @@ final class FamilyData {
         var requests: [UUID: TimeRequest] = [:]
         var grants: [UUID: TimeGrant] = [:]
         var extraMinutes: [UUID: ExtraMinuteUse] = [:]
+        var limitsReached: [UUID: LimitReached] = [:]
         var familyPlaces: FamilyPlaces?
         /// Where builds before link-key.json kept the nearby link's secret; read once, to move it.
         var linkKey: LinkKey?
@@ -173,6 +177,8 @@ final class FamilyData {
     var familyPlaces: FamilyPlaces? { snapshot.familyPlaces }
     /// "One more minute" taken on kids' block pages.
     var extraMinutes: [UUID: ExtraMinuteUse] { snapshot.extraMinutes }
+    /// Limits used up on kids' phones.
+    var limitsReached: [UUID: LimitReached] { snapshot.limitsReached }
     /// The nearby link's secret (PLAN.md §17), in its own file: a build from a branch without the link rewrites the
     /// snapshot without the fields it doesn't know, which dropped it once. Fetched by name when missing
     /// (`LinkKeyService`).
@@ -307,6 +313,7 @@ final class FamilyData {
             snapshot.grants[grant.requestID] = grant
         }
         for use in batch.extraMinutes { snapshot.extraMinutes[use.id] = use }
+        for reached in batch.limitsReached { snapshot.limitsReached[reached.id] = reached }
         if let key = batch.linkKeys.last, key != linkKey { saveLinkKey(key) }
         for places in batch.familyPlaces where places.updatedAt >= (snapshot.familyPlaces?.updatedAt ?? .distantPast) {
             snapshot.familyPlaces = places
@@ -389,6 +396,7 @@ final class FamilyData {
         snapshot.requests = snapshot.requests.filter { $0.value.kidID != kid }
         snapshot.grants = snapshot.grants.filter { $0.value.kidID != kid }
         snapshot.extraMinutes = snapshot.extraMinutes.filter { $0.value.kidID != kid }
+        snapshot.limitsReached = snapshot.limitsReached.filter { $0.value.kidID != kid }
         snapshot.lastFireAt[kid] = nil
         fireStore.forget(kid: kid)
         sampleStore.forget(kid: kid)

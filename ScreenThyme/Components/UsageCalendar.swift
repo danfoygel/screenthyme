@@ -4,11 +4,15 @@ import ThymeCore
 /// The day as a calendar: hours top to bottom, each app's blocks drawn like events. Blocks that overlap sit side by
 /// side in swim lanes (`CalendarLayout`). Long stretches with nothing drawn are cut out of the tape
 /// (`CalendarAxis`). The line beside the hours says how well each stretch is placed (`Coverage`): use the check-ins
-/// don't place is drawn dashed, at a best guess.
+/// don't place is drawn dashed, at a best guess. The day's events (`DayEvent`) are marked at their moment, labelled at
+/// the right.
 struct UsageCalendar: View {
     let timeline: DayTimeline
     let items: [UUID: TrackedItem]
     let dayStart: Date
+    var events: [DayEvent] = []
+    /// Names the limits and Downtime windows events were for.
+    var policy: Policy?
     var showWebsites = false
     /// Leaves out blocks with under `shortUse` of use (after joining short pauses): brief switches between apps.
     var hideShort = true
@@ -19,6 +23,7 @@ struct UsageCalendar: View {
     static let shortUse: TimeInterval = 120
 
     @State private var selected: CalendarPiece?
+    @State private var selectedEvent: DayEvent?
     @State private var position = ScrollPosition(edge: .top)
     @State private var geometry: ScrollGeometry?
     /// On opening and on changing days; the jump waits until the scroll view has a size.
@@ -49,6 +54,7 @@ struct UsageCalendar: View {
     private let inset: CGFloat = 8
     /// The shortest a piece is drawn: shorter ones would vanish.
     private let minHeight: CGFloat = 2
+    private let eventLabelHeight: CGFloat = 20
 
     var body: some View {
         let blocks = blocks
@@ -63,6 +69,7 @@ struct UsageCalendar: View {
                     ForEach(placed) { piece in
                         event(piece, axis: axis, width: width)
                     }
+                    eventMarkers(axis, width: width)
                 }
                 ForEach(axis.breaks, id: \.interval) { tapeBreak($0) }
                 nowLine(axis)
@@ -95,7 +102,7 @@ struct UsageCalendar: View {
             scroll(to: middle, screenY: visible.height / 2, scale: new)
         }
         .overlay {
-            if blocks.isEmpty && timeline.coverage.isEmpty {
+            if blocks.isEmpty && timeline.coverage.isEmpty && events.isEmpty {
                 ContentUnavailableView("No use recorded", systemImage: "calendar")
             }
         }
@@ -111,10 +118,11 @@ struct UsageCalendar: View {
             ?? dayStart.addingTimeInterval(86400))
     }
 
-    /// Keeps the blocks drawn and the current time; cuts the rest where it's long.
+    /// Keeps the blocks drawn, the events and the current time; cuts the rest where it's long.
     private func makeAxis(for blocks: [UsageBlock], scale: Double) -> CalendarAxis {
         let now = Date()
         let keep = blocks.map { DateInterval(start: $0.start, end: max($0.start, $0.end)) }
+            + events.map { DateInterval(start: $0.at, duration: 0) }
             + (day.contains(now) ? [DateInterval(start: now, duration: 0)] : [])
         return CalendarAxis(day: day, scale: scale, keep: keep)
     }
@@ -141,7 +149,7 @@ struct UsageCalendar: View {
             scroll(to: now, screenY: visible.height * 2 / 3, scale: hourHeight)
             return
         }
-        let first = blocks.map(\.start).min() ?? timeline.coverage.first { $0.coverage != .quiet }?.start
+        let first = (blocks.map(\.start) + events.map(\.at)).min() ?? timeline.coverage.first { $0.coverage != .quiet }?.start
             ?? dayStart.addingTimeInterval(8 * 3600)
         scroll(to: first, screenY: 80, scale: hourHeight)
     }
@@ -325,6 +333,102 @@ struct UsageCalendar: View {
         }
         .padding()
         .frame(idealWidth: 260)
+    }
+
+    /// Each event: a dashed line across at its moment, and its label at the right, pushed down where labels would
+    /// overlap.
+    private func eventMarkers(_ axis: CalendarAxis, width: CGFloat) -> some View {
+        let lines = events.map { axis.y($0.at) + inset }
+        let labels = DayEvents.spread(lines, spacing: eventLabelHeight + 2)
+        return ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
+            let style = Self.style(for: event)
+            Path { path in
+                path.move(to: CGPoint(x: gutter + 4, y: lines[index]))
+                path.addLine(to: CGPoint(x: gutter + 4 + width, y: lines[index]))
+            }
+            .stroke(style.color.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            .allowsHitTesting(false)
+            eventLabel(event, style: style)
+                .frame(maxWidth: width * 0.75, alignment: .trailing)
+                .frame(width: width, alignment: .trailing)
+                .offset(x: gutter + 4, y: labels[index] - eventLabelHeight / 2)
+        }
+    }
+
+    private func eventLabel(_ event: DayEvent, style: (symbol: String, color: Color)) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: style.symbol).foregroundStyle(style.color)
+            Text(event.title).lineLimit(1)
+        }
+        .font(.caption2.weight(.medium))
+        .padding(.horizontal, 7)
+        .frame(height: eventLabelHeight)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(style.color.opacity(0.6), lineWidth: 1))
+        .contentShape(Capsule())
+        .onTapGesture { selectedEvent = event }
+        .popover(isPresented: Binding(get: { selectedEvent == event }, set: { if !$0 { selectedEvent = nil } })) {
+            eventDetail(event, style: style).presentationCompactAdaptation(.popover)
+        }
+    }
+
+    static func style(for event: DayEvent) -> (symbol: String, color: Color) {
+        switch event.kind {
+        case .limitReached: ("hourglass", .orange)
+        case .extraMinute: ("timer", .blue)
+        case .asked: ("hand.raised.fill", .purple)
+        case let .answered(grant, _):
+            grant.isSelfApproved ? ("exclamationmark.triangle.fill", .orange)
+                : grant.approved ? ("checkmark.circle.fill", .green) : ("xmark.circle.fill", .red)
+        case .ended: ("stop.circle.fill", .gray)
+        case .alert: ("bell.fill", .red)
+        }
+    }
+
+    private func eventDetail(_ event: DayEvent, style: (symbol: String, color: Color)) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text(event.title)
+            } icon: {
+                Image(systemName: style.symbol).foregroundStyle(style.color)
+            }
+            .font(.headline)
+            Text(Format.time(event.at)).monospacedDigit()
+            if let item = event.itemID.flatMap({ items[$0] }) {
+                ItemName(item: item)
+            }
+            switch event.kind {
+            case let .limitReached(reached):
+                Text("\(Format.minutes(reached.minutes)) used today").foregroundStyle(.secondary)
+            case let .extraMinute(use):
+                reason(use.reason, itemID: use.itemID)
+            case let .asked(request):
+                reason(request.reason, itemID: request.itemID)
+                if let note = request.note { Text("\u{201C}\(note)\u{201D}").italic() }
+            case let .answered(grant, request):
+                if let request {
+                    Text("Asked at \(Format.time(request.at)) for \(request.reason == .alwaysAllow ? "it always" : MoreTime.describe(minutes: request.minutes))")
+                        .foregroundStyle(.secondary)
+                }
+                if let why = grant.selfApproval { Text("Why: \u{201C}\(why)\u{201D}").italic() }
+            case let .ended(grant):
+                Text("\(grant.isSelfApproved ? "Self-approved" : "Approved by \(grant.by)") at \(Format.time(grant.at))")
+                    .foregroundStyle(.secondary)
+            case let .alert(alert):
+                Text(alert.body).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding()
+        .frame(idealWidth: 260)
+    }
+
+    /// "Over the Games limit", "During Bedtime, for the whole phone".
+    @ViewBuilder
+    private func reason(_ reason: BlockReason, itemID: UUID?) -> some View {
+        if let policy, reason != .alwaysAllow {
+            Text(RequestRow.describe(reason, itemID: itemID, policy: policy).capitalizedFirst).foregroundStyle(.secondary)
+        }
     }
 
     /// Stable per app, across days and launches.

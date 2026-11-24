@@ -443,3 +443,33 @@ public struct ExtraMinuteUse: Codable, Sendable, Hashable, Identifiable {
         self.minutes = minutes
     }
 }
+
+/// A limit used up on the kid's phone: its plan newly shields what the limit counts (PLAN.md §15.2). Kept on the kid's
+/// phone and synced, so the day's timeline shows when on parents' phones too. A grant that raises the limit and is
+/// then used up too makes another.
+public struct LimitReached: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var kidID: UUID
+    public var limitID: UUID
+    public var name: String
+    /// Today's budget when it ran out: the limit plus grants that raised it.
+    public var minutes: Int
+    public var at: Date
+
+    public init(id: UUID = UUID(), kidID: UUID, limitID: UUID, name: String, minutes: Int, at: Date) {
+        self.id = id
+        self.kidID = kidID
+        self.limitID = limitID
+        self.name = name
+        self.minutes = minutes
+        self.at = at
+    }
+
+    /// The limits `plan` finds used up that `previous` (the plan applied before it, nil on a new day) didn't.
+    public static func newlyReached(in plan: EnforcementPlan, previous: EnforcementPlan?, names: [UUID: String],
+                                    kidID: UUID, at: Date) -> [LimitReached] {
+        plan.exhaustedLimits.subtracting(previous?.exhaustedLimits ?? [])
+            .sorted { $0.uuidString < $1.uuidString }
+            .map { LimitReached(kidID: kidID, limitID: $0, name: names[$0] ?? "Daily", minutes: plan.budgets[$0] ?? 0, at: at) }
+    }
+}

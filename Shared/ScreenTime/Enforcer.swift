@@ -41,12 +41,16 @@ enum Enforcer {
                                                endingWindows: endingWindows,
                                                exempt: exemptItems(items).union(webMirrored(items, now: now)))
             let unshielded = apply(plan, policy: policy, items: items, use: UsageSnapshot.todayUse(kid: kid, now: now))
-            if unshielded.count != loadApplied()?.unshielded?.count ?? 0 {
+            let applied = loadApplied()
+            if unshielded.count != applied?.unshielded?.count ?? 0 {
                 try? AppGroup.journal.append(.note("shields: \(unshielded.count) apps and sites past iOS's \(ShieldBudget.cap); shielding the ones used last"))
             }
-            AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: Dictionary(policy.limits.map { ($0.id, $0.name) },
-                                                                                  uniquingKeysWith: { a, _ in a }),
-                                      unshielded: unshielded),
+            let limitNames = Dictionary(policy.limits.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+            // Limits used up since the plan before, today's: for the day's timeline.
+            let before = applied.flatMap { DayKey($0.at) == DayKey(now) ? $0.plan : nil }
+            let reached = LimitReached.newlyReached(in: plan, previous: before, names: limitNames, kidID: kid.id, at: now)
+            if !reached.isEmpty { try? AppGroup.limitsReached.append(contentsOf: reached) }
+            AppGroup.save(AppliedPlan(plan: plan, at: now, limitNames: limitNames, unshielded: unshielded),
                           to: AppGroup.enforcementURL)
             registerActivities(policy: policy, plan: plan, items: items, now: now)
             return plan
