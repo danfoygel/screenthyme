@@ -95,10 +95,49 @@ struct ReconstructionTests {
     @Test func liveStatus() {
         let (input, result) = timeline([SyntheticSession(item: youtube, start: at(16, 0), minutes: 30)])
         #expect(LiveStatus.compute(result, input: input, now: at(16, 31)) ==
-            LiveStatus(inUse: true, probableItem: youtube, lastActiveAt: at(16, 30)))
+            LiveStatus(inUse: true, probableItem: youtube, probableSince: at(16, 0), lastActiveAt: at(16, 30)))
         #expect(LiveStatus.compute(result, input: input, now: at(17, 0)) ==
             LiveStatus(inUse: false, probableItem: nil, lastActiveAt: at(16, 30)))
         #expect(!LiveStatus.compute(result, input: input, now: at(12, 0)).inUse)
+    }
+
+    @Test func liveStatusSinceTheAppTookOver() {
+        let (input, result) = timeline([
+            SyntheticSession(item: youtube, start: at(16, 0), minutes: 20),
+            SyntheticSession(item: roblox, start: at(16, 20), minutes: 15),
+        ])
+        let live = LiveStatus.compute(result, input: input, now: at(16, 35))
+        #expect(live.probableItem == roblox)
+        #expect(live.probableSince == at(16, 20))
+    }
+
+    @Test func liveStatusSinceStartsWithTheRun() {
+        // The first fetch after a pause reaches back to the hour's start; the app's use began with the run.
+        let (input, result) = timeline([
+            SyntheticSession(item: youtube, start: at(9, 0), minutes: 10),
+            SyntheticSession(item: youtube, start: at(15, 50), minutes: 20),
+        ])
+        let live = LiveStatus.compute(result, input: input, now: at(16, 10))
+        #expect(live.probableItem == youtube)
+        #expect(live.probableSince == at(15, 50))
+    }
+
+    @Test func overnightRest() {
+        let yesterday = [DateInterval(start: at(-4, 0), end: at(-3, 0)), DateInterval(start: at(-3, -30), end: at(-2, -30))]
+        let today = [DateInterval(start: at(0, 20), end: at(0, 25)), DateInterval(start: at(7, 45), end: at(8, 0)),
+                     DateInterval(start: at(12, 0), end: at(18, 0))]
+        // A late check at 12:20 splits the night: the longer half is the rest.
+        #expect(Overnight.rest(yesterday: yesterday, today: today, dayStart: dayStart) ==
+            DateInterval(start: at(0, 25), end: at(7, 45)))
+        #expect(Overnight.rest(yesterday: yesterday, today: Array(today.dropFirst()), dayStart: dayStart) ==
+            DateInterval(start: at(-3, 30), end: at(7, 45)))
+        // No use yet this morning, or none yesterday: no night to show.
+        #expect(Overnight.rest(yesterday: yesterday, today: [], dayStart: dayStart) == nil)
+        #expect(Overnight.rest(yesterday: [], today: Array(today.dropFirst()), dayStart: dayStart) == nil)
+        // A pause after the small hours isn't the night.
+        #expect(Overnight.rest(yesterday: [], today: [DateInterval(start: at(7, 0), end: at(8, 0)),
+                                                       DateInterval(start: at(12, 0), end: at(13, 0))],
+                               dayStart: dayStart) == nil)
     }
 
     @Test func legacyItemFiresAreIgnored() {
