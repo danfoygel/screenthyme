@@ -106,6 +106,9 @@ struct KidCard: View {
                     if let item = live.probableItem {
                         Text("·")
                         ItemName(item: items[item], showIcon: false)
+                        if let since = live.probableSince {
+                            Text("for \(Format.minutes(max(1, Int((Date().timeIntervalSince(since) / 60).rounded()))))")
+                        }
                     }
                 } else if let last = live.lastActiveAt ?? model.data.lastFireAt[kid.id] {
                     Text("Idle · last active \(Format.relative(last))").foregroundStyle(.secondary)
@@ -114,6 +117,13 @@ struct KidCard: View {
                 }
             }
             .font(.subheadline)
+            if let night = Overnight.rest(yesterday: model.timeline(kid: kid.id, day: today.adding(days: -1)).timeline.runs,
+                                          today: timeline.runs, dayStart: today.start()) {
+                Label("Not used \(Format.time(night.start)) – \(Format.time(night.end)) (\(Format.hours(night.duration)))",
+                      systemImage: "moon.zzz")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: DayKey(Date()))
             let total = DayTotal(timeline, items: items, policy: model.data.policy(for: kid.id), mirrored: mirrored)
             Text("Today: \(Format.minutes(total.minutes))"
