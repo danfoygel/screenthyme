@@ -81,10 +81,18 @@ enum Enforcer {
         let config = SharedConfig.load()
         guard let kid = config.kid else { return false }
         let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
+        let policy = AppGroup.loadPolicy(now: now)
         // The occurrence of the window it answers, even while Downtime is paused.
         var windowStart: Date?
-        if case let .downtime(windowID) = grant.reason, let window = AppGroup.loadPolicy(now: now)?.downtime.first(where: { $0.id == windowID }) {
+        if case let .downtime(windowID) = grant.reason, let window = policy?.downtime.first(where: { $0.id == windowID }) {
             windowStart = window.daily.occurrence(containing: now)?.start
+        }
+        // The use it counts from: the item's, or with none, the limit's (counted as `reconcile` counts it).
+        var baseline = grant.itemID.flatMap { usage[$0] } ?? 0
+        if grant.itemID == nil, case .limit = grant.reason, let policy {
+            let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            baseline = EnforcementPlanner.baseline(for: grant, policy: policy, items: items, usage: usage,
+                                                   exempt: exemptItems(items).union(webMirrored(items, now: now)))
         }
         var applied = false
         reconcile(now: now) { state in
@@ -96,7 +104,6 @@ enum Enforcer {
                 try? AppGroup.journal.append(.note("grant ended early by \(grant.endedBy ?? "a parent")"))
                 return
             }
-            let baseline = grant.itemID.flatMap { usage[$0] } ?? 0
             state.grants.append(AppliedGrant(grant: grant, appliedAt: now, baselineSeconds: baseline, windowStart: windowStart))
             applied = true
             try? AppGroup.grantHistory.append(grant)

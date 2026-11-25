@@ -207,8 +207,14 @@ struct AppDetailsView: View {
                             Text(budget.map { "\(Format.minutes(used)) of \(Format.minutes($0))" } ?? "\(Format.minutes(used)), no limit today")
                                 .foregroundStyle(budget.map { used >= $0 } == true ? Color.orange : Color.secondary)
                             if budget == nil || extra.map({ $0 > 0 }) == true {
-                                Text(extra.map { "\(Format.minutes(limit.minutes(on: weekday))) + \(Format.minutes($0)) extra" }
-                                     ?? "A parent gave the rest of today")
+                                // Time given once the limit had run out counts from the use then, past the limit.
+                                let given = EnforcementPlanner.extraMinutes(
+                                    for: limit.id, grants: data.grants.filter { Calendar.current.isDateInToday($0.at) })
+                                Text(extra.map { extra in
+                                    given.map { $0 > 0 && $0 < extra } == true
+                                        ? "\(Format.minutes(given ?? 0)) extra, from when it was given"
+                                        : "\(Format.minutes(limit.minutes(on: weekday))) + \(Format.minutes(extra)) extra"
+                                } ?? "A parent gave the rest of today")
                                     .font(.footnote).foregroundStyle(.secondary)
                             }
                             if let given = Self.givenToApp(limit, details: details, grants: data.grants) {
@@ -505,18 +511,19 @@ struct AppDetailsData {
         // Today's answers and one more minutes, as the kid's phone applied them (about when they were given).
         var state = EnforcementDayState(day: today)
         let samples = family.samples(kid: kid, day: today)
+        let exempt = Enforcer.exemptItems(items).union(family.webMirrored(kid: kid, items: items, today: today))
         state.grants = family.grants.values.filter { $0.kidID == kid && DayKey($0.at) == today }
             .sorted { $0.at < $1.at }.map { grant in
-                // The app's use before the answer, which the grant's minutes come after.
+                // The use before the answer (the app's, or with none the limit's), which the grant's minutes come after.
                 let before = AppDetails.usage(samples.filter { $0.end <= grant.at }, items: items)
-                return AppliedGrant(grant: grant, appliedAt: grant.at, baselineSeconds: grant.itemID.flatMap { before[$0] } ?? 0)
+                return AppliedGrant(grant: grant, appliedAt: grant.at,
+                                    baselineSeconds: EnforcementPlanner.baseline(for: grant, policy: policy, items: items,
+                                                                                 usage: before, exempt: exempt))
             }
         state.extraMinutes = family.extraMinutes.values.filter { $0.kidID == kid && DayKey($0.at) == today }
             .map { ExtraMinute(itemID: $0.itemID, reason: $0.reason, at: $0.at, minutes: $0.minutes) }
         let usage = AppDetails.usage(samples, items: items)
-        let mirrored = family.webMirrored(kid: kid, items: items, today: today)
-        return EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                       exempt: Enforcer.exemptItems(items).union(mirrored))
+        return EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now, exempt: exempt)
     }
 
     static func kid() -> AppDetailsData {
