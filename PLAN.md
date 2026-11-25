@@ -789,8 +789,8 @@ published.
   background refresh and visit to the screen, until filed. Each upload is saved as it succeeds, so a retry skips
   screenshots already committed. Filing stops at the first failure and says why ("Waiting for the internet",
   "Waiting for a parent to set up bug reports", GitHub's message). The last 20 filed reports stay listed.
-- **Fixed:** when an issue is closed as completed, the phone that filed it gets a push quoting the reporter's first
-  line. A workflow in the bug repository sends it to APNs (`Tools/BugPush`, with the family's APNs key as secrets):
+- **Closed:** when an issue is closed, the phone that filed it gets a push quoting the reporter's first line and
+  saying whether it was fixed (closed as completed) or closed without a fix (not planned, a duplicate). A workflow in the bug repository sends it to APNs (`Tools/BugPush`, with the family's APNs key as secrets):
   the issue ends with a hidden marker naming the phone, and each phone keeps its device token in `phones/<id>.json`
   there. The phone also looks its issues up (at most every 30 minutes, or on pull to refresh) to show "Fixed" or
   "Closed".

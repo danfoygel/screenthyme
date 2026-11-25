@@ -7,6 +7,8 @@ import { apnsHost, fixMarker, notification, providerToken } from './notify-fixed
 // As `GitHubIssues.body(of:)` ends an issue (BugReportTests.bodyTellsTheWorkflowWhichPhoneToPush).
 const body = 'It says --> nothing\n\n<sub>Filed by ScreenThyme</sub>\n\n<!-- screenthyme-fixed '
   + '{"body":"You reported: “It says --\\u003e nothing” Thanks for telling us!",'
+  + '"closedBody":"You reported: “It says --\\u003e nothing”. It was closed without a fix.",'
+  + '"closedTitle":"A problem you reported was closed",'
   + '"phone":"abcdef00-0000-0000-0000-000000000000","report":"12345678-0000-0000-0000-000000000000",'
   + '"title":"A problem you reported is fixed"} -->'
 
@@ -14,11 +16,27 @@ test('reads the marker', () => {
   const marker = fixMarker(body)
   assert.equal(marker.phone, 'abcdef00-0000-0000-0000-000000000000')
   assert.equal(marker.body, 'You reported: “It says --> nothing” Thanks for telling us!')
-  assert.deepEqual(notification(marker, 7), {
+  assert.deepEqual(notification(marker, 7, true), {
     aps: { alert: { title: 'A problem you reported is fixed', body: marker.body }, sound: 'default' },
     report: '12345678-0000-0000-0000-000000000000',
     issue: 7,
+    fixed: true,
   })
+  assert.deepEqual(notification(marker, 7, false).aps.alert, {
+    title: 'A problem you reported was closed',
+    body: 'You reported: “It says --> nothing”. It was closed without a fix.',
+  })
+})
+
+test('closed without a fix, from a marker that has only the fixed words', () => {
+  const old = { phone: 'abcdef00-0000-0000-0000-000000000000', title: 'A problem you reported is fixed',
+    body: 'You reported: “The timer says zero” Thanks for telling us!' }
+  assert.deepEqual(notification(old, 7, false).aps.alert, {
+    title: 'A problem you reported was closed',
+    body: 'You reported: “The timer says zero”. It was closed without a fix.',
+  })
+  const pictures = { ...old, body: 'The problem you reported on Nov 18 is fixed. Thanks for telling us!' }
+  assert.equal(notification(pictures, 7, false).aps.alert.body, 'The problem you reported was closed without a fix.')
 })
 
 test('ignores issues without a usable marker', () => {

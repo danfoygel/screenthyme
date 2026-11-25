@@ -1,5 +1,5 @@
-// Tells the phone that filed a bug report that it's fixed (PLAN.md §18), when its issue is closed as completed.
-// Runs in the family's private bug repository (see README.md): the issue's hidden `screenthyme-fixed` marker names
+// Tells the phone that filed a bug report that its issue was closed, and whether it was fixed (closed as completed)
+// or closed without a fix (not planned, a duplicate) (PLAN.md §18). Runs in the family's private bug repository (see README.md): the issue's hidden `screenthyme-fixed` marker names
 // the phone and the words, the phone's `phones/<id>.json` holds its APNs device token, and the push goes straight to
 // Apple, so the app needn't be running. Node 20+, no dependencies.
 
@@ -30,12 +30,17 @@ export function providerToken({ key, keyID, teamID, now = Date.now() }) {
   return `${signed}.${signature.toString('base64url')}`
 }
 
-export function notification(marker, issueNumber) {
-  return {
-    aps: { alert: { title: marker.title, body: marker.body }, sound: 'default' },
-    report: marker.report,
-    issue: issueNumber,
-  }
+/** `fixed`: closed as completed. Markers from before closings without a fix were told have only the fixed words. */
+export function notification(marker, issueNumber, fixed) {
+  const alert = fixed
+    ? { title: marker.title, body: marker.body }
+    : { title: marker.closedTitle ?? 'A problem you reported was closed', body: marker.closedBody ?? closedBody(marker.body) }
+  return { aps: { alert, sound: 'default' }, report: marker.report, issue: issueNumber, fixed }
+}
+
+function closedBody(fixedBody) {
+  const quote = /^You reported: “.*”/s.exec(fixedBody)
+  return quote ? `${quote[0]}. It was closed without a fix.` : 'The problem you reported was closed without a fix.'
 }
 
 export function apnsHost(environment) {
@@ -88,7 +93,8 @@ async function main() {
   const env = process.env
   const event = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'))
   const issue = event.issue
-  if (issue?.state_reason !== 'completed') return console.log('Not closed as completed: nothing to send.')
+  if (issue?.state !== 'closed') return console.log('Not closed: nothing to send.')
+  const fixed = issue.state_reason === 'completed'
   const marker = fixMarker(issue.body)
   if (!marker) return console.log(`Issue #${issue.number} wasn't filed by a phone that can be told.`)
   const phone = await phoneFile(env.GITHUB_REPOSITORY, marker.phone, env.GITHUB_TOKEN)
@@ -97,8 +103,13 @@ async function main() {
     if (!env[name]) throw new Error(`The ${name} secret isn't set.`)
   }
   const token = providerToken({ key: env.APNS_KEY, keyID: env.APNS_KEY_ID, teamID: env.APNS_TEAM_ID })
-  const result = await push({ phone, payload: notification(marker, issue.number), token, id: `fixed-${issue.number}` })
-  if (result.status === 200) return console.log(`Told phone ${marker.phone.slice(0, 8)} about issue #${issue.number}.`)
+  // One notification per issue: a later closing replaces the earlier one's.
+  const payload = notification(marker, issue.number, fixed)
+  const result = await push({ phone, payload, token, id: `issue-${issue.number}` })
+  if (result.status === 200) {
+    return console.log(`Told phone ${marker.phone.slice(0, 8)} that issue #${issue.number} was closed`
+      + (fixed ? ' as fixed.' : ` without a fix (${issue.state_reason ?? 'no reason'}).`))
+  }
   // 410: the app was deleted, or the token is stale; the phone saves its new one when it next syncs.
   const message = `APNs ${result.status}: ${result.reason ?? 'no reason given'}`
   if (result.status === 410) return console.log(message)

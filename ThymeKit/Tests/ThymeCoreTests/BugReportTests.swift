@@ -146,7 +146,9 @@ struct BugReportTests {
         let fields = try JSONDecoder().decode([String: String].self, from: Data(json.utf8))
         #expect(fields == ["phone": "abcdef00-0000-0000-0000-000000000000", "report": pushed.id.uuidString,
                            "title": "A problem you reported is fixed",
-                           "body": "You reported: “It says --> nothing” Thanks for telling us!"])
+                           "body": "You reported: “It says --> nothing” Thanks for telling us!",
+                           "closedTitle": "A problem you reported was closed",
+                           "closedBody": "You reported: “It says --> nothing”. It was closed without a fix."])
     }
 
     @Test func savePhoneReplacesTheOldToken() async throws {
@@ -174,11 +176,15 @@ struct BugReportTests {
         #expect(created["sha"] == nil)
     }
 
-    @Test func fixedNotificationQuotesTheReport() throws {
-        #expect(report.fixedNotification.body == "You reported: “The timer | says zero” Thanks for telling us!")
+    @Test func closedNotificationQuotesTheReportAndSaysIfFixed() throws {
+        #expect(report.closedNotification(fixed: true) == ("A problem you reported is fixed",
+                                                           "You reported: “The timer | says zero” Thanks for telling us!"))
+        #expect(report.closedNotification(fixed: false) == ("A problem you reported was closed",
+                                                            "You reported: “The timer | says zero”. It was closed without a fix."))
         var pictures = report
         pictures.text = " "
-        #expect(pictures.fixedNotification.body.hasPrefix("The problem you reported on "))
+        #expect(pictures.closedNotification(fixed: true).body.hasPrefix("The problem you reported on "))
+        #expect(pictures.closedNotification(fixed: false).body.hasSuffix(" was closed without a fix."))
         let decoded = try JSONDecoder().decode(BugReport.self, from: JSONEncoder().encode(report))
         #expect(decoded.resolution == nil)
         pictures.resolution = .fixed
