@@ -15,6 +15,7 @@ struct IngestBatch: Sendable {
     var rules: [Rule] = []
     var pings: [Ping] = []
     var energy: [EnergyReport] = []
+    var pickups: [PickupReport] = []
     var policies: [Policy] = []
     var policyChanges: [PolicyChange] = []
     var requests: [TimeRequest] = []
@@ -52,6 +53,7 @@ struct IngestBatch: Sendable {
         case Rule.recordType: Rule.decode(payload: payload).map { rules.append($0) }
         case Ping.recordType: Ping.decode(payload: payload).map { pings.append($0) }
         case EnergyReport.recordType: EnergyReport.decode(payload: payload).map { energy.append($0) }
+        case PickupReport.recordType: PickupReport.decode(payload: payload).map { pickups.append($0) }
         case Policy.recordType: Policy.decode(payload: payload).map { policies.append($0) }
         case PolicyChange.recordType: PolicyChange.decode(payload: payload).map { policyChanges.append($0) }
         case TimeRequest.recordType: TimeRequest.decode(payload: payload).map { requests.append($0) }
@@ -85,6 +87,7 @@ struct IngestBatch: Sendable {
         rules += other.rules
         pings += other.pings
         energy += other.energy
+        pickups += other.pickups
         policies += other.policies
         policyChanges += other.policyChanges
         requests += other.requests
@@ -100,7 +103,7 @@ struct IngestBatch: Sendable {
     var isEmpty: Bool {
         kids.isEmpty && items.isEmpty && epochs.isEmpty && fires.isEmpty && samples.isEmpty && heartbeats.isEmpty
             && alerts.isEmpty
-            && rules.isEmpty && pings.isEmpty && energy.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
+            && rules.isEmpty && pings.isEmpty && energy.isEmpty && pickups.isEmpty && policies.isEmpty && policyChanges.isEmpty && requests.isEmpty && grants.isEmpty
             && extraMinutes.isEmpty && linkKeys.isEmpty && placeEvents.isEmpty && familyPlaces.isEmpty
             && deletedRecordNames.isEmpty && raw.isEmpty
     }
@@ -114,7 +117,7 @@ final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: a snapshot of another version (or an unreadable one) is rebuilt from the
         /// raw records (`rebuildLocally`), or when those aren't whole, fetched again from scratch, shown meanwhile.
-        static let currentVersion = 9
+        static let currentVersion = 10
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]
@@ -152,6 +155,8 @@ final class FamilyData {
     @ObservationIgnored private let directory = URL.applicationSupportDirectory.appending(path: "FamilyData")
     @ObservationIgnored private lazy var fireStore = KidDayStore<UsageFire>(directory: directory.appending(path: "fires"))
     @ObservationIgnored private lazy var sampleStore = KidDayStore<UsageSample>(directory: directory.appending(path: "samples"))
+    /// One pickup report per kid per day, the newest.
+    @ObservationIgnored private lazy var pickupStore = KidDayStore<PickupReport>(directory: directory.appending(path: "pickups"))
     /// Where kids' phones were (PLAN.md §19), filed by the day each happened.
     @ObservationIgnored private lazy var placeEventStore = KidDayStore<PlaceEvent>(directory: directory.appending(path: "places"))
     @ObservationIgnored private lazy var rawLog = RawRecordLog(directory: directory.appending(path: "raw"))
@@ -337,6 +342,11 @@ final class FamilyData {
         for (key, samples) in Dictionary(grouping: batch.samples, by: { KidDay(kid: $0.kidID, day: $0.day) }) {
             sampleStore.merge(samples, into: key)
         }
+        for report in batch.pickups {
+            let key = KidDay(kid: report.kidID, day: report.day)
+            guard report.updatedAt >= (pickupStore.values(key).first?.updatedAt ?? .distantPast) else { continue }
+            pickupStore.merge([report], into: key)
+        }
         for (key, events) in Dictionary(grouping: batch.placeEvents.filter { keepsPlaceEvents && $0.kidID != nil },
                                         by: { KidDay(kid: $0.kidID!, day: $0.day) }) {
             placeEventStore.merge(events, into: key)
@@ -354,6 +364,12 @@ final class FamilyData {
     func samples(kid: UUID, day: DayKey) -> [UsageSample] {
         _ = revision
         return sampleStore.values(KidDay(kid: kid, day: day))
+    }
+
+    /// Apple's pickups and notifications on the kid's phone that day, as last uploaded.
+    func pickups(kid: UUID, day: DayKey) -> PickupReport? {
+        _ = revision
+        return pickupStore.values(KidDay(kid: kid, day: day)).first
     }
 
     /// What the kid's phone said about where it was, on the days `first` through `last`, oldest first.
@@ -392,6 +408,7 @@ final class FamilyData {
         snapshot.lastFireAt[kid] = nil
         fireStore.forget(kid: kid)
         sampleStore.forget(kid: kid)
+        pickupStore.forget(kid: kid)
         placeEventStore.forget(kid: kid)
         saveSnapshot()
         revision += 1

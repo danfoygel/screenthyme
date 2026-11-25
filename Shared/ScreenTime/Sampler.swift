@@ -29,6 +29,15 @@ enum Sampler {
     private struct Fetched {
         var hours: [String: [String: Seen]] = [:]
         var categories: [String: Data?] = [:]
+        /// Per-hour pickups and notifications, by the same hour keys.
+        var counts: [String: HourCounts] = [:]
+    }
+
+    private struct HourCounts {
+        var pickupsWithoutApp = 0
+        var firstPickup: Date?
+        /// By bundle ID.
+        var apps: [String: (pickups: Int, notifications: Int)] = [:]
     }
 
     /// Fetches, writes samples and new items to the outbox, and returns what changed. Serialized across processes.
@@ -78,13 +87,22 @@ enum Sampler {
         for try await data in DeviceActivityData.activityData(filteredBy: DeviceActivityFilter(segment: .hourly(during: today))) {
             for await segment in data.activitySegments {
                 let hour = String(Int(segment.dateInterval.start.timeIntervalSince1970))
+                fetched.counts[hour, default: HourCounts()].pickupsWithoutApp += segment.totalPickupsWithoutApplicationActivity
+                fetched.counts[hour]?.firstPickup = segment.firstPickup
                 for await category in segment.categories {
                     let categoryName = category.category.localizedDisplayName
                     if let categoryName, fetched.categories[categoryName] == nil {
                         fetched.categories[categoryName] = category.category.token.flatMap(TokenCoding.encode)
                     }
                     for await app in category.applications {
-                        guard let bundle = app.application.bundleIdentifier, app.totalActivityDuration > 0 else { continue }
+                        guard let bundle = app.application.bundleIdentifier else { continue }
+                        if app.numberOfPickups > 0 || app.numberOfNotifications > 0 {
+                            var counts = fetched.counts[hour]?.apps[bundle] ?? (0, 0)
+                            counts.pickups += app.numberOfPickups
+                            counts.notifications += app.numberOfNotifications
+                            fetched.counts[hour]?.apps[bundle] = counts
+                        }
+                        guard app.totalActivityDuration > 0 else { continue }
                         let token = app.application.token.flatMap(TokenCoding.encode)
                         fetched.hours[hour, default: [:]]["app:" + bundle, default: Seen(kind: .app, identifier: bundle,
                             name: app.application.localizedDisplayName, tokenData: token, category: categoryName,
@@ -160,6 +178,8 @@ enum Sampler {
             }
         }
 
+        recordPickups(fetched.counts, kid: kid, day: day, now: now)
+
         // Apps whose use is Safari's on their website: the first time, from every sample so far.
         var mirror = AppGroup.load(WebMirror.self, from: AppGroup.webMirrorURL) ?? {
             var mirror = WebMirror()
@@ -178,5 +198,22 @@ enum Sampler {
         AppGroup.saveItems(Array(known.values))
         UsageSnapshot(day: day, at: now, hours: hours.mapValues { $0.mapValues(\.seconds) }).save()
         return result
+    }
+
+    /// Queues today's pickup report for upload when its counts changed.
+    private static func recordPickups(_ counts: [String: HourCounts], kid: Kid, day: DayKey, now: Date) {
+        let hours = counts.compactMap { hour, counts -> PickupReport.Hour? in
+            guard let start = Double(hour).map(Date.init(timeIntervalSince1970:)) else { return nil }
+            return PickupReport.Hour(start: start, pickupsWithoutApp: counts.pickupsWithoutApp, firstPickup: counts.firstPickup,
+                                     apps: counts.apps.map { bundle, counts in
+                PickupReport.AppCounts(itemID: TrackedItem.id(kid: kid.id, kind: .app, identifier: bundle), bundleID: bundle,
+                                       pickups: counts.pickups, notifications: counts.notifications)
+            })
+        }
+        let report = PickupReport(kidID: kid.id, day: day, updatedAt: now, hours: hours)
+        AppGroup.withLock("pickups") {
+            var outbox = AppGroup.load(PickupOutbox.self, from: AppGroup.pickupsURL) ?? PickupOutbox()
+            if outbox.record(report) { AppGroup.save(outbox, to: AppGroup.pickupsURL) }
+        }
     }
 }

@@ -89,6 +89,17 @@ extension EnergyReport: CloudRecordable {
     }
 }
 
+/// One per kid per day, overwritten as the day goes on.
+extension PickupReport: CloudRecordable {
+    static let recordType = "PickupReport"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+
+    func addFields(to record: CKRecord) {
+        record["day"] = day.description
+    }
+}
+
 extension AlertRecord: CloudRecordable {
     static let recordType = "Alert"
     var recordUUID: UUID { id }

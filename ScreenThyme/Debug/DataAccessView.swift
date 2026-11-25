@@ -64,21 +64,43 @@ struct DataAccessView: View {
         for try await data in DeviceActivityData.activityData(filteredBy: filter, using: policy) {
             devices += 1
             log("user \(data.user.role) · device \(data.device.name ?? "?") · updated \(data.lastUpdatedDate.formatted(date: .omitted, time: .standard))")
-            var appSeconds: [String: TimeInterval] = [:]
+            // Pickups and notifications: are they filled in outside Apple's report extension, or always zero?
+            var perApp: [String: (seconds: TimeInterval, pickups: Int, notifications: Int)] = [:]
+            var day = (pickups: 0, withoutApp: 0, notifications: 0, firstPickup: Date?.none)
             for await segment in data.activitySegments {
-                let minutes = Int(segment.totalActivityDuration / 60)
-                guard minutes > 0 else { continue }
-                log("  \(segment.dateInterval.start.formatted(date: .omitted, time: .shortened))–\(segment.dateInterval.end.formatted(date: .omitted, time: .shortened)): \(minutes) min")
+                var pickups = 0, notifications = 0
                 for await category in segment.categories {
                     for await app in category.applications {
                         let name = app.application.localizedDisplayName ?? app.application.bundleIdentifier ?? "?"
-                        appSeconds["\(name) [\(app.application.bundleIdentifier ?? "no bundle id")]", default: 0] += app.totalActivityDuration
+                        let key = "\(name) [\(app.application.bundleIdentifier ?? "no bundle id")]"
+                        var use = perApp[key] ?? (0, 0, 0)
+                        use.seconds += app.totalActivityDuration
+                        use.pickups += app.numberOfPickups
+                        use.notifications += app.numberOfNotifications
+                        perApp[key] = use
+                        pickups += app.numberOfPickups
+                        notifications += app.numberOfNotifications
                     }
                 }
+                let withoutApp = segment.totalPickupsWithoutApplicationActivity
+                day.pickups += pickups
+                day.withoutApp += withoutApp
+                day.notifications += notifications
+                if let first = segment.firstPickup, day.firstPickup.map({ first < $0 }) ?? true { day.firstPickup = first }
+                let minutes = Int(segment.totalActivityDuration / 60)
+                guard minutes > 0 || pickups + withoutApp + notifications > 0 else { continue }
+                let first = segment.firstPickup?.formatted(date: .omitted, time: .shortened) ?? "–"
+                let longest = segment.longestActivity.map { "\(Int($0.duration / 60)) min" } ?? "–"
+                log("  \(segment.dateInterval.start.formatted(date: .omitted, time: .shortened))–\(segment.dateInterval.end.formatted(date: .omitted, time: .shortened)): \(minutes) min · \(pickups)+\(withoutApp) pickups · \(notifications) notif · first \(first) · longest \(longest)")
             }
-            log("  per app today:")
-            for (app, seconds) in appSeconds.sorted(by: { $0.value > $1.value }).prefix(15) {
-                log("    \(Int(seconds / 60)) min  \(app)")
+            log("  today: \(day.pickups + day.withoutApp) pickups (\(day.withoutApp) without an app) · \(day.notifications) notifications · first pickup \(day.firstPickup?.formatted(date: .omitted, time: .shortened) ?? "–")")
+            log("  per app today (min · pickups · notifications):")
+            for (app, use) in perApp.sorted(by: { $0.value.seconds > $1.value.seconds }).prefix(15) {
+                log("    \(Int(use.seconds / 60)) min · \(use.pickups) · \(use.notifications)  \(app)")
+            }
+            log("  most notifications today:")
+            for (app, use) in perApp.filter({ $0.value.notifications > 0 }).sorted(by: { $0.value.notifications > $1.value.notifications }).prefix(5) {
+                log("    \(use.notifications)  \(app)")
             }
         }
         log("\(devices) device record(s) in \(String(format: "%.1f", Date().timeIntervalSince(started))) s")

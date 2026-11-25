@@ -277,6 +277,9 @@ final class ScreenTour: XCTestCase {
         tap("Time by category")
         snap("p-categories")
         back()
+        tap("Pickups and notifications")
+        snap("p-pickups")
+        back()
         // The day's Apps row ("Roblox, 1 h 5 min"), not the timeline's block.
         if tap("Roblox,") {
             snap("p-appDetails")

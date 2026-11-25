@@ -82,6 +82,8 @@ enum AppGroup {
     static var snapshotURL: URL { container.appending(path: "sampler-snapshot.json") }
     /// Apps whose use is Safari's on their website (`WebMirror`): the `Sampler` adds to it, the `Enforcer` reads it.
     static var webMirrorURL: URL { container.appending(path: "web-mirror.json") }
+    /// Pickup reports waiting to go up (`PickupOutbox`), under the "pickups" lock.
+    static var pickupsURL: URL { container.appending(path: "pickups.json") }
     /// Which scanned items screenshot matching pairs (`TokenPairing.Mode`): the app sets it, the report extension draws by it.
     static var tokenPairingModeURL: URL { container.appending(path: "token-pairing-mode.json") }
     static func tokenPairingMode() -> TokenPairing.Mode { load(TokenPairing.Mode.self, from: tokenPairingModeURL) ?? .unmatched }

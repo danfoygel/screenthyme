@@ -1,8 +1,8 @@
 import Foundation
 import ThymeCore
 
-/// Sends journaled fires, samples, new items and queued alerts to CloudKit, then marks them uploaded. Energy reports
-/// ride along in the same request as the fires, so they cost no extra network round trip. Safe to run from the app
+/// Sends journaled fires, samples, new items and queued alerts to CloudKit, then marks them uploaded. Energy and pickup
+/// reports ride along in the same request as the fires, so they cost no extra network round trip. Safe to run from the app
 /// and the extension at once: record names are the entry ids, so a double upload overwrites.
 enum Uploader {
     struct Result: Sendable {
@@ -19,9 +19,17 @@ enum Uploader {
         let pending = journal.pending(days: days)
         let fires = fires(from: pending, kid: kid, epochID: config.epoch?.id, calendar: journal.calendar)
         let energy = EnergyMeter.pendingReports(kid: kid)
+        let pickups = AppGroup.load(PickupOutbox.self, from: AppGroup.pickupsURL)?.pending ?? []
         try await store.save(records: fires.map { try $0.record(in: store.zoneID) }
-            + energy.map { try $0.record(in: store.zoneID) })
+            + energy.map { try $0.record(in: store.zoneID) } + pickups.map { try $0.record(in: store.zoneID) })
         EnergyMeter.markUploaded(energy)
+        if !pickups.isEmpty {
+            AppGroup.withLock("pickups") {
+                var outbox = AppGroup.load(PickupOutbox.self, from: AppGroup.pickupsURL) ?? PickupOutbox()
+                outbox.markUploaded(pickups)
+                AppGroup.save(outbox, to: AppGroup.pickupsURL)
+            }
+        }
         for (day, entries) in Dictionary(grouping: pending, by: { DayKey($0.at, calendar: journal.calendar) }) {
             try journal.markUploaded(entries.map(\.id), on: day)
         }

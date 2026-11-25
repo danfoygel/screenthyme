@@ -70,7 +70,8 @@ as a `LadderEpoch`.
 1. Appends the fire to the day's **journal** (`Journal/journal-<day>.jsonl`, append-only, `flock` + `fsync`), in our
    minutes.
 2. Fetches today's per-app data (`Sampler`, ≤ 3 s) and writes the change since the last fetch as `UsageSample`s, plus
-   any app or website seen for the first time as a `TrackedItem`.
+   any app or website seen for the first time as a `TrackedItem`. Today's pickups and notifications go in the day's
+   `PickupReport` when they changed (§13).
 3. Evaluates the alert rules (`RuleEngine`, §4.6) and the data-access check (§16).
 4. Rolls the alarm if needed, and reconciles enforcement (`Enforcer.reconcile`, §15.2).
 5. Uploads to CloudKit and fetches the kid's rules, policy, answers and family places by name (`Uploader.flush`,
@@ -146,6 +147,7 @@ Apple's Screen Time.
 | `UsageSample` | `kidID`, `itemID`, `day`, `start`, `end`, `seconds`, `reportedAt` |
 | `Heartbeat` | `kidID`, `at`, `source` (fire/backgroundRefresh/ping/launch/manual/nearby), `authStatus`, `activeActivities`, `expectedActivities`, `appVersion`, `backlogCount`, `lastFireAt`, `batteryLevel`, the Settings switches (§4.7), `lastTokenPairing` |
 | `EnergyReport` | `kidID`, `day`, `deviceModel`, `monitor` and `app` usage (energy, CPU time, wake-ups, callbacks, launches), `batteryLevel`; one per kid per day, overwritten |
+| `PickupReport` | `kidID`, `day`, `updatedAt`, per hour: pickups without an app, first pickup, and each app's pickups and notifications; one per kid per day, overwritten (§13) |
 | `Alert` | `kidID`, `ruleID?`, `itemID?`, `at`, `title`, `body` |
 | `Rule`, `RuleSet` | a rule's `condition` (§4.6) and `enabled`; `RuleSet.<kid>` holds all of a kid's rules |
 | `Policy` | one per kid: Downtime, limits, Always Allowed, Uncounted, Blocked, restrictions, groups, temporary changes (§15.1) |
@@ -206,7 +208,8 @@ test rule of each kind with the `-addTestRules <kid name>` launch argument (CLAU
   total, top apps, a health dot, battery, and counts of new apps to match and apps not in the scan.
 - **A kid's day:** the timeline (the in-use strip, then one lane per app or website, with pinch to zoom and long blank
   stretches cut) or the same day as a calendar with concurrent apps side by side; apps and websites with their
-  minutes; Where (§19); Time by category; a usage heatmap; links to the change history and matching with the camera.
+  minutes; Where (§19); Time by category; pickups and notifications (by app and by hour); a usage heatmap; links to
+  the change history and matching with the camera.
 - **An app's details** (§15.9).
 - **Alerts:** every alert, with requests for more time answered in place.
 - **Places:** §19.
@@ -394,6 +397,14 @@ rare. Hence one activity with 20 events (§4.1), and per-limit activities with o
 | `DeviceActivityData.activityData(...)` | exact per-app seconds with bundle IDs and domains (no display names, no tokens), including Safari and Settings; hourly is the finest segment; 0.1 s in the app |
 | From the monitor extension, in the background | 0.04 s on an iPhone SE; `activitySegments` is declared in the SwiftUI overlay, so `import SwiftUI` |
 | `FamilyActivityData.installedApplications` | hangs for 90+ s; not used |
+
+**Pickups and notifications** come in the same fetch: per hour, `firstPickup` and `totalPickupsWithoutApplicationActivity`;
+per app, `numberOfPickups` (a pickup is filed under the first app used after it) and `numberOfNotifications`.
+Websites and categories have neither. They are filled in under data access, outside Apple's report extension (checked
+on a kid's phone, Nov 2026). An hour's first pickup reads as the hour's start when the phone was already in use then;
+`longestActivity` mostly reads 0 and isn't used. The kid's phone sends them as one `PickupReport` per day, overwritten
+when its counts change and sent with the fires. It names each app by bundle ID too: an app with notifications but no
+use has no item yet (its first use makes one, with a "new app" alert).
 
 So the only thresholds are the wake alarm's (§4.1): each wake fetches today's data and uploads the difference since
 the last fetch as samples. New apps, Safari and Settings are covered without a scan. Per-app thresholds were removed
