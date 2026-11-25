@@ -30,6 +30,7 @@ enum Uploader {
         let samples = try await Outbox.send(AppGroup.samples, ledger: AppGroup.samplesLedger, to: store)
         _ = try await Outbox.send(AppGroup.requests, ledger: AppGroup.requestsLedger, to: store)
         _ = try await Outbox.send(AppGroup.extraMinuteUses, ledger: AppGroup.extraMinuteUsesLedger, to: store)
+        _ = try await Outbox.send(AppGroup.limitsReached, ledger: AppGroup.limitsReachedLedger, to: store)
         _ = try await Outbox.send(AppGroup.selfGrants, ledger: AppGroup.selfGrantsLedger, to: store)
         let alerts = try await Outbox.send(AppGroup.outbox, ledger: AppGroup.outboxLedger, to: store)
         try await sendPlaceEvents(kid: kid, store: store)

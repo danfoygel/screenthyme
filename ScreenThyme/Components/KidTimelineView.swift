@@ -15,6 +15,7 @@ struct KidTimelineView: View {
     @AppStorage("timelineScale") private var scale = 120.0
     @AppStorage("timelineWebsites") private var showWebsites = false
     @AppStorage("timelineHideShort") private var hideShort = true
+    @AppStorage("timelineEvents") private var showEvents = true
 
     var body: some View {
         let (timeline, items) = data
@@ -33,8 +34,8 @@ struct KidTimelineView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 6)
             Divider()
-            UsageCalendar(timeline: timeline, items: items, dayStart: day.start(),
-                          showWebsites: showWebsites, hideShort: hideShort, scale: $scale)
+            UsageCalendar(timeline: timeline, items: items, dayStart: day.start(), events: showEvents ? events : [],
+                          policy: policy, showWebsites: showWebsites, hideShort: hideShort, scale: $scale)
         }
         .navigationTitle("Timeline")
         .bugButton()
@@ -48,6 +49,7 @@ struct KidTimelineView: View {
                 Menu("Options", systemImage: "ellipsis") {
                     Toggle("Show websites", isOn: $showWebsites)
                     Toggle("Hide short use (under 2 min)", isOn: $hideShort)
+                    Toggle("Show events", isOn: $showEvents)
                 }
             }
         }
@@ -66,6 +68,34 @@ struct KidTimelineView: View {
         case .thisPhone:
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             return (Reconstructor.build(model.config.dayInput(day)), items)
+        }
+    }
+
+    /// Limits used up, one more minute, requests for more time and their answers, and alerts, that day.
+    private var events: [DayEvent] {
+        switch source {
+        case .family(let kid):
+            let data = model.data
+            return DayEvents.build(day: day, kidName: kid.displayName,
+                                   limitsReached: data.limitsReached.values.filter { $0.kidID == kid.id },
+                                   requests: data.requests.values.filter { $0.kidID == kid.id },
+                                   grants: data.grants.values.filter { $0.kidID == kid.id },
+                                   extraMinutes: data.extraMinutes.values.filter { $0.kidID == kid.id },
+                                   alerts: data.alerts.values.filter { $0.kidID == kid.id })
+        case .thisPhone:
+            // Every answer applied here; those from before the history file existed are still in today's state.
+            let grants = AppGroup.grantHistory.readAll() + Enforcer.loadState().grants.map(\.grant)
+            return DayEvents.build(day: day, kidName: model.config.kid?.displayName,
+                                   limitsReached: AppGroup.limitsReached.readAll(), requests: AppGroup.requests.readAll(),
+                                   grants: grants, extraMinutes: AppGroup.extraMinuteUses.readAll(),
+                                   alerts: AppGroup.outbox.readAll())
+        }
+    }
+
+    private var policy: Policy? {
+        switch source {
+        case .family(let kid): model.data.storedPolicy(for: kid.id)
+        case .thisPhone: AppGroup.loadPolicy()
         }
     }
 

@@ -108,6 +108,9 @@ enum AppGroup {
     /// Every "one more minute" taken (`ExtraMinuteUse`), for the parents and the app's details.
     static var extraMinuteUses: JSONLinesFile<ExtraMinuteUse> { JSONLinesFile(url: container.appending(path: "Outbox/extra-minutes.jsonl")) }
     static var extraMinuteUsesLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/extra-minutes-uploaded.jsonl")) }
+    /// Every limit used up (`LimitReached`), for the day's timeline here and on parents' phones.
+    static var limitsReached: JSONLinesFile<LimitReached> { JSONLinesFile(url: container.appending(path: "Outbox/limits-reached.jsonl")) }
+    static var limitsReachedLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/limits-reached-uploaded.jsonl")) }
     /// The kid's approvals of their own requests (`TimeGrant.isSelfApproved`), for the parents.
     static var selfGrants: JSONLinesFile<TimeGrant> { JSONLinesFile(url: container.appending(path: "Outbox/self-grants.jsonl")) }
     static var selfGrantsLedger: JSONLinesFile<UUID> { JSONLinesFile(url: container.appending(path: "Outbox/self-grants-uploaded.jsonl")) }
