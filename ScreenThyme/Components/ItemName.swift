@@ -80,6 +80,14 @@ enum Format {
         minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
     }
 
+    /// To the nearest quarter hour: "10¼ hours".
+    static func hours(_ interval: TimeInterval) -> String {
+        let quarters = Int((interval / 900).rounded())
+        let whole = quarters / 4, fraction = ["", "¼", "½", "¾"][quarters % 4]
+        if whole == 0 { return fraction.isEmpty ? "0 hours" : "\(fraction) hour" }
+        return whole == 1 && fraction.isEmpty ? "1 hour" : "\(whole)\(fraction) hours"
+    }
+
     static func time(_ date: Date) -> String {
         date.formatted(date: .omitted, time: .shortened)
     }

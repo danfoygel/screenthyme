@@ -207,9 +207,16 @@ test rule of each kind with the `-addTestRules <kid name>` launch argument (CLAU
 - **Kids:** a card per kid with live status ("In use · probably YouTube", or "Idle · last active 8:42pm"), today's
   total, top apps, a health dot, battery, and counts of new apps to match and apps not in the scan.
 - **A kid's day:** the timeline (the in-use strip, then one lane per app or website, with pinch to zoom and long blank
+<<<<<<< HEAD
   stretches cut) or the same day as a calendar with concurrent apps side by side; apps and websites with their
   minutes; Where (§19); Time by category; pickups and notifications (by app and by hour); a usage heatmap; links to
   the change history and matching with the camera.
+=======
+  stretches cut) or the same day as a calendar with concurrent apps side by side, and the day's events marked at their
+  moment (`DayEvents`: limits used up, which the kid's phone notes as `LimitReached` records when its plan newly
+  shields one; one more minute; requests for more time, their answers and early ends; alerts); apps and websites with their
+  minutes; Where (§19); Time by category; a usage heatmap; links to the change history and matching with the camera.
+>>>>>>> origin/main
 - **An app's details** (§15.9).
 - **Alerts:** every alert, with requests for more time answered in place.
 - **Places:** §19.

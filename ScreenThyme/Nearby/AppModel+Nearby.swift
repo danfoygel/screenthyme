@@ -68,6 +68,7 @@ extension AppModel {
         bundle.alerts = AppGroup.outbox.readAll().filter { recent($0.at) }
         bundle.requests = AppGroup.requests.readAll().filter { recent($0.at) }
         bundle.extraMinutes = AppGroup.extraMinuteUses.readAll().filter { recent($0.at) }
+        bundle.limitsReached = AppGroup.limitsReached.readAll().filter { recent($0.at) }
         bundle.grants = AppGroup.selfGrants.readAll().filter { recent($0.at) }
         bundle.pairing = pairingShown.map { [$0] }  // so a parent's phone that connects later knows
         bundle.unlock = [unlockState]
@@ -104,7 +105,8 @@ extension AppModel {
                                                     requests: usage.requests,
                                                     // A kid's phone answers only its own requests, when it self-approves.
                                                     grants: usage.grants.filter(\.isSelfApproved),
-                                                    extraMinutes: usage.extraMinutes ?? []))
+                                                    extraMinutes: usage.extraMinutes ?? [],
+                                                    limitsReached: usage.limitsReached ?? []))
             // Offline there's no CloudKit push; "asks for more time" is one of these. Once ingested, a later fetch
             // doesn't notify again (the owner's CloudKit push may still come when the kid's phone uploads).
             newAlerts.filter { Date().timeIntervalSince($0.at) < 3600 }.forEach(Notifier.post)

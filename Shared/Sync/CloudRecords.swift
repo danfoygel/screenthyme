@@ -158,6 +158,12 @@ extension ExtraMinuteUse: CloudRecordable {
     var ownerKidID: UUID { kidID }
 }
 
+extension LimitReached: CloudRecordable {
+    static let recordType = "LimitReached"
+    var recordUUID: UUID { id }
+    var ownerKidID: UUID { kidID }
+}
+
 extension Ping: CloudRecordable {
     static let recordType = "Ping"
     var recordUUID: UUID { id }
