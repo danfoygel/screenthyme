@@ -4,7 +4,8 @@ import Foundation
 public struct AppliedGrant: Codable, Sendable, Hashable {
     public var grant: TimeGrant
     public var appliedAt: Date
-    /// For Downtime and blocked-item grants: the item's use today when applied (the grant counts use after it).
+    /// For grants that name an item: the item's use today when applied (the grant counts use after it). For a limit
+    /// grant that names nothing: the limit's use when applied, which its minutes start from if the limit was past.
     public var baselineSeconds: Double
     /// For Downtime grants: the start of the window occurrence the grant belongs to.
     public var windowStart: Date?
@@ -223,12 +224,11 @@ public enum EnforcementPlanner {
         // that names nothing (an all-apps limit's category shield) raises the limit for everything it counts.
         let weekday = calendar.component(.weekday, from: now)
         for limit in policy.limits where limit.enabled {
-            let used = Int((limit.allApps
-                ? totalSeconds(items: items, usage: usage, excluding: policy.alwaysAllowed.union(exempt))
-                : seconds(of: limit.items, items: items, usage: usage, excluding: policy.alwaysAllowed)) / 60)
+            let used = Int(usedSeconds(limit, items: items, usage: usage, alwaysAllowed: policy.alwaysAllowed,
+                                       exempt: exempt) / 60)
             plan.used[limit.id] = used
-            guard let extra = Self.extraMinutes(for: limit.id, grants: grants.map(\.grant)) else { continue }  // the rest of today
-            let budget = limit.minutes(on: weekday) + extra
+            guard let budget = Self.budget(for: limit.id, minutes: limit.minutes(on: weekday), grants: grants)
+            else { continue }  // the rest of today
             plan.budgets[limit.id] = budget
             // iOS's event counts a category's Always Allowed apps too; then only our own count ends the limit.
             let fired = limitFires[limit.id] == budget
@@ -304,20 +304,61 @@ public enum EnforcementPlanner {
     }
 
     /// Minutes parents' approved `grants` add to limit `limitID`; nil when one gave the rest of the day. Only grants
-    /// that name nothing raise the limit: one for an app lets that app through instead. One ended early adds only the
-    /// minutes of the clock it ran, at most its own: no more use than that can have come from it.
+    /// that name nothing raise the limit: one for an app lets that app through instead.
     public static func extraMinutes(for limitID: UUID, grants: some Sequence<TimeGrant>) -> Int? {
         var total = 0
-        for grant in grants where grant.approved && grant.reason == .limit(limitID) && grant.itemID == nil {
-            if let ended = grant.endedAt {
-                let ran = max(0, Int((ended.timeIntervalSince(grant.at) / 60).rounded(.up)))
-                total += min(grant.minutes ?? ran, ran)
-                continue
-            }
-            guard let minutes = grant.minutes else { return nil }
+        for grant in grants where raises(limitID, grant) {
+            guard let minutes = addedMinutes(grant) else { return nil }
             total += minutes
         }
         return total
+    }
+
+    /// Today's budget for limit `limitID` of `minutes`, with what parents' applied grants that name nothing add; nil
+    /// when one gave the rest of the day. Each grant's minutes count from the limit's use when it was applied, if that
+    /// was past the budget so far: time given after the limit ran out is time from then, not from the limit.
+    public static func budget(for limitID: UUID, minutes: Int, grants: some Sequence<AppliedGrant>) -> Int? {
+        var budget = minutes
+        for applied in grants.filter({ raises(limitID, $0.grant) }).sorted(by: { $0.appliedAt < $1.appliedAt }) {
+            guard let added = addedMinutes(applied.grant) else { return nil }
+            budget = max(budget, Int(applied.baselineSeconds / 60)) + added
+        }
+        return budget
+    }
+
+    /// A parent's approval that raises limit `limitID`: it names no app.
+    static func raises(_ limitID: UUID, _ grant: TimeGrant) -> Bool {
+        grant.approved && grant.reason == .limit(limitID) && grant.itemID == nil
+    }
+
+    /// The minutes a limit grant adds; nil for the rest of the day. One ended early adds only the minutes of the clock
+    /// it ran, at most its own: no more use than that can have come from it.
+    static func addedMinutes(_ grant: TimeGrant) -> Int? {
+        if let ended = grant.endedAt {
+            let ran = max(0, Int((ended.timeIntervalSince(grant.at) / 60).rounded(.up)))
+            return min(grant.minutes ?? ran, ran)
+        }
+        return grant.minutes
+    }
+
+    /// Seconds `limit` counts: its apps, websites and categories, or for all apps everything but `exempt`; Always
+    /// Allowed counts toward none. `limit` is from a resolved policy.
+    public static func usedSeconds(_ limit: AppLimit, items: [UUID: TrackedItem], usage: [UUID: Double],
+                                   alwaysAllowed: Set<UUID>, exempt: Set<UUID> = []) -> Double {
+        limit.allApps
+            ? totalSeconds(items: items, usage: usage, excluding: alwaysAllowed.union(exempt))
+            : seconds(of: limit.items, items: items, usage: usage, excluding: alwaysAllowed)
+    }
+
+    /// The baseline a grant gets when applied (`AppliedGrant.baselineSeconds`): the use of the item it names, or for a
+    /// limit grant that names nothing, the limit's use.
+    public static func baseline(for grant: TimeGrant, policy: Policy, items: [UUID: TrackedItem], usage: [UUID: Double],
+                                exempt: Set<UUID> = []) -> Double {
+        if let item = grant.itemID { return usage[item] ?? 0 }
+        guard case let .limit(limitID) = grant.reason else { return 0 }
+        let policy = policy.resolved(items: items)
+        guard let limit = policy.limits.first(where: { $0.id == limitID }) else { return 0 }
+        return usedSeconds(limit, items: items, usage: usage, alwaysAllowed: policy.alwaysAllowed, exempt: exempt)
     }
 
     /// Seconds used by `targets`: apps and websites directly, categories through their apps and websites, each once.

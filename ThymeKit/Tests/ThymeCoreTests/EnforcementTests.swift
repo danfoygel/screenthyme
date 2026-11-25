@@ -139,6 +139,74 @@ struct EnforcementTests {
             .allAppsLimited)
     }
 
+    /// Time given once the limit ran out counts from the use then: 50 of 30 minutes used, 15 more is up to 65.
+    @Test func limitGrantAfterTheLimitRanOutCountsFromTheUseThen() {
+        let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 30)
+        let policy = Policy(kidID: kid, limits: [limit])
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [applied(.limit(limit.id), nil, minutes: 15, at: at(12, 0), baseline: 50 * 60)]
+        let given = plan(policy, usage: [instagram.id: 50 * 60.0], state: state, at: at(12, 1))
+        #expect(given.budgets[limit.id] == 65)
+        #expect(given.exhaustedLimits.isEmpty && !given.allAppsLimited)
+        #expect(!plan(policy, usage: [instagram.id: 64 * 60.0], state: state, at: at(12, 20)).allAppsLimited)
+        #expect(plan(policy, usage: [instagram.id: 65 * 60.0], state: state, at: at(12, 20)).allAppsLimited)
+        // A second grant once that ran out counts from its own use.
+        state.grants.append(applied(.limit(limit.id), nil, minutes: 10, at: at(13, 0), baseline: 80 * 60))
+        #expect(plan(policy, usage: [instagram.id: 80 * 60.0], state: state, at: at(13, 1)).budgets[limit.id] == 90)
+        // A limit with its own apps counts the same way.
+        let own = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
+        state.grants = [applied(.limit(own.id), nil, minutes: 15, at: at(12, 0), baseline: 50 * 60)]
+        #expect(plan(Policy(kidID: kid, limits: [own]), usage: [instagram.id: 50 * 60.0], state: state, at: at(12, 1))
+            .budgets[own.id] == 65)
+    }
+
+    @Test func limitGrantsBeforeTheLimitRanOutAddToIt() {
+        let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 30)
+        let minutes: [AppliedGrant] = [applied(.limit(limit.id), nil, minutes: 15, at: at(12, 0), baseline: 10 * 60),
+                                       applied(.limit(limit.id), nil, minutes: 10, at: at(12, 5), baseline: 20 * 60)]
+        #expect(EnforcementPlanner.budget(for: limit.id, minutes: 30, grants: minutes) == 55)
+        // In the order applied, whatever order they're stored in.
+        let late = [applied(.limit(limit.id), nil, minutes: 10, at: at(13, 0), baseline: 60 * 60),
+                    applied(.limit(limit.id), nil, minutes: 15, at: at(12, 0), baseline: 10 * 60)]
+        #expect(EnforcementPlanner.budget(for: limit.id, minutes: 30, grants: late) == 70)
+        // Grants for an app, declined ones and the rest of the day.
+        let other = [applied(.limit(limit.id), instagram.id, minutes: 15, at: at(12, 0), baseline: 40 * 60),
+                     applied(.limit(limit.id), nil, minutes: nil, approved: false, at: at(12, 0), baseline: 40 * 60)]
+        #expect(EnforcementPlanner.budget(for: limit.id, minutes: 30, grants: other) == 30)
+        #expect(EnforcementPlanner.budget(for: limit.id, minutes: 5,
+                                          grants: other + [applied(.limit(limit.id), nil, minutes: nil, at: at(12, 0))]) == nil)
+        // Ended early: the minutes it ran, from its baseline.
+        var ended = applied(.limit(limit.id), nil, minutes: 30, at: at(12, 0), baseline: 50 * 60)
+        ended.grant = ended.grant.ending(at: at(12, 10), by: "Parent B")
+        #expect(EnforcementPlanner.budget(for: limit.id, minutes: 30, grants: [ended]) == 60)
+    }
+
+    @Test func limitGrantBaselineIsTheLimitsUse() {
+        let allApps = AppLimit(name: "All apps", items: [], allApps: true, minutes: 30)
+        let socialLimit = AppLimit(name: "Social", items: [instagram.id], minutes: 30)
+        let policy = Policy(kidID: kid, alwaysAllowed: [messages.id], limits: [allApps, socialLimit])
+        let usage = [instagram.id: 40 * 60.0, snapchat.id: 10 * 60.0, messages.id: 30 * 60.0]
+        func grant(_ reason: BlockReason, _ item: UUID?) -> TimeGrant {
+            applied(reason, item, minutes: 15, at: at(12, 0)).grant
+        }
+        #expect(EnforcementPlanner.baseline(for: grant(.limit(allApps.id), nil), policy: policy, items: items, usage: usage)
+            == 50 * 60)
+        #expect(EnforcementPlanner.baseline(for: grant(.limit(socialLimit.id), nil), policy: policy, items: items,
+                                            usage: usage) == 40 * 60)
+        #expect(EnforcementPlanner.baseline(for: grant(.limit(allApps.id), snapchat.id), policy: policy, items: items,
+                                            usage: usage) == 10 * 60)
+        #expect(EnforcementPlanner.baseline(for: grant(.limit(UUID()), nil), policy: policy, items: items, usage: usage) == 0)
+    }
+
+    /// Grants applied before limits had a baseline have 0: they add to the limit, as they did.
+    @Test func limitGrantsAppliedWithoutABaselineAddToTheLimit() {
+        let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 30)
+        var state = EnforcementDayState(day: testDay)
+        state.grants = [applied(.limit(limit.id), nil, minutes: 15, at: at(12, 0))]
+        let result = plan(Policy(kidID: kid, limits: [limit]), usage: [instagram.id: 50 * 60.0], state: state, at: at(12, 1))
+        #expect(result.budgets[limit.id] == 45 && result.allAppsLimited)
+    }
+
     /// Time asked from one app lets only that app through, for its minutes of use; the limit stays used up.
     @Test func limitGrantForAnAppLetsOnlyThatAppThrough() {
         let limit = AppLimit(name: "All apps", items: [], allApps: true, minutes: 60)
