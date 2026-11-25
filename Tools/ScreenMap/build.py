@@ -253,6 +253,7 @@ p.node("perms", 2, 12.25, "Permissions", "PermissionsView", "this phone's, each 
 p.node("timeline", 3, 0, "Timeline", "KidTimelineView", "zoom, Options menu")
 p.node("categories", 3, 1, "Categories", "CategoryTimeView", "the day by Apple's category")
 p.node("history", 3, 2, "Change history", "PolicyHistoryView", "saves, changes back, answers")
+p.node("pickups", 3, 5.1, "Pickups", "PickupsView", "pickups, notifications by app, hour")
 p.node("locationDay", 3, 3.1, "‹place›", "LocationDayView", "apps used there, times there")
 p.node("scanner", 3, 4.25, "Match ‹kid›'s apps", "PairingScannerView", "camera reads the kid's codes")
 p.node("kidSettings", 3, 6, "‹kid›", "KidSettingsView", "rules and health")
@@ -294,6 +295,7 @@ p.edge("settings", "kidSettings", "Kids › ‹kid›", sp=12, dp=12, lpos=None)
 p.edge("kidDay", "timeline", "Day timeline")
 p.edge("kidDay", "categories", "Time by category")
 p.edge("kidDay", "history", "Change history")
+p.edge("kidDay", "pickups", "Pickups and notifications")
 p.edge("kidDay", "scanner", "Match ‹n› new apps\nwith camera")
 p.edge("kidDay", "kidSettings", "Rules and health", dp=-12)
 p.edge("kidDay", "locationDay", "Where › a place")
@@ -368,7 +370,7 @@ WHY.update({
 kid_svg = k.render("Kid mode screen flow: Welcome leads to the ScreenThyme home screen, which links to the kid's Screen Time lists, "
                    "Ask for more time, Apple's pickers, matching by camera or screenshot, Report a problem, Debug, the kid's apps and their details, the day timeline, time by category, and Test mode; the block page outside the app also opens Ask for more time.")
 parent_svg = p.render("Parent mode screen flow: Welcome leads to a tab bar with Kids, Alerts, Places and Settings; Places names spots on its map; "
-                      "a kid's day leads to the timeline, time by category, change history, a place's use, camera matching, an app's details and rules and health, "
+                      "a kid's day leads to the timeline, time by category, pickups and notifications, change history, a place's use, camera matching, an app's details and rules and health, "
                       "which leads to the Screen Time editor and its sheets and item picker, and raw location.")
 
 commit = subprocess.run(["git", "-C", HERE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()

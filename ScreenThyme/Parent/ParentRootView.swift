@@ -226,6 +226,15 @@ struct KidDayView: View {
                 NavigationLink { CategoryTimeView(source: .family(kid), day: day) } label: {
                     Label("Time by category", systemImage: "chart.bar.horizontal.page")
                 }
+                NavigationLink { PickupsView(kid: kid, day: day) } label: {
+                    LabeledContent {
+                        if let pickups = model.data.pickups(kid: kid.id, day: day) {
+                            Text("\(pickups.pickups) · \(pickups.notifications)").monospacedDigit()
+                        }
+                    } label: {
+                        Label("Pickups and notifications", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                    }
+                }
                 NavigationLink { PolicyHistoryView(kid: kid) } label: {
                     Label("Change history", systemImage: "clock.arrow.circlepath")
                 }
