@@ -356,12 +356,13 @@ struct LimitEditor: View {
             Form {
                 TextField("Name", text: $limit.name, prompt: Text(suggestedName))
                 Toggle("On", isOn: $limit.enabled)
-                Stepper("\(Format.minutes(limit.minutes)) a day", value: $limit.minutes, in: 5...720, step: 5)
+                MinutesStepper("\(Format.minutes(limit.minutes)) a day", minutes: $limit.minutes, range: 0...720)
                 Section("Other days") {
                     ForEach(1...7, id: \.self) { weekday in
                         let custom = limit.weekdayMinutes[weekday]
-                        Stepper(value: Binding(get: { custom ?? limit.minutes }, set: { limit.weekdayMinutes[weekday] = $0 }),
-                                in: 5...720, step: 5) {
+                        MinutesStepper(minutes: Binding(get: { custom ?? limit.minutes },
+                                                        set: { limit.weekdayMinutes[weekday] = $0 }),
+                                       range: 0...720) {
                             LabeledContent(Calendar.current.weekdaySymbols[weekday - 1],
                                            value: custom.map(Format.minutes) ?? "same")
                         }

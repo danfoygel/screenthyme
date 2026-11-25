@@ -295,9 +295,9 @@ struct RuleEditor: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
-                    Stepper("After \(Format.minutes(minutes))", value: Binding(get: { minutes }, set: {
+                    MinutesStepper("After \(Format.minutes(minutes))", minutes: Binding(get: { minutes }, set: {
                         rule.condition = .dailyThreshold(itemID: itemID, minutes: $0)
-                    }), in: 5...720, step: 5)
+                    }))
                 case let .longSession(minutes):
                     Stepper("Longer than \(Format.minutes(minutes))", value: Binding(get: { minutes }, set: {
                         rule.condition = .longSession(minutes: $0)

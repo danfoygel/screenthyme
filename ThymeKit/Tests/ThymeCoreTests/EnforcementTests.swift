@@ -84,6 +84,20 @@ struct EnforcementTests {
         #expect(EnforcementPlanner.totalSeconds(items: all, usage: usage, excluding: [scannedSocial.id]) == 0)
     }
 
+    /// A 0-minute limit (on its own, or for one weekday) blocks from the start of the day, with no use at all.
+    @Test func zeroMinuteLimitIsUsedUpWithNoUse() {
+        let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 0)
+        let result = plan(Policy(kidID: kid, limits: [limit]), at: at(0, 1))
+        #expect(result.budgets[limit.id] == 0)
+        #expect(result.exhaustedLimits == [limit.id])
+        #expect(result.limitedItems == [instagram.id])
+        // Nov 14, 2026 is a Saturday (7): 0 minutes on Saturdays only.
+        let weekend = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30, weekdayMinutes: [7: 0])
+        #expect(plan(Policy(kidID: kid, limits: [weekend]), at: at(9, 0)).exhaustedLimits == [weekend.id])
+        let weekdays = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30, weekdayMinutes: [2: 0])
+        #expect(plan(Policy(kidID: kid, limits: [weekdays]), at: at(9, 0)).exhaustedLimits.isEmpty)
+    }
+
     @Test func limitFireExhaustsBeforeAppleDataCatchesUp() {
         let limit = AppLimit(name: "Instagram", items: [instagram.id], minutes: 30)
         var state = EnforcementDayState(day: testDay)
