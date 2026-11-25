@@ -125,6 +125,7 @@ struct ShieldContext {
             return "\(target.name) is off until \(downtime.interval.end.formatted(date: .omitted, time: .shortened))."
         case let .limit(limitID):
             let name = applied?.limitNames[limitID] ?? target.name
+            if applied?.plan.budgets[limitID] == 0 { return "\(name) is off today." }
             let budget = applied?.plan.budgets[limitID].map { " (\(Self.describe(minutes: $0)))" } ?? ""
             return "You've reached today's limit for \(name)\(budget)."
         case .blocked:

@@ -363,7 +363,8 @@ enum Enforcer {
             // So has one whose categories hold an Always Allowed app, which its event would count.
             for limit in policy.limits where limit.enabled && !limit.allApps
                 && !EnforcementPlanner.eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: policy.alwaysAllowed) {
-                guard let budget = plan.budgets[limit.id] else { continue }
+                // A 0-minute limit is used up from the plan alone.
+                guard let budget = plan.budgets[limit.id], budget > 0 else { continue }
                 let name = limitPrefix + short(limit.id)
                 let targets = tokens.split(limit.items.subtracting(policy.alwaysAllowed))
                 // An event with no tokens would count all activity.
