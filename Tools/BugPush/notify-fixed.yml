@@ -1,6 +1,6 @@
 # Goes in the family's private bug repository as .github/workflows/notify-fixed.yml, beside
 # .github/scripts/notify-fixed.mjs (see README.md).
-name: Tell the reporter it's fixed
+name: Tell the reporter it's closed
 
 on:
   issues:
@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   push:
-    if: github.event.issue.state_reason == 'completed'
     runs-on: ubuntu-latest
     steps:
       # Only the script: the repository also holds every report's screenshots.

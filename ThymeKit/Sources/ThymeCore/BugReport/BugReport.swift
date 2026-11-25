@@ -67,13 +67,17 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     /// Filed, and not fixed yet as far as this phone knows. A closed issue can still be reopened and fixed.
     public var awaitsFix: Bool { isFiled && resolution != .fixed }
 
-    /// The push that tells the reporter it's fixed, sent by the repository's workflow (`Tools/BugPush`).
-    public var fixedNotification: (title: String, body: String) {
+    /// The push that tells the reporter its issue was closed, fixed or not, sent by the repository's workflow
+    /// (`Tools/BugPush`).
+    public func closedNotification(fixed: Bool) -> (title: String, body: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let what = text.isEmpty
-            ? "The problem you reported on \(at.formatted(.dateTime.month(.abbreviated).day())) is fixed."
-            : "You reported: “\(summary)”"
-        return ("A problem you reported is fixed", what + " Thanks for telling us!")
+        let day = at.formatted(.dateTime.month(.abbreviated).day())
+        if fixed {
+            let what = text.isEmpty ? "The problem you reported on \(day) is fixed." : "You reported: “\(summary)”"
+            return ("A problem you reported is fixed", what + " Thanks for telling us!")
+        }
+        let what = text.isEmpty ? "The problem you reported on \(day)" : "You reported: “\(summary)”. It"
+        return ("A problem you reported was closed", what + " was closed without a fix.")
     }
 
     /// The first line of the reporter's words, shortened.

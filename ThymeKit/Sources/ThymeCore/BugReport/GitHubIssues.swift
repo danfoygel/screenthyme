@@ -103,13 +103,15 @@ public struct GitHubIssues: Sendable {
         guard [200, 201].contains(response.statusCode) else { throw Self.failure(response.statusCode, body) }
     }
 
-    /// What the repository's workflow reads when the issue is closed as done: which phone to push to, and what to
-    /// say. An HTML comment, so the issue doesn't show it.
+    /// What the repository's workflow reads when the issue is closed: which phone to push to, and what to say when
+    /// it's closed as done (`title`, `body`) or for any other reason (`closedTitle`, `closedBody`). An HTML comment,
+    /// so the issue doesn't show it. Issues filed before closings without a fix were told have only `title` and `body`.
     static func fixMarker(of report: BugReport) -> String? {
         guard let phone = report.phoneID else { return nil }
-        let message = report.fixedNotification
+        let fixed = report.closedNotification(fixed: true)
+        let closed = report.closedNotification(fixed: false)
         let fields = ["phone": phone.uuidString.lowercased(), "report": report.id.uuidString,
-                      "title": message.title, "body": message.body]
+                      "title": fixed.title, "body": fixed.body, "closedTitle": closed.title, "closedBody": closed.body]
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let json = try? encoder.encode(fields) else { return nil }

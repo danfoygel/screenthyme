@@ -1,15 +1,17 @@
-# Bug fix pushes
+# Bug closed pushes
 
-When an issue in the family's bug repository is closed as **completed**, the phone that filed it gets a
-notification ("A problem you reported is fixed"), even when ScreenThyme isn't running (PLAN.md §18). GitHub sends it
-straight to Apple's push service; there's no server.
+When an issue in the family's bug repository is closed, the phone that filed it gets a notification, even when
+ScreenThyme isn't running (PLAN.md §18): "A problem you reported is fixed" when it's closed as completed, "A problem
+you reported was closed … without a fix" for any other reason (not planned, a duplicate). GitHub sends it straight to
+Apple's push service; there's no server.
 
 - Each phone saves its APNs device token as `phones/<phone id>.json` in the bug repository, again whenever it
   changes (`BugReportQueue.pushToken`, `GitHubIssues.save`).
 - Each issue a phone files ends with a hidden `<!-- screenthyme-fixed {...} -->` marker naming the phone and the
-  words to show (`GitHubIssues.fixMarker`). Issues filed before this, or by hand, have none and push nothing.
-- `notify-fixed.yml` runs `notify-fixed.mjs` on `issues: closed`. Closed as not planned or as a duplicate sends
-  nothing; reopened and closed as completed again sends again.
+  words to show either way (`GitHubIssues.fixMarker`). Issues filed by hand have none and push nothing; issues filed
+  before closings without a fix were told carry only the fixed words, and the script makes the other from them.
+- `notify-fixed.yml` runs `notify-fixed.mjs` on `issues: closed`. An issue reopened and closed again sends again,
+  replacing the earlier notification.
 
 ## Setting it up (once)
 
