@@ -56,8 +56,21 @@ struct KidDebugView: View {
                     LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
                 }
             }
+            Section {
+                let inventory = InventoryRefresh.load()
+                LabeledContent("Apps and categories", value: inventory.appsAt.map(Format.relative) ?? "never")
+                LabeledContent("Websites", value: inventory.websitesAt.map(Format.relative) ?? "never")
+                LabeledContent("Websites last tried", value: inventory.websitesTriedAt.map(Format.relative) ?? "never")
+                Button("List them now") { Task { await model.refreshInventory(websites: true) } }
+            } header: {
+                Text("Apple's lists of apps and websites")
+            } footer: {
+                Text("Tokens and matches for every app, website and category, at launch and in the background. "
+                    + "Websites at most hourly: Apple's list can take a minute, or not answer. The journal notes each one.")
+            }
             Section("Apple") {
                 NavigationLink("Data access test") { DataAccessView() }
+                NavigationLink("Family data spike") { FamilyDataSpikeView() }
                 NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day) }
                 NavigationLink("Match scanned apps by screenshot") { TokenPairingView() }
                 NavigationLink("Raw usage (\(input.samples.count) samples)") {

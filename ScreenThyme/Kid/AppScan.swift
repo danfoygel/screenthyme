@@ -1,4 +1,3 @@
-import CryptoKit
 import FamilyControls
 import Foundation
 import ManagedSettings
@@ -74,9 +73,8 @@ enum AppScan {
     }
 
     private static func item(_ kind: ItemKind, tokenData: Data, kid: Kid, now: Date) -> TrackedItem {
-        let hash = SHA256.hash(data: tokenData).prefix(8).map { String(format: "%02x", $0) }.joined()
-        return TrackedItem(kidID: kid.id, kind: kind, identifier: TrackedItem.scannedPrefix + hash, tokenData: tokenData,
-                           firstSeen: now)
+        TrackedItem(kidID: kid.id, kind: kind, identifier: TrackedItem.scannedIdentifier(tokenData: tokenData),
+                    tokenData: tokenData, firstSeen: now)
     }
 
     /// The scanned item for an app picked in Apple's picker; one the scan doesn't list becomes an item now. An item a

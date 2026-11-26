@@ -366,7 +366,7 @@ Replay).
 | Apple ends development-build data access, or changes it | Capture depends on it entirely; health alerts say when it's gone |
 | A parent configures Screen Time for the kid in Settings, taking data access back | The extension alerts at the first refused fetch (§16); the recovery steps are in §16 |
 | iOS drops the wake alarm or misses its midnight restart | App re-registration, the extension's rebuild, `startDayIfNeeded` at any callback, health alerts for missing activities |
-| Apps installed after the last scan have no token, so can't be shielded one by one | Category limits and Downtime still cover them; the kid card counts apps not in the scan |
+| Apps installed since Apple's lists last ran have no token, so can't be shielded one by one | The lists run at every launch and background refresh; category limits and Downtime cover them meanwhile; the kid card counts apps with no token |
 | Tokens re-issued by a rescan | Policies follow an app to its new token (§15.3) |
 | Kid goes offline to avoid reporting | Data queues and arrives later; staleness alert; the nearby link |
 
@@ -403,7 +403,7 @@ rare. Hence one activity with 20 events (§4.1), and per-limit activities with o
 | `approvedWithDataAccess` on a US account | works on an adult (`.individual`) and a child (`.child`) phone, after one re-request (no new prompt type) |
 | `DeviceActivityData.activityData(...)` | exact per-app seconds with bundle IDs and domains (no display names, no tokens), including Safari and Settings; hourly is the finest segment; 0.1 s in the app |
 | From the monitor extension, in the background | 0.04 s on an iPhone SE; `activitySegments` is declared in the SwiftUI overlay, so `import SwiftUI` |
-| `FamilyActivityData.installedApplications` | hangs for 90+ s; not used |
+| `FamilyActivityData` (Debug › Family data spike, a kid's phone, Nov 2026) | `visitedWebDomains`, `installedApplications` and `activityCategories` give every item's name (domain, bundle ID, category) **and its token**, with no picker. Every token was byte for byte the scan's, every token-pairing match agreed, and a visited-websites token shields. Apps and categories are instant. `visitedWebDomains` takes 9–10 s on every call, in a new process or the same one (no caching), once 84 s, and sometimes never returns, even with the app in front. Once stuck it stays stuck for every caller, even a new process (20+ minutes once), while apps, categories and capture's `activityData` carry on. It needs a timeout and a retry hours later. The earlier "hangs for 90+ s" was probably that. Gives tokens and matches (§15.3) |
 
 **Pickups and notifications** come in the same fetch: per hour, `firstPickup` and `totalPickupsWithoutApplicationActivity`;
 per app, `numberOfPickups` (a pickup is filed under the first app used after it) and `numberOfNotifications`.
@@ -499,12 +499,21 @@ approves the amount asked or changes it, saved as `TimeGrant.<request id>`.
 
 ### 15.3 The app scan
 
+- **Apple's lists** (`InventoryRefresh`, logic in ThymeCore's `FamilyInventory`): under data access,
+  `FamilyActivityData` lists every installed app, recently visited website and category with its name and its
+  token, byte for byte the picker's (§13). At every launch and background refresh the kid's phone makes each one's
+  scanned item, the one a scan would make (the same id), and matches it (`TokenPairing.apply`), so new apps and
+  websites need no scan and no screenshots. It never drops a token. Apps and categories come back at once; websites
+  take about 10 s and sometimes never answer, so they're listed at most hourly, in the background, waited for 60 s,
+  and a call still waiting keeps another from starting. It also saves ScreenThyme's own token when no scan picked
+  one, and counts as token pairing's last import. The journal notes each list ("inventory: …"); Debug shows when they
+  last ran. The scan below and token pairing (§15.6) stay as the way back.
 - On the kid's phone a parent selects All Apps & Categories once: a token for every installed app, website and
   category, each a `TrackedItem` with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). A second pick
   of ScreenThyme alone gives its own token, which Downtime and limits always let through (`exempt-tokens.json`).
   The pick must be one app, no categories or websites, and the Enforcer ignores a file with more (an older build took
   any pick). It's a parent control (§4.9): once at setup, again only if its token stops working.
-  Apps installed later are covered by their category until the next scan.
+  Apps installed later are covered by their category until Apple's lists (or the next scan) give their token.
 - The shield extensions can read the App Group but the configuration one can't write it; the action extension can.
 - A press on a category shield (Downtime's `.all(except:)`, category limits) calls
   `handle(action:for: ActivityCategoryToken)`: the category, not the app.
@@ -556,6 +565,8 @@ used, the button asks straight away. Never for Blocked apps.
   uploaded and sent nearby, so an app's details show it on parents' phones.
 
 ### 15.6 Matching scanned tokens to Apple's data (`TokenPairing`)
+
+Apple's lists (§15.3) now match every scanned item by themselves; this is the way back without them.
 
 Tokens can't be decoded, and only the report and shield extensions see a token beside its bundle ID, without being
 able to export it. On a `.child` phone with data access the report extension's tokens are encrypted under another key

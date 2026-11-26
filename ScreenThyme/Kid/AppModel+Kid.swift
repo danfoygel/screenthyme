@@ -107,6 +107,24 @@ extension AppModel {
         do { _ = try await Sampler.sample(kid: kid) } catch { show(error) }
     }
 
+    /// New apps, websites and categories get tokens and matches from Apple's lists (`InventoryRefresh`, PLAN.md §15.3):
+    /// apps and categories now, websites in the background when due, since they can take a minute or never answer.
+    func refreshInventory(websites force: Bool = false) async {
+        guard isKid, hasDataAccess, let kid = config.kid else { return }
+        if await InventoryRefresh.appsAndCategories(kid: kid) {
+            await Enforcer.offMain { Enforcer.reconcile() }
+        }
+        guard force || InventoryRefresh.websitesDue() else { return }
+        let background = UIApplication.shared.beginBackgroundTask(withName: "list websites")
+        Task {
+            defer { UIApplication.shared.endBackgroundTask(background) }
+            if await InventoryRefresh.websites(kid: kid) {
+                await Enforcer.offMain { Enforcer.reconcile() }
+                await flush()
+            }
+        }
+    }
+
     func flush() async {
         guard isKid, config.family != nil else { return }
         EnergyMeter.record(.app, isCallback: false)
