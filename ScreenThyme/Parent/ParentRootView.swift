@@ -145,12 +145,6 @@ struct KidCard: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            if !unmatched.toScan.isEmpty {
-                let count = unmatched.toScan.count
-                Label("\(count) \(count == 1 ? "app" : "apps") not in the app scan", systemImage: "square.grid.3x3")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
             ForEach(Array(top), id: \.key) { id, usage in
                 HStack {
                     ItemName(item: items[id])
@@ -214,9 +208,9 @@ struct KidDayView: View {
                 Section {
                     UnmatchedNames(items: unmatched.toScan)
                 } header: {
-                    Text("Not in the app scan")
+                    Text("Not installed")
                 } footer: {
-                    Text("Used this week, but the last match didn't find them in the app scan: \"All Apps & Categories\" leaves some apps out. On \(kid.displayName)'s phone, tap Scan apps, search for each one and tick it, then match again. Until then, Downtime and limits on their category or on all apps cover them, but nothing by name.")
+                    Text("Apple counted time under these apps this week, but they aren't installed on \(kid.displayName)'s phone: Apple also files time on an app's website under the app. Limit or block the website instead. Downtime and limits on their category or on all apps cover them too.")
                 }
             }
             Section {

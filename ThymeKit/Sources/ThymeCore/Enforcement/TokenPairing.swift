@@ -451,8 +451,9 @@ public enum TokenPairing {
         /// matched to them).
         public var toMatch: [TrackedItem] = []
         /// An import since they turned up didn't match them, and the scan has added nothing since: the scan doesn't
-        /// list them. "All Apps & Categories" leaves some of Apple's apps out (Safari), which a search in the picker
-        /// finds; limits count them only through their category or all apps.
+        /// list them. With Apple's lists (`FamilyInventory`), which list every installed app, they aren't installed:
+        /// Apple files a website's time under its App Store app too (`WebMirror` catches most). Limits count them only
+        /// through their category or all apps.
         public var toScan: [TrackedItem] = []
 
         public init() {}
