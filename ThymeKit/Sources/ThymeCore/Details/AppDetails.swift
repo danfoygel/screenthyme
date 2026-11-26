@@ -119,10 +119,12 @@ public struct AppDetails: Sendable {
         case downtime(name: String, until: Date)
         case limit(name: String)
         case blocked
+        /// A mandatory break (PLAN.md §15.13).
+        case breakTime(until: Date)
     }
 
     /// Whether `plan` blocks the app now, and why, in the order the block page gives: Downtime first, then limits,
-    /// then always blocked.
+    /// then always blocked, then a break (the one that lasts longest first).
     public func status(in plan: EnforcementPlan, policy: Policy) -> Status {
         guard policy.enabled else { return .notEnforced }
         guard !isExempt else { return .open }
@@ -135,7 +137,11 @@ public struct AppDetails: Sendable {
             return .downtime(name: downtime.name, until: downtime.interval.end)
         }
         if let limit = limitReached(in: plan, policy: policy) { return .limit(name: limit.name) }
-        return plan.blockedItems.isDisjoint(with: reach) ? .open : .blocked
+        if !plan.blockedItems.isDisjoint(with: reach) { return .blocked }
+        if let breakTime = plan.breakTime, reach.isDisjoint(with: plan.breakExceptions) {
+            return .breakTime(until: breakTime.end)
+        }
+        return .open
     }
 
     /// The first used-up limit in `plan` that shields the app, whatever Downtime does. A plan for the last moment of an
@@ -253,6 +259,7 @@ public struct AppDetails: Sendable {
         switch reason {
         case let .limit(id): return limits.contains { $0.limit.id == id && accepts($0.limit) }
         case let .downtime(id): return itemID == nil && downtime.contains { $0.window.id == id }
+        case .breakTime: return itemID == nil && !isAlwaysAllowed
         case .blocked, .alwaysAllow: return false
         }
     }

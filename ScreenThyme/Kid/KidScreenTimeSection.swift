@@ -26,12 +26,18 @@ struct KidScreenTimeSection: View {
                         LabeledContent(downtime.name, value: "\(downtime.items.count) off until \(Format.time(downtime.interval.end))")
                     }
                 }
+                if let breakTime = plan.breakTime {
+                    LabeledContent("Break", value: "until \(Format.time(breakTime.end))")
+                }
                 ForEach(policy.limits.filter(\.enabled)) { limit in
                     let used = plan.used[limit.id] ?? 0
                     LabeledContent(limit.name, value: plan.budgets[limit.id].map { "\(Format.minutes(used)) of \(Format.minutes($0))" }
                         ?? "no limit today")
                 }
-                if !plan.hasDowntime && policy.limits.isEmpty {
+                if let rule = policy.breaks, rule.enabled {
+                    LabeledContent("Breaks", value: "\(Format.minutes(rule.breakMinutes)) after \(Format.minutes(rule.useMinutes))")
+                }
+                if !plan.hasDowntime && policy.limits.isEmpty && policy.breaks?.enabled != true {
                     Text("No Downtime now and no limits.").foregroundStyle(.secondary)
                 }
                 itemList("Always Allowed", ids: policy.alwaysAllowed, items: items,
@@ -44,7 +50,8 @@ struct KidScreenTimeSection: View {
             } else {
                 Text("No limits on this phone.").foregroundStyle(.secondary)
             }
-            if let plan = applied?.plan, plan.hasDowntime || !plan.exhaustedLimits.isEmpty || !plan.blockedItems.isEmpty {
+            if let plan = applied?.plan, plan.hasDowntime || !plan.exhaustedLimits.isEmpty || !plan.blockedItems.isEmpty
+                || plan.breakTime != nil {
                 Button("Ask for more time") { asking = true }
             }
             if applied?.plan != nil, AppGroup.loadPolicy()?.enabled == true {

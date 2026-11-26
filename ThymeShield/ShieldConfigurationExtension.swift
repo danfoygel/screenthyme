@@ -35,7 +35,13 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         // Fixed colors: iOS 26 draws the primary button much lighter than the color given (systemGreen came out mint),
         // so a white label disappeared. Dark text stays readable either way; the icon would otherwise draw black.
         let green = UIColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 1)
-        let symbol = reason.map { if case .downtime = $0 { "moon.zzz.fill" } else { "hourglass" } } ?? "hand.raised.fill"
+        let symbol = reason.map { reason in
+            switch reason {
+            case .downtime: "moon.zzz.fill"
+            case .breakTime: "figure.walk"
+            default: "hourglass"
+            }
+        } ?? "hand.raised.fill"
         return ShieldConfiguration(
             backgroundBlurStyle: .systemMaterial,
             icon: UIImage(systemName: symbol)?.withTintColor(green, renderingMode: .alwaysOriginal),

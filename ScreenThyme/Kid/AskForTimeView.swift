@@ -58,6 +58,8 @@ struct AskForTimeView: View {
                         } footer: {
                             if context.requestScope(for: target)?.itemID == nil, case .downtime = reason {
                                 Text("Choose the app, or this asks for Downtime off on the whole phone.")
+                            } else if context.requestScope(for: target)?.itemID == nil, reason == .breakTime {
+                                Text("Choose the app, or this asks for the break off on the whole phone.")
                             }
                         }
                     }

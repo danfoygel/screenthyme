@@ -364,6 +364,8 @@ private struct StatusRow: View {
             Label("Over the \(name) limit today", systemImage: "hourglass.bottomhalf.filled").foregroundStyle(.orange)
         case .blocked?:
             Label("Blocked", systemImage: "nosign").foregroundStyle(.red)
+        case let .breakTime(until)?:
+            Label("On a break until \(Format.time(until))", systemImage: "figure.walk").foregroundStyle(.teal)
         }
     }
 }

@@ -521,6 +521,7 @@ struct RequestRow: View {
             return itemID == nil ? "during \(name), for the whole phone" : "during \(name)"
         case let .limit(id): return "over the \(policy.limits.first { $0.id == id }?.name ?? "time") limit"
         case .blocked: return "for a blocked app"
+        case .breakTime: return itemID == nil ? "during a break, for the whole phone" : "during a break"
         case .alwaysAllow: return "to always allow it"
         }
     }

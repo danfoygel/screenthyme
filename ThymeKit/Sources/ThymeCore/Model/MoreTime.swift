@@ -24,9 +24,10 @@ public enum MoreTime {
         }
     }
 
-    /// The choice that has no amount: Downtime ends on its own.
+    /// The choice that has no amount: Downtime and breaks end on their own.
     public static func restLabel(for reason: BlockReason) -> String {
         if case .downtime = reason { return "Until Downtime ends" }
+        if reason == .breakTime { return "Until the break ends" }
         return "The rest of today"
     }
 
