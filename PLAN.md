@@ -696,6 +696,28 @@ A parent can end any approval that may still be running, theirs, another parent'
   self-approvals nearby).
 - Shown as "‹parent› ended it early" in Alerts, Change history, the app's details and the kid's Screen Time section.
 
+### 15.13 Mandatory breaks
+
+A parent can make the kid take breaks (`Policy.breaks`, a `BreakRule`; the policy screen's Breaks section): after
+`useMinutes` of use (45 by default) with no rest of `breakMinutes` (15), everything but Always Allowed is blocked for
+`breakMinutes` of the clock.
+- **Counting:** use as all-apps limits count it (Apple's per-app use minus Always Allowed, ScreenThyme, Phone and
+  mirrored apps). `BreakTracker` (in `EnforcementDayState`) takes in each reconcile's count: a stretch begins at the
+  first growth after a rest and ends only with a rest as long as the break, measured as clock time between wakes that
+  saw the count grow; shorter pauses don't start it over. Use during a break starts no stretch, and a stretch after a
+  break counts from its end. A new day starts over.
+- **Shield:** while `EnforcementPlan.breakTime` is on, the `breaks` store shields every category but
+  `breakExceptions`, like whole-phone Downtime. Its block page says "Break time" until the end (`BlockReason.breakTime`);
+  Downtime, limits and Blocked explain a shield first, since they last longer.
+- **Ending:** with no use there are no wakes, so `brk.end` is an alarm at the break's end, built like one more
+  minute's `om.end` (an end warning; a longer interval when the break is longer than 15 minutes). Its callback ends a
+  break due within 30 s and reconciles.
+- **More time:** as for whole-phone Downtime: a request, self-approval or one more minute that names an app lets it
+  through; one that names nothing lifts the break while it has time left (the break still ends on time). One more
+  minute is once per break. Grants and minutes from an earlier break don't count.
+- Changes show in the change history and go back with temporary changes. Parents' phones don't see the kid's breaks
+  yet: the state stays on the kid's phone.
+
 ## 16. Losing data access, and iOS's count restarting
 
 **Apple's Screen Time settings take data access back silently.** When a parent's device sends the kid's Screen Time

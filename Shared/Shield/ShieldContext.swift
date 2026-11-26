@@ -83,7 +83,8 @@ struct ShieldContext {
         }
     }
 
-    /// Why `target` is blocked, by the plan: Downtime first, then limits, then always blocked.
+    /// Why `target` is blocked, by the plan: Downtime first, then limits, then always blocked, then a break (the one
+    /// that lasts longest first).
     func reason(for target: Target) -> BlockReason? {
         guard let plan = applied?.plan else { return nil }
         let ids = Set([target.item?.id, target.category?.id].compactMap { $0 })
@@ -99,6 +100,7 @@ struct ShieldContext {
             return .limit(limit.id)
         }
         if !plan.blockedItems.isDisjoint(with: ids) { return .blocked }
+        if plan.breakTime != nil, ids.isDisjoint(with: plan.breakExceptions) { return .breakTime }
         // Shielded but unexplained (the plan changed since): most likely Downtime or a limit just ended.
         return plan.exhaustedLimits.first.map { .limit($0) }
     }
@@ -108,6 +110,7 @@ struct ShieldContext {
         case .downtime: "Downtime"
         case .limit: "Time limit"
         case .blocked: "Not allowed"
+        case .breakTime: "Break time"
         case .alwaysAllow, nil: "Blocked"
         }
     }
@@ -130,6 +133,9 @@ struct ShieldContext {
             return "You've reached today's limit for \(name)\(budget)."
         case .blocked:
             return "Your parents don't allow \(target.name)."
+        case .breakTime:
+            guard let breakTime = applied?.plan.breakTime else { return "Time for a break." }
+            return "Time for a break, until \(breakTime.end.formatted(date: .omitted, time: .shortened))."
         case .alwaysAllow, nil:
             return "\(target.name) is blocked by ScreenThyme."
         }
@@ -178,6 +184,8 @@ struct ShieldContext {
         case let .limit(id)? where policy?.limits.first(where: { $0.id == id })?.allApps == true: (target.item?.id, .limit(id))
         case let .limit(id)?: (target.item?.id ?? target.category?.id, .limit(id))
         case .blocked?: (target.item?.id ?? target.category?.id).map { ($0, .blocked) }
+        // Like whole-phone Downtime: the shield names only a category, so a press without an app is for the whole phone.
+        case .breakTime?: (target.item?.id, .breakTime)
         case .alwaysAllow?, nil: nil
         }
     }
@@ -228,6 +236,7 @@ struct ShieldContext {
             request.itemID == nil ? "\(amount) on the \(applied?.limitNames[id] ?? "time") limit, for everything it counts."
                 : "\(amount) for \(what) only, over the \(applied?.limitNames[id] ?? "time") limit."
         case .blocked: "\(amount) for \(what), though it isn't allowed."
+        case .breakTime: request.itemID == nil ? "\(amount) of the break off, for the whole phone." : "\(amount) for \(what) during the break."
         case .alwaysAllow: "To always allow it."
         }
     }

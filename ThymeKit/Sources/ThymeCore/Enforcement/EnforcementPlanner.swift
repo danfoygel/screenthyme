@@ -54,6 +54,8 @@ public struct EnforcementDayState: Codable, Sendable, Hashable {
     public var limitFires: [UUID: Int] = [:]
     public var grants: [AppliedGrant] = []
     public var extraMinutes: [ExtraMinute] = []
+    /// Mandatory breaks: today's stretch of use and the break that's on (PLAN.md §15.13).
+    public var breaks = BreakTracker()
 
     public init(day: DayKey) {
         self.day = day
@@ -66,15 +68,18 @@ public struct EnforcementDayState: Codable, Sendable, Hashable {
         limitFires = try container.decodeIfPresent([UUID: Int].self, forKey: .limitFires) ?? [:]
         grants = try container.decodeIfPresent([AppliedGrant].self, forKey: .grants) ?? []
         extraMinutes = try container.decodeIfPresent([ExtraMinute].self, forKey: .extraMinutes) ?? []
+        breaks = try container.decodeIfPresent(BreakTracker.self, forKey: .breaks) ?? BreakTracker()
     }
 
     /// One more minute is once a day per app, or with no app (a Downtime or all-apps limit shield, which names only a
-    /// category) once per Downtime window or limit.
+    /// category) once per Downtime window or limit. A break's count starts again with each break.
     /// Never for apps that aren't allowed at all.
     public func canTakeExtraMinute(itemID: UUID?, reason: BlockReason) -> Bool {
         guard reason != .blocked else { return false }
+        let since = reason == .breakTime ? breaks.breakStart ?? .distantPast : .distantPast
         return !extraMinutes.contains { taken in
-            if let itemID { taken.itemID == itemID } else { taken.itemID == nil && taken.reason == reason }
+            guard taken.reason != .breakTime || taken.at >= since else { return false }
+            return if let itemID { taken.itemID == itemID } else { taken.itemID == nil && taken.reason == reason }
         }
     }
 }
@@ -124,6 +129,11 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
     public var alwaysAllowed: Set<UUID> = []
     /// When the first running "one more minute" ends: the kid's phone re-applies the plan then.
     public var extraMinuteEnds: Date?
+    /// The mandatory break that's on (PLAN.md §15.13), unless a grant or one more minute lifts it: like whole-phone
+    /// Downtime, everything but `breakExceptions` is shielded. The kid's phone re-applies the plan at its end.
+    public var breakTime: DateInterval?
+    /// Items usable during the break: Always Allowed plus break grants and one more minute.
+    public var breakExceptions: Set<UUID> = []
 
     public init() {}
 
@@ -143,6 +153,8 @@ public struct EnforcementPlan: Codable, Sendable, Hashable {
         blockedItems = try container.decodeIfPresent(Set<UUID>.self, forKey: .blockedItems) ?? []
         alwaysAllowed = try container.decodeIfPresent(Set<UUID>.self, forKey: .alwaysAllowed) ?? []
         extraMinuteEnds = try container.decodeIfPresent(Date.self, forKey: .extraMinuteEnds)
+        breakTime = try container.decodeIfPresent(DateInterval.self, forKey: .breakTime)
+        breakExceptions = try container.decodeIfPresent(Set<UUID>.self, forKey: .breakExceptions) ?? []
     }
 
     /// The name and occurrence of Downtime window `id`, if it's on.
@@ -268,6 +280,23 @@ public enum EnforcementPlanner {
             }
         }
 
+        // A mandatory break: a grant or one more minute that names an app lets it through; one that names nothing
+        // (the shield names only a category) lifts the break while it has time left.
+        if policy.breaks?.enabled == true, state.day == today, let start = state.breaks.breakStart,
+           let until = state.breaks.breakUntil, start <= now, now < until {
+            plan.breakTime = DateInterval(start: start, end: until)
+            plan.breakExceptions = policy.alwaysAllowed
+            let passes = grants.filter { $0.grant.reason == .breakTime && $0.appliedAt >= start
+                && isLeft($0, usage: usage, now: now) }.map(\.grant.itemID)
+                + extraMinutes.filter { $0.reason == .breakTime && $0.at >= start }.map(\.itemID)
+            if passes.contains(nil) {
+                plan.breakTime = nil
+                plan.breakExceptions = []
+            } else {
+                plan.breakExceptions.formUnion(passes.compactMap { $0 })
+            }
+        }
+
         // Blocked items.
         plan.blockedItems = policy.blocked
         for applied in grants {
@@ -275,6 +304,17 @@ public enum EnforcementPlanner {
             if isLeft(applied, usage: usage, now: now) { plan.blockedItems.remove(item) }
         }
         return plan
+    }
+
+    /// Takes in a wake for mandatory breaks (`BreakTracker`): today's use as all-apps limits count it, so Always
+    /// Allowed and `exempt` apps don't count. Returns true when a break starts. Call it before `plan`.
+    @discardableResult
+    public static func trackBreaks(policy: Policy, items: [UUID: TrackedItem], usage: [UUID: Double],
+                                   state: inout EnforcementDayState, now: Date, exempt: Set<UUID> = []) -> Bool {
+        let rule = policy.enabled ? policy.breaks : nil
+        let policy = policy.resolved(items: items)
+        let counted = totalSeconds(items: items, usage: usage, excluding: policy.alwaysAllowed.union(exempt))
+        return state.breaks.observe(counted: counted, at: now, rule: rule)
     }
 
     /// Whether `limit` counts `item` (an app, website or category, or a scanned one through its match): it's in the

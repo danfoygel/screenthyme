@@ -93,6 +93,7 @@ extension Policy {
         revertSet(&policy.uncounted, old.uncounted, new.uncounted)
         policy.uncounted.formIntersection(policy.alwaysAllowed)
         revertSet(&policy.blocked, old.blocked, new.blocked)
+        revertValue(&policy, \.breaks, old, new)
         for field in Restrictions.fields { field(&policy.restrictions, old.restrictions, new.restrictions) }
         return policy
     }

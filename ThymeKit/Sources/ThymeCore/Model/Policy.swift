@@ -24,10 +24,13 @@ public struct Policy: Codable, Sendable, Hashable {
     public var groups: [ItemGroup]
     /// Saves made for some days only, each changing back at its end (`current(at:)`, PLAN.md §15.10).
     public var temporary: [TemporaryChange]
+    /// Mandatory breaks (PLAN.md §15.13); nil when never set up.
+    public var breaks: BreakRule?
 
     public init(kidID: UUID, updatedAt: Date = Date(), enabled: Bool = true, downtime: [DowntimeWindow] = [],
                 alwaysAllowed: Set<UUID> = [], uncounted: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
-                restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = [], temporary: [TemporaryChange] = []) {
+                restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = [], temporary: [TemporaryChange] = [],
+                breaks: BreakRule? = nil) {
         self.kidID = kidID
         self.updatedAt = updatedAt
         self.enabled = enabled
@@ -39,6 +42,7 @@ public struct Policy: Codable, Sendable, Hashable {
         self.restrictions = restrictions
         self.groups = groups
         self.temporary = temporary
+        self.breaks = breaks
     }
 
     /// Policies saved before a field existed still load.
@@ -55,6 +59,7 @@ public struct Policy: Codable, Sendable, Hashable {
         restrictions = try container.decode(Restrictions.self, forKey: .restrictions)
         groups = try container.decodeIfPresent([ItemGroup].self, forKey: .groups) ?? []
         temporary = try container.decodeIfPresent([TemporaryChange].self, forKey: .temporary) ?? []
+        breaks = try container.decodeIfPresent(BreakRule.self, forKey: .breaks)
     }
 
     /// `ids` with each group's id replaced by its items.
@@ -191,6 +196,21 @@ public struct ItemGroup: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// A break the kid must take after a stretch of use (PLAN.md §15.13): after `useMinutes` of use with no rest of
+/// `breakMinutes`, everything but Always Allowed is blocked for `breakMinutes` of the clock. Use is counted as all-apps
+/// limits count it: Always Allowed, ScreenThyme and Phone don't count.
+public struct BreakRule: Codable, Sendable, Hashable {
+    public var enabled: Bool
+    public var useMinutes: Int
+    public var breakMinutes: Int
+
+    public init(enabled: Bool = true, useMinutes: Int = 45, breakMinutes: Int = 15) {
+        self.enabled = enabled
+        self.useMinutes = useMinutes
+        self.breakMinutes = breakMinutes
+    }
+}
+
 /// Minutes of day; `endMinute < startMinute` wraps past midnight. `weekdays` uses Calendar numbering (1 = Sunday),
 /// refers to the day the window starts, and empty means every day.
 public struct DowntimeWindow: Codable, Sendable, Hashable, Identifiable {
@@ -311,6 +331,8 @@ public enum BlockReason: Codable, Sendable, Hashable {
     case downtime(UUID)
     case limit(UUID)
     case blocked
+    /// A mandatory break (`BreakRule`).
+    case breakTime
     /// Not a block: the kid asks for the app to be Always Allowed. Approving it changes the policy
     /// (`Policy.applying`); the grant lets nothing through by itself.
     case alwaysAllow
@@ -343,7 +365,8 @@ public struct TimeRequest: Codable, Sendable, Hashable, Identifiable {
 /// A parent's answer, saved as `TimeGrant.<request id>` so the kid's phone can fetch it by name.
 /// For a limit, the item is let through it for `minutes` of its use (with no item, `minutes` are added to the limit
 /// today); for the rest of today when `minutes == nil`. For Downtime, the item (or with no item, the whole phone) is
-/// exempt for `minutes` of use or of the clock, or until the window ends when `minutes == nil`.
+/// exempt for `minutes` of use or of the clock, or until the window ends when `minutes == nil`; for a break,
+/// likewise until the break ends.
 public struct TimeGrant: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID { requestID }
     public var requestID: UUID
@@ -418,7 +441,7 @@ extension TimeRequest {
     /// (as with one more minute) or to always allow an app, which changes the policy.
     public var canSelfApprove: Bool {
         switch reason {
-        case .downtime, .limit: true
+        case .downtime, .limit, .breakTime: true
         case .blocked, .alwaysAllow: false
         }
     }

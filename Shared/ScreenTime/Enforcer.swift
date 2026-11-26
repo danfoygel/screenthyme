@@ -11,6 +11,8 @@ enum Enforcer {
     static let limitPrefix = "lim."
     /// Re-applies the plan when a "one more minute" runs out (PLAN.md §15.5).
     static let extraMinuteActivity = "om.end"
+    /// Re-applies the plan when a mandatory break ends (PLAN.md §15.13): with no use there are no wakes to lift it.
+    static let breakEndActivity = "brk.end"
     /// iOS allows 20 activities per app; the wake alarm needs one, and the retired token matcher (`tm`) one until launch
     /// stops it.
     static let maxActivities = 18
@@ -18,6 +20,7 @@ enum Enforcer {
     /// The Enforcer's activities, which the wake alarm's registration leaves alone.
     static func owns(_ activity: String) -> Bool {
         activity.hasPrefix(downtimePrefix) || activity.hasPrefix(limitPrefix) || activity == extraMinuteActivity
+            || activity == breakEndActivity
     }
 
     // MARK: - Reconcile
@@ -32,14 +35,18 @@ enum Enforcer {
         return AppGroup.withLock("enforcer") {
             var state = loadState(now: now)
             change?(&state)
-            AppGroup.save(state, to: AppGroup.enforcementStateURL)
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             let policy = (AppGroup.loadPolicy(now: now) ?? Policy(kidID: kid.id, enabled: false)).resolved(items: items)
             let usage = UsageSnapshot.todayUsage(kid: kid, now: now)
+            let exempt = exemptItems(items).union(webMirrored(items, now: now))
+            if EnforcementPlanner.trackBreaks(policy: policy, items: items, usage: usage, state: &state, now: now,
+                                              exempt: exempt), let until = state.breaks.breakUntil {
+                try? AppGroup.journal.append(.note("break until \(until.formatted(date: .omitted, time: .shortened))"))
+            }
+            AppGroup.save(state, to: AppGroup.enforcementStateURL)
             clearRetiredStores(now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
-                                               endingWindows: endingWindows,
-                                               exempt: exemptItems(items).union(webMirrored(items, now: now)))
+                                               endingWindows: endingWindows, exempt: exempt)
             let unshielded = apply(plan, policy: policy, items: items, use: UsageSnapshot.todayUse(kid: kid, now: now))
             let applied = loadApplied()
             if unshielded.count != applied?.unshielded?.count ?? 0 {
@@ -143,6 +150,15 @@ enum Enforcer {
         }
     }
 
+    /// The break-end alarm: ends a break that is due (DeviceActivity can call a moment early) and re-applies the plan.
+    static func endBreak(now: Date = Date()) {
+        reconcile(now: now) { state in
+            if let until = state.breaks.breakUntil, until <= now.addingTimeInterval(30) {
+                state.breaks.breakUntil = min(until, now)
+            }
+        }
+    }
+
     // MARK: - Stores
 
     /// Never blocked by Downtime or category limits, as with Apple's Screen Time: ScreenThyme itself (to ask for more
@@ -199,6 +215,17 @@ enum Enforcer {
             downtime.shield.webDomainCategories = .all(except: Tokens.capped(exceptions.domains))
         } else {
             downtime.clearAllSettings()
+        }
+
+        // A mandatory break (PLAN.md §15.13): like whole-phone Downtime, in a store of its own.
+        let breaks = ManagedSettingsStore(named: .init("breaks"))
+        if plan.breakTime != nil {
+            var exceptions = tokens.split(tokens.expandingCategories(plan.breakExceptions).union(exempt))
+            exceptions.apps.formUnion(exemptApps)
+            breaks.shield.applicationCategories = .all(except: Tokens.capped(exceptions.apps))
+            breaks.shield.webDomainCategories = .all(except: Tokens.capped(exceptions.domains))
+        } else {
+            breaks.clearAllSettings()
         }
 
         // Downtime for some apps (PLAN.md §15.8): their tokens, so the shield names the app; categories let through
@@ -379,9 +406,14 @@ enum Enforcer {
                 })
             }
         }
-        if let ends = plan.extraMinuteEnds, let schedule = extraMinuteSchedule(ending: ends, now: now) {
+        if let ends = plan.extraMinuteEnds, let schedule = alarmSchedule(ending: ends, now: now) {
             desired[extraMinuteActivity] = ("\(schedule.fire.timeIntervalSince1970)", { center in
                 try center.startMonitoring(DeviceActivityName(extraMinuteActivity), during: schedule.schedule)
+            })
+        }
+        if let ends = plan.breakTime?.end, let schedule = alarmSchedule(ending: ends, now: now) {
+            desired[breakEndActivity] = ("\(schedule.fire.timeIntervalSince1970)", { center in
+                try center.startMonitoring(DeviceActivityName(breakEndActivity), during: schedule.schedule)
             })
         }
         let registered = AppGroup.load([String: String].self, from: AppGroup.enforcementActivitiesURL) ?? [:]
@@ -392,8 +424,9 @@ enum Enforcer {
             center.stopMonitoring(Set(stale).map { DeviceActivityName($0) })
         }
         var now: [String: String] = [:]
-        // The extra-minute alarm first: it is the one that must not be left out.
-        let order = desired.sorted { ($0.key == extraMinuteActivity ? 0 : 1, $0.key) < ($1.key == extraMinuteActivity ? 0 : 1, $1.key) }
+        // The alarms first: they are the ones that must not be left out.
+        func rank(_ name: String) -> Int { name == extraMinuteActivity || name == breakEndActivity ? 0 : 1 }
+        let order = desired.sorted { (rank($0.key), $0.key) < (rank($1.key), $1.key) }
         for (name, entry) in order.prefix(maxActivities) {
             if registered[name] == entry.signature, active.contains(name) {
                 now[name] = entry.signature
@@ -412,9 +445,10 @@ enum Enforcer {
         if now != registered { AppGroup.save(now, to: AppGroup.enforcementActivitiesURL) }
     }
 
-    /// Schedules count whole minutes and last at least 15, so the alarm is an interval's end warning at the first whole
-    /// minute after `ends` (up to a minute after the extra time runs out). Nil past 23:59: the new day's reconcile ends it.
-    private static func extraMinuteSchedule(ending ends: Date, now: Date) -> (schedule: DeviceActivitySchedule, fire: Date)? {
+    /// Schedules count whole minutes and last at least 15, so an alarm (one more minute's, a break's end) is an
+    /// interval's end warning at the first whole minute after `ends` (up to a minute after the time runs out). Nil past
+    /// 23:59: the new day's reconcile ends it.
+    private static func alarmSchedule(ending ends: Date, now: Date) -> (schedule: DeviceActivitySchedule, fire: Date)? {
         let calendar = Calendar.current
         func wholeMinute(_ date: Date, up: Bool) -> Date {
             let floor = calendar.dateInterval(of: .minute, for: date)?.start ?? date
@@ -422,7 +456,8 @@ enum Enforcer {
         }
         let fire = wholeMinute(ends, up: true)
         let lastMinute = calendar.startOfDay(for: now).addingTimeInterval(Double(23 * 60 + 59) * 60)
-        let end = min(wholeMinute(now, up: true).addingTimeInterval(16 * 60), lastMinute)
+        // A break can run longer than the shortest schedule: the interval then ends a minute after the alarm.
+        let end = min(max(wholeMinute(now, up: true).addingTimeInterval(16 * 60), fire.addingTimeInterval(60)), lastMinute)
         guard fire < end else { return nil }
         let start = min(wholeMinute(now, up: false), end.addingTimeInterval(-15 * 60))
         func components(_ date: Date) -> DateComponents { calendar.dateComponents([.hour, .minute], from: date) }
