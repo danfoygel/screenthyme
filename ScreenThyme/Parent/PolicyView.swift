@@ -88,6 +88,21 @@ struct PolicyView: View {
                 Text("Always Allowed apps, ScreenThyme and Phone don't count toward limits. Extra time is what a parent gave today, when \(kid.displayName) asked for more; time asked from one app is for that app only.")
             }
             Section {
+                let breaks = Binding(get: { policy.breaks ?? BreakRule(enabled: false) },
+                                     set: { rule in update(policy) { $0.breaks = rule } })
+                Toggle("Take breaks", isOn: breaks.enabled)
+                if breaks.wrappedValue.enabled {
+                    MinutesStepper("After \(Format.minutes(breaks.wrappedValue.useMinutes)) of use",
+                                   minutes: breaks.useMinutes, range: 5...240)
+                    MinutesStepper("A break of \(Format.minutes(breaks.wrappedValue.breakMinutes))",
+                                   minutes: breaks.breakMinutes, range: 5...120)
+                }
+            } header: {
+                Text("Breaks")
+            } footer: {
+                Text("After that much use with no rest as long as the break, everything but Always Allowed apps is blocked for the break. A shorter pause doesn't start the count over. Always Allowed apps, ScreenThyme and Phone don't count. \(kid.displayName) can ask for more time or take one more minute, as in Downtime.")
+            }
+            Section {
                 ForEach(policy.groups) { group in
                     Button { editingGroup = group } label: {
                         LabeledContent { Text("\(group.items.count)") } label: { GroupName(group: group) }

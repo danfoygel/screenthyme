@@ -57,6 +57,7 @@ public enum PolicyEdit: Sendable, Hashable {
     /// A Content & Privacy setting, with its values as shown ("On", "12+").
     case restriction(name: String, from: String, to: String)
     case websites(list: String, added: [String], removed: [String])
+    case breaks(from: BreakRule?, to: BreakRule?)
 
     /// In the order the policy screen shows them.
     public static func between(_ old: Policy, _ new: Policy) -> [PolicyEdit] {
@@ -68,6 +69,9 @@ public enum PolicyEdit: Sendable, Hashable {
                          changed: PolicyEdit.limitChanged)
         edits += changes(old.groups, new.groups, added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved,
                          changed: PolicyEdit.groupChanged)
+        if (old.breaks?.enabled == true ? old.breaks : nil) != (new.breaks?.enabled == true ? new.breaks : nil) {
+            edits.append(.breaks(from: old.breaks, to: new.breaks))
+        }
         if old.alwaysAllowed != new.alwaysAllowed {
             edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
                                         removed: old.alwaysAllowed.subtracting(new.alwaysAllowed)))
@@ -158,6 +162,14 @@ public enum PolicyEdit: Sendable, Hashable {
             if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
             details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
             return ("Changed group \u{201C}\(new.name)\u{201D}", details)
+        case let .breaks(old, new):
+            func rule(_ rule: BreakRule?) -> String {
+                guard let rule, rule.enabled else { return "Off" }
+                return "\(Self.minutes(rule.breakMinutes)) after \(Self.minutes(rule.useMinutes)) of use"
+            }
+            guard let new, new.enabled else { return ("Turned breaks off", ["Was \(rule(old))"]) }
+            return (old?.enabled == true ? "Changed breaks" : "Turned breaks on",
+                    [rule(new)] + (old?.enabled == true ? ["Was \(rule(old))"] : []))
         case let .alwaysAllowed(added, removed):
             return ("Changed Always Allowed", listChange(added, removed))
         case let .uncounted(added, removed):

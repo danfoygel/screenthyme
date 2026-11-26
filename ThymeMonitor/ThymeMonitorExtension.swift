@@ -91,12 +91,19 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
         Enforcer.reconcile()
     }
 
-    /// The extra-minute alarm is an end warning (schedules last at least 15 minutes).
+    /// The extra-minute and break-end alarms are end warnings (schedules last at least 15 minutes).
     override func intervalWillEndWarning(for activity: DeviceActivityName) {
         defer { EnergyMeter.record(.monitor, isCallback: true) }
-        guard activity.rawValue == Enforcer.extraMinuteActivity else { return }
-        try? AppGroup.journal.append(.note("one more minute is up"))
-        Enforcer.endExtraMinutes()
+        switch activity.rawValue {
+        case Enforcer.extraMinuteActivity:
+            try? AppGroup.journal.append(.note("one more minute is up"))
+            Enforcer.endExtraMinutes()
+        case Enforcer.breakEndActivity:
+            try? AppGroup.journal.append(.note("break is over"))
+            Enforcer.endBreak()
+        default:
+            break
+        }
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
@@ -107,6 +114,8 @@ final class ThymeMonitorExtension: DeviceActivityMonitor {
             Enforcer.reconcile(endingWindows: Enforcer.endingWindow(for: name).map { [$0] } ?? [])
         } else if name == Enforcer.extraMinuteActivity {
             Enforcer.endExtraMinutes()
+        } else if name == Enforcer.breakEndActivity {
+            Enforcer.endBreak()
         } else if !Enforcer.owns(name), !RetiredTokenMatcher.owns(activity: name) {
             try? AppGroup.journal.append(JournalEntry(kind: .intervalEnd, activity: name, at: Date()))
         }
