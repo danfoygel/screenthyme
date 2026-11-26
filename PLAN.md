@@ -403,7 +403,7 @@ rare. Hence one activity with 20 events (§4.1), and per-limit activities with o
 | `approvedWithDataAccess` on a US account | works on an adult (`.individual`) and a child (`.child`) phone, after one re-request (no new prompt type) |
 | `DeviceActivityData.activityData(...)` | exact per-app seconds with bundle IDs and domains (no display names, no tokens), including Safari and Settings; hourly is the finest segment; 0.1 s in the app |
 | From the monitor extension, in the background | 0.04 s on an iPhone SE; `activitySegments` is declared in the SwiftUI overlay, so `import SwiftUI` |
-| `FamilyActivityData` (Debug › Family data spike, a kid's phone, Nov 2026) | `visitedWebDomains`, `installedApplications` and `activityCategories` give every item's name (domain, bundle ID, category) **and its token**, with no picker. Every token was byte for byte the scan's, every token-pairing match agreed, and a visited-websites token shields. Apps and categories are instant. `visitedWebDomains` takes 9–10 s on every call, in a new process or the same one (no caching), once 84 s, and sometimes never returns, even with the app in front. Once stuck it stays stuck for every caller, even a new process (20+ minutes once), while apps, categories and capture's `activityData` carry on. It needs a timeout and a retry hours later. The earlier "hangs for 90+ s" was probably that. Gives tokens and matches (§15.3) |
+| `FamilyActivityData` (Debug › Family data spike, a kid's phone, Nov 2026) | `visitedWebDomains`, `installedApplications` and `activityCategories` give every item's name (domain, bundle ID, category) **and its token**, with no picker. Every token was byte for byte the scan's, every token-pairing match agreed, and a visited-websites token shields. Apps and categories are instant. `visitedWebDomains` takes 9–10 s on every call, in a new process or the same one (no caching), once 84 s, and sometimes never returns, even with the app in front. Once stuck it stays stuck for every caller, even a new process (45+ minutes once, until the phone restarted), while apps, categories and capture's `activityData` carry on. It needs a timeout and a retry hours later. The earlier "hangs for 90+ s" was probably that. Gives tokens and matches (§15.3) |
 
 **Pickups and notifications** come in the same fetch: per hour, `firstPickup` and `totalPickupsWithoutApplicationActivity`;
 per app, `numberOfPickups` (a pickup is filed under the first app used after it) and `numberOfNotifications`.
@@ -503,9 +503,10 @@ approves the amount asked or changes it, saved as `TimeGrant.<request id>`.
   `FamilyActivityData` lists every installed app, recently visited website and category with its name and its
   token, byte for byte the picker's (§13). At every launch and background refresh the kid's phone makes each one's
   scanned item, the one a scan would make (the same id), and matches it (`TokenPairing.apply`), so new apps and
-  websites need no scan and no screenshots. It never drops a token. Apps and categories come back at once; websites
-  take about 10 s and sometimes never answer, so they're listed at most hourly, in the background, waited for 60 s,
-  and a call still waiting keeps another from starting. It also saves ScreenThyme's own token when no scan picked
+  websites need no scan and no screenshots. It never drops a token. Apple's service behind the lists can stop
+  answering for every caller for 20+ minutes (websites most often, apps too), and a call can't be cancelled: launch
+  never waits on a refresh, each list is waited for 20 s (websites 60 s), and a list still waiting keeps another call
+  to it from starting. Websites take about 10 s even when well, so they're listed at most hourly. It also saves ScreenThyme's own token when no scan picked
   one, and counts as token pairing's last import. The journal notes each list ("inventory: …"); Debug shows when they
   last ran. The scan below and token pairing (§15.6) stay as the way back.
 - On the kid's phone a parent selects All Apps & Categories once: a token for every installed app, website and

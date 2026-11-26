@@ -4,9 +4,11 @@ import Synchronization
 import ThymeCore
 
 /// Keeps the scanned items current from Apple's own lists (`FamilyInventory`, PLAN.md §15.3): new apps and websites
-/// get tokens and matches with no scan and no screenshots. Apps and categories come back at once. Websites take about
-/// 10 s, and sometimes never come back, for every caller, for 20 minutes or more; so they're fetched at most hourly,
-/// waited for 60 s, and a call that never returns keeps another from starting.
+/// get tokens and matches with no scan and no screenshots. Apple's service behind them can stop answering, for every
+/// caller, for 20 minutes or more (websites most often, but apps too), and a call can't be cancelled. So nothing waits
+/// on a list longer than its timeout, a list still waiting keeps another call to it from starting, and the app never
+/// waits on a refresh (`AppModel.refreshInventory`). Websites take about 10 s even when well, so they're listed at
+/// most hourly; apps and categories, at once when well, at every refresh.
 enum InventoryRefresh {
     struct State: Codable {
         var appsAt: Date?
@@ -16,8 +18,6 @@ enum InventoryRefresh {
 
     static var stateURL: URL { AppGroup.container.appending(path: "inventory.json") }
     static let websitesEvery: TimeInterval = 3600
-    static let websitesTimeout: Duration = .seconds(60)
-    private static let websitesInFlight = Mutex(false)
 
     static func load() -> State {
         AppGroup.load(State.self, from: stateURL) ?? State()
@@ -29,14 +29,7 @@ enum InventoryRefresh {
 
     /// Lists apps and categories and saves what changed; true if anything did.
     static func appsAndCategories(kid: Kid, now: Date = Date()) async -> Bool {
-        let apps: [FamilyInventory.Entry], categories: [FamilyInventory.Entry]
-        do {
-            apps = try await fetchApps()
-            categories = try await fetchCategories()
-        } catch {
-            try? AppGroup.journal.append(.note("inventory: apps failed: \(error)"))
-            return false
-        }
+        guard let apps = await entries(.apps), let categories = await entries(.categories) else { return false }
         saveExemptToken(from: apps)
         let changed = save(apps + categories, kid: kid, now: now, listed: "\(apps.count) apps, \(categories.count) categories")
         update { $0.appsAt = now }
@@ -45,28 +38,15 @@ enum InventoryRefresh {
         return changed
     }
 
-    /// Lists websites and saves what changed; true if anything did. False at once while an earlier call still waits.
+    /// Lists websites and saves what changed; true if anything did.
     static func websites(kid: Kid, now: Date = Date()) async -> Bool {
-        let started = websitesInFlight.withLock { inFlight in
-            defer { inFlight = true }
-            return !inFlight
-        }
-        guard started else { return false }
         update { $0.websitesTriedAt = now }
         let began = Date()
-        switch await fetchWebsitesWithTimeout() {
-        case nil:
-            try? AppGroup.journal.append(.note("inventory: websites gave no answer in \(websitesTimeout)"))
-            return false
-        case .failure(let error):
-            try? AppGroup.journal.append(.note("inventory: websites failed: \(error)"))
-            return false
-        case .success(let sites):
-            let seconds = Int(Date().timeIntervalSince(began).rounded())
-            let changed = save(sites, kid: kid, now: now, listed: "\(sites.count) websites in \(seconds) s")
-            update { $0.websitesAt = now }
-            return changed
-        }
+        guard let sites = await entries(.websites) else { return false }
+        let seconds = Int(Date().timeIntervalSince(began).rounded())
+        let changed = save(sites, kid: kid, now: now, listed: "\(sites.count) websites in \(seconds) s")
+        update { $0.websitesAt = now }
+        return changed
     }
 
     /// Merges the entries into the items (the sampler's lock: it rewrites items.json too); changed ones go to the outbox.
@@ -99,43 +79,70 @@ enum InventoryRefresh {
         AppGroup.save(state, to: stateURL)
     }
 
-    // MARK: Apple's lists (off the main actor: FamilyActivityData and its results aren't Sendable)
+    // MARK: Apple's lists
 
-    private static func fetchApps() async throws -> [FamilyInventory.Entry] {
-        try await FamilyActivityData.shared.installedApplications.compactMap { app in
-            guard let id = app.bundleIdentifier, let token = app.token.flatMap(TokenCoding.encode) else { return nil }
-            return FamilyInventory.Entry(kind: .app, identifier: id, tokenData: token)
+    private enum List: String, Sendable {
+        case apps, categories, websites
+
+        var timeout: Duration { self == .websites ? .seconds(60) : .seconds(20) }
+    }
+
+    private static let waiting = Mutex<Set<List>>([])
+
+    /// One list, or nil (journaled) if it failed, gave no answer in time, or is still waiting from an earlier call.
+    private static func entries(_ list: List) async -> [FamilyInventory.Entry]? {
+        guard waiting.withLock({ $0.insert(list).inserted }) else {
+            try? AppGroup.journal.append(.note("inventory: \(list.rawValue) still waiting from an earlier call"))
+            return nil
+        }
+        switch await answer(list) {
+        case nil:
+            try? AppGroup.journal.append(.note("inventory: \(list.rawValue) gave no answer in \(list.timeout)"))
+            return nil
+        case .failure(let error):
+            try? AppGroup.journal.append(.note("inventory: \(list.rawValue) failed: \(error)"))
+            return nil
+        case .success(let entries):
+            return entries
         }
     }
 
-    private static func fetchCategories() async throws -> [FamilyInventory.Entry] {
-        try await FamilyActivityData.shared.activityCategories.compactMap { category in
-            guard let name = category.localizedDisplayName, let token = category.token.flatMap(TokenCoding.encode)
-            else { return nil }
-            return FamilyInventory.Entry(kind: .category, identifier: name, tokenData: token)
-        }
-    }
-
-    private static func fetchWebsites() async throws -> [FamilyInventory.Entry] {
-        try await FamilyActivityData.shared.visitedWebDomains.compactMap { site in
-            guard let domain = site.domain, let token = site.token.flatMap(TokenCoding.encode) else { return nil }
-            return FamilyInventory.Entry(kind: .domain, identifier: domain, tokenData: token)
-        }
-    }
-
-    /// The call can't be cancelled: past the timeout it's left waiting, and keeps `websitesInFlight` set until it ends.
-    private static func fetchWebsitesWithTimeout() async -> Result<[FamilyInventory.Entry], any Error>? {
+    /// The call can't be cancelled: past the timeout it's left waiting, and keeps its list in `waiting` until it ends.
+    private static func answer(_ list: List) async -> Result<[FamilyInventory.Entry], any Error>? {
         await withCheckedContinuation { continuation in
             let once = Once(continuation)
             Task.detached {
                 let result: Result<[FamilyInventory.Entry], any Error>
-                do { result = .success(try await fetchWebsites()) } catch { result = .failure(error) }
-                websitesInFlight.withLock { $0 = false }
+                do { result = .success(try await fetch(list)) } catch { result = .failure(error) }
+                _ = waiting.withLock { $0.remove(list) }
                 once.resume(result)
             }
             Task.detached {
-                try? await Task.sleep(for: websitesTimeout)
+                try? await Task.sleep(for: list.timeout)
                 once.resume(nil)
+            }
+        }
+    }
+
+    /// Off the main actor: FamilyActivityData and its results aren't Sendable, so only entries come back.
+    private static func fetch(_ list: List) async throws -> [FamilyInventory.Entry] {
+        let data = FamilyActivityData.shared
+        switch list {
+        case .apps:
+            return try await data.installedApplications.compactMap { app in
+                guard let id = app.bundleIdentifier, let token = app.token.flatMap(TokenCoding.encode) else { return nil }
+                return FamilyInventory.Entry(kind: .app, identifier: id, tokenData: token)
+            }
+        case .categories:
+            return try await data.activityCategories.compactMap { category in
+                guard let name = category.localizedDisplayName, let token = category.token.flatMap(TokenCoding.encode)
+                else { return nil }
+                return FamilyInventory.Entry(kind: .category, identifier: name, tokenData: token)
+            }
+        case .websites:
+            return try await data.visitedWebDomains.compactMap { site in
+                guard let domain = site.domain, let token = site.token.flatMap(TokenCoding.encode) else { return nil }
+                return FamilyInventory.Entry(kind: .domain, identifier: domain, tokenData: token)
             }
         }
     }

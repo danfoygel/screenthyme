@@ -61,7 +61,7 @@ struct KidDebugView: View {
                 LabeledContent("Apps and categories", value: inventory.appsAt.map(Format.relative) ?? "never")
                 LabeledContent("Websites", value: inventory.websitesAt.map(Format.relative) ?? "never")
                 LabeledContent("Websites last tried", value: inventory.websitesTriedAt.map(Format.relative) ?? "never")
-                Button("List them now") { Task { await model.refreshInventory(websites: true) } }
+                Button("List them now") { model.refreshInventory(websites: true) }
             } header: {
                 Text("Apple's lists of apps and websites")
             } footer: {

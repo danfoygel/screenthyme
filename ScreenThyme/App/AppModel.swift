@@ -81,7 +81,7 @@ final class AppModel {
         case .kid:
             await ensureMonitoring()
             await sampleNow()
-            await refreshInventory()
+            refreshInventory()
             await Enforcer.offMain {
                 Enforcer.reconcile()
                 RetiredTokenMatcher.stop()
@@ -109,7 +109,7 @@ final class AppModel {
     func backgroundRefresh() async {
         if isKid {
             await sampleNow()
-            await refreshInventory()
+            refreshInventory()
             await flush()
             await sendHeartbeat(.backgroundRefresh)
             PlaceWatcher.shared.reloadFamilyPlaces()

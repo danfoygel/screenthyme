@@ -100,8 +100,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - **Data access** (`AuthorizationStatus.approvedWithDataAccess`, iOS 26.4) needs the
   `com.apple.developer.family-controls.app-and-website-usage` entitlement on the app *and* the monitor extension.
   `DeviceActivityData.activitySegments` is declared in the SwiftUI overlay, so import SwiftUI.
-  `FamilyActivityData.visitedWebDomains` takes ~10 s and sometimes never returns, for every caller, for 20+ minutes:
-  never wait on it (`InventoryRefresh`). Its apps and categories come back at once.
+  `FamilyActivityData` can stop answering, for every caller, for 20+ minutes (`visitedWebDomains` most often, which
+  takes ~10 s even when well; apps too): never wait on it without a timeout, and never in launch (`InventoryRefresh`).
 - `AuthorizationCenter.shared.authorizationStatus` is unreliable in the extension: don't gate on it there.
 - Any new authorization grant stops all monitoring; `requestAuthorization` re-registers. It can also restart iOS's
   count of today's use lower: `LadderCalibration` finds the offset, and journaled fires are in our minutes.

@@ -107,21 +107,22 @@ extension AppModel {
         do { _ = try await Sampler.sample(kid: kid) } catch { show(error) }
     }
 
-    /// New apps, websites and categories get tokens and matches from Apple's lists (`InventoryRefresh`, PLAN.md §15.3):
-    /// apps and categories now, websites in the background when due, since they can take a minute or never answer.
-    func refreshInventory(websites force: Bool = false) async {
-        guard isKid, hasDataAccess, let kid = config.kid else { return }
-        if await InventoryRefresh.appsAndCategories(kid: kid) {
-            await Enforcer.offMain { Enforcer.reconcile() }
-        }
-        guard force || InventoryRefresh.websitesDue() else { return }
-        let background = UIApplication.shared.beginBackgroundTask(withName: "list websites")
+    /// New apps, websites and categories get tokens and matches from Apple's lists (`InventoryRefresh`, PLAN.md §15.3).
+    /// Not awaited: Apple's lists can take a minute or not answer, and launch mustn't wait on them.
+    func refreshInventory(websites force: Bool = false) {
+        guard isKid, let kid = config.kid else { return }
+        authorizationStatus = AuthorizationCenter.shared.authorizationStatus  // read at launch, before iOS knows
+        guard hasDataAccess else { return }
+        let background = BackgroundTask("list apps and websites")
         Task {
-            defer { UIApplication.shared.endBackgroundTask(background) }
-            if await InventoryRefresh.websites(kid: kid) {
-                await Enforcer.offMain { Enforcer.reconcile() }
-                await flush()
+            defer { background.end() }
+            var changed = await InventoryRefresh.appsAndCategories(kid: kid)
+            if force || InventoryRefresh.websitesDue() {
+                changed = await InventoryRefresh.websites(kid: kid) || changed
             }
+            guard changed else { return }
+            await Enforcer.offMain { Enforcer.reconcile() }
+            await flush()
         }
     }
 
@@ -196,5 +197,21 @@ extension Enforcer {
     /// phone on Nov 15, 2026), so the app enforces through this. The App Group lock makes it safe on any thread.
     static func offMain(_ work: @escaping @Sendable () -> Void) async {
         await Task.detached(priority: .userInitiated, operation: work).value
+    }
+}
+
+/// Keeps the app running in the background for work that may outlast iOS's allowance: ended by `end()` or, when time
+/// runs out, by iOS's expiration call (a task still open then gets the app killed).
+@MainActor final class BackgroundTask {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init(_ name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in self?.end() }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
     }
 }
