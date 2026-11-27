@@ -115,9 +115,9 @@ enum CheckIns {
 
     /// Use each stretch's on-time wake places goes on its last minutes, shared among the apps reported there. Use
     /// beyond that is dropped in a quiet stretch; in a blind or burst one it's drawn at a best guess: back to back,
-    /// most-used app last, ending where its sample's window does (or where the placed minutes begin). A web app's
+    /// most-used app last, ending where its sample's window does (or where the placed minutes begin). A browser's
     /// pieces carry the websites' use in the same fetch that its own time can account for.
-    static func pieces(_ stretches: [Stretch], websites: Set<UUID>, webApps: Set<UUID> = []) -> [UsageBlock] {
+    static func pieces(_ stretches: [Stretch], websites: Set<UUID>, browsers: Set<UUID> = []) -> [UsageBlock] {
         var pieces: [UsageBlock] = []
         for stretch in stretches {
             let counted = stretch.samples.filter { !websites.contains($0.itemID) }.reduce(0) { $0 + $1.seconds }
@@ -125,8 +125,9 @@ enum CheckIns {
             let placedStart = stretch.end.addingTimeInterval(-stretch.placed)
             var guessEnds: [DateInterval: Date] = [:]
             let ordered = stretch.samples.sorted { ($0.seconds, $0.itemID.uuidString) > ($1.seconds, $1.itemID.uuidString) }
+            let siteUses = BrowserSites.shares(stretch.samples, websites: websites, browsers: browsers)
             for sample in ordered {
-                let siteUse = webApps.contains(sample.itemID) ? sites(for: sample, in: stretch, websites: websites) : [:]
+                let siteUse = siteUses[sample.id] ?? [:]
                 let onPlaced = sample.seconds * share
                 if onPlaced > 0 {
                     pieces.append(UsageBlock(itemID: sample.itemID, start: placedStart, end: stretch.end,
@@ -144,15 +145,5 @@ enum CheckIns {
             }
         }
         return pieces
-    }
-
-    /// Each website's use in the web app sample's fetch (the same window), up to the web app's own seconds.
-    static func sites(for sample: UsageSample, in stretch: Stretch, websites: Set<UUID>) -> [UUID: Double] {
-        var sites: [UUID: Double] = [:]
-        for site in stretch.samples where websites.contains(site.itemID)
-            && abs(site.start.timeIntervalSince(sample.start)) < 1 && abs(site.end.timeIntervalSince(sample.end)) < 1 {
-            sites[site.itemID, default: 0] += min(sample.seconds, site.seconds)
-        }
-        return sites
     }
 }

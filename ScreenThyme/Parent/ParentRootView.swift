@@ -82,7 +82,7 @@ struct KidCard: View {
         let items = model.data.items(for: kid.id)
         let live = LiveStatus.compute(timeline, input: input, now: Date())
         let issues = model.healthIssues(for: kid)
-        let top = timeline.items.filter { items[$0.key]?.kind != .domain }.sorted { $0.value.seconds > $1.value.seconds }.prefix(3)
+        let top = timeline.attributed.sorted { $0.value.seconds > $1.value.seconds }.prefix(3)
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Circle().fill(kid.color).frame(width: 10, height: 10)
@@ -166,7 +166,8 @@ struct KidDayView: View {
     var body: some View {
         let (_, timeline) = model.timeline(kid: kid.id, day: day)
         let items = model.data.items(for: kid.id)
-        let used = timeline.items.sorted { $0.value.seconds > $1.value.seconds }
+        // A browser's time on a website is the site's.
+        let used = timeline.attributed.sorted { $0.value.seconds > $1.value.seconds }
         List {
             Section {
                 HStack {
@@ -249,11 +250,10 @@ struct KidDayView: View {
                 Text("All apps. " + UsageHeatmapView.footer)
             }
             DayLocationsSection(kid: kid, day: day, timeline: timeline)
-            Section("Apps") {
-                let apps = used.filter { items[$0.key]?.kind != .domain }
-                let shielded = day == DayKey(Date()) ? timeShielded(apps.map(\.key), items: items)
-                    : limitsReached(apps.map(\.key), items: items)
-                ForEach(apps, id: \.key) { id, usage in
+            Section("Apps and websites") {
+                let shielded = day == DayKey(Date()) ? timeShielded(used.map(\.key), items: items)
+                    : limitsReached(used.map(\.key), items: items)
+                ForEach(used, id: \.key) { id, usage in
                     ItemDetailsLink(item: items[id]) {
                         LabeledContent {
                             HStack(spacing: 6) {
@@ -261,16 +261,6 @@ struct KidDayView: View {
                                 Text(Format.minutes(usage.minutes)).monospacedDigit()
                             }
                         } label: { ItemName(item: items[id]) }
-                    }
-                }
-            }
-            let sites = used.filter { items[$0.key]?.kind == .domain }
-            if !sites.isEmpty {
-                Section("Websites") {
-                    ForEach(sites, id: \.key) { id, usage in
-                        ItemDetailsLink(item: items[id]) {
-                            LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
-                        }
                     }
                 }
             }

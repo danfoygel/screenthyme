@@ -98,8 +98,10 @@ exactly), and tracking starts (minute-0 fires uploaded at each registration).
   Use under 2 minutes is hidden by default.
 - **Websites inside apps** (`WebMirror`): Apple reports a website's time under its App Store app's bundle ID too, even
   when the app isn't installed, and under an in-app browser's host app. Apps whose time falls inside Safari's (95% of
-  the week) or another app's are left out of all-apps totals and limits. A Home Screen web app's block is named after
-  the website it showed.
+  the week) or another app's are left out of all-apps totals and limits. A browser's or Home Screen web app's block is
+  named after the website whose time matches its own (Apple counts a browser's use under the site's domain too), and
+  lists of use (a kid's day, by place, the kid's own apps) give that time to the site, not the browser (`BrowserSites`).
+  Limits and shields still go by Apple's numbers.
 - **Live status** (`LiveStatus`): "in use" when the latest wake is under 2 minutes old; "probably X" is the app with
   the most use in the latest fetch.
 - **Categories** (`CategoryUsage`) and **heatmaps** (`UsageHeatmap`, hour by weekday) come from the same samples.

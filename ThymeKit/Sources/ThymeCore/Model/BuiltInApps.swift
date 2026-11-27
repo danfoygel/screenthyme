@@ -47,6 +47,18 @@ public enum BuiltInApps {
     /// Every Home Screen web app, under one bundle ID: no scan lists it as an app, and its site is a website item.
     public static let webApp = "com.apple.webapp"
 
+    /// Browsers. Apple counts a browser's use twice, under its bundle ID and under the site's domain (Chrome's minutes
+    /// matched one site's second for second on a kid's phone), so its blocks can go by the site.
+    public static let browsers: Set<String> = [
+        "com.apple.mobilesafari", "com.google.chrome.ios", "org.mozilla.ios.Firefox", "org.mozilla.ios.Focus",
+        "com.microsoft.msedge", "com.brave.ios.browser", "com.duckduckgo.mobile.ios",
+    ]
+
+    /// Apps whose time is a website's too, and whose blocks are matched to one: browsers and Home Screen web apps.
+    public static func showsWebsites(_ bundleID: String) -> Bool {
+        bundleID == webApp || browsers.contains(bundleID)
+    }
+
     /// iOS's own processes that turn up in Apple's usage data, such as the screenshot editor
     /// (com.apple.ScreenshotServicesService), the call screen, the Face ID prompt, the print dialog
     /// (com.apple.printcenter), Apple Pay's sheet (com.apple.ServicesPaymentAngel), Emergency SOS

@@ -26,10 +26,15 @@ public struct UsageBlock: Sendable, Hashable, Identifiable {
     /// Set when no on-time check-in places this use: it happened sometime in this window, and the block is drawn
     /// at a best guess.
     public var somewhereIn: DateInterval?
-    /// For a Home Screen web app: the website it most likely showed, the one whose time matches its own.
+    /// For a browser or Home Screen web app: the website it most likely showed, the one whose time matches its own.
     public var site: UUID?
-    /// Each website's use, in this block's check-ins, that the web app's own time can account for.
+    /// Each website's use, in this block's check-ins, that the browser's own time can account for.
     var siteSeconds: [UUID: Double] = [:]
+
+    /// The block's seconds as lists count them: a browser's, less its time on websites (theirs, in their own blocks).
+    public var ownSeconds: Double {
+        max(0, seconds - siteSeconds.values.reduce(0, +))
+    }
 
     public var id: String { "\(itemID)-\(start.timeIntervalSince1970)" }
     /// The share of the stretch the item was in use: 1 when it filled it.
@@ -45,7 +50,11 @@ public struct DayTimeline: Sendable {
     /// Stretches of continuous use (gaps of at most `Reconstructor.runGap`).
     public var runs: [DateInterval]
     public var blocks: [UsageBlock]
+    /// Apple's numbers, each app's and website's.
     public var items: [UUID: ItemUsage]
+    /// Each app's and website's use as lists show it: a browser's time on a website is the site's
+    /// (`BrowserSites`), and a browser left with under a second is gone.
+    public var attributed: [UUID: ItemUsage] = [:]
     /// From the total ladder.
     public var totalMinutes: Int
     /// Total-ladder minutes replayed at a registration: counted, but their times are unknown.
@@ -76,25 +85,33 @@ public enum Reconstructor {
         let total = clean(input.total, dayStart: input.dayStart)
         let (inUse, preTracking) = inUseMinutes(total.points, dayStart: input.dayStart,
                                                 trackingStarts: input.trackingStarts)
+        let stretches = CheckIns.stretches(input)
+        let pieces = CheckIns.pieces(stretches, websites: input.websites, browsers: input.browsers)
+        var timeline = DayTimeline(inUse: inUse,
+                                   coverage: CheckIns.coverage(stretches),
+                                   runs: mergeRuns(inUse),
+                                   blocks: merge(pieces).map(withSite),
+                                   items: usage(input.samples),
+                                   totalMinutes: total.points.last?.minute ?? 0,
+                                   preTrackingMinutes: preTracking,
+                                   suspectFires: total.suspects,
+                                   lastTotalFireAt: total.points.last?.at)
+        timeline.attributed = usage(BrowserSites.attributed(input.samples, websites: input.websites, browsers: input.browsers))
+            .filter { $0.value.seconds >= 1 }
+        return timeline
+    }
+
+    /// Each item's seconds in the samples, and when they were.
+    static func usage(_ samples: [UsageSample]) -> [UUID: ItemUsage] {
         var items: [UUID: ItemUsage] = [:]
-        for sample in input.samples where sample.seconds > 0 {
+        for sample in samples where sample.seconds > 0 {
             var usage = items[sample.itemID] ?? ItemUsage(seconds: 0, firstAt: sample.start, lastAt: sample.end)
             usage.seconds += sample.seconds
             usage.firstAt = min(usage.firstAt, sample.start)
             usage.lastAt = max(usage.lastAt, sample.end)
             items[sample.itemID] = usage
         }
-        let stretches = CheckIns.stretches(input)
-        return DayTimeline(inUse: inUse,
-                           coverage: CheckIns.coverage(stretches),
-                           runs: mergeRuns(inUse),
-                           blocks: merge(CheckIns.pieces(stretches, websites: input.websites, webApps: input.webApps))
-                               .map(withSite),
-                           items: items,
-                           totalMinutes: total.points.last?.minute ?? 0,
-                           preTrackingMinutes: preTracking,
-                           suspectFires: total.suspects,
-                           lastTotalFireAt: total.points.last?.at)
+        return items
     }
 
     /// Each item's pieces, with back-to-back ones (both placed, or both guessed) merged into one stretch.
@@ -123,8 +140,8 @@ public enum Reconstructor {
         return blocks.sorted { ($0.start, $0.end, $0.seconds) < ($1.start, $1.end, $1.seconds) }
     }
 
-    /// A web app's block takes the website that accounts for at least half its time. Apple counts a Home Screen web
-    /// app's use twice: under one bundle ID shared by every web app, and under the site's domain.
+    /// A browser's or web app's block takes the website that accounts for at least half its time. Apple counts their
+    /// use twice: under the app's bundle ID (one shared by every Home Screen web app), and under the site's domain.
     static func withSite(_ block: UsageBlock) -> UsageBlock {
         var block = block
         let best = block.siteSeconds.max { ($0.value, $1.key.uuidString) < ($1.value, $0.key.uuidString) }
