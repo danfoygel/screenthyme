@@ -1,7 +1,8 @@
 import Foundation
 
 /// What ScreenThyme enforces on one kid's phone (PLAN.md §15): Downtime, App Limits, Always Allowed (some of it
-/// Uncounted), blocked items and Content & Privacy restrictions. Edited on parent phones and synced as one record, `Policy.<kid id>`.
+/// Uncounted), blocked items and Content & Privacy restrictions. Downtime, limits and Blocked come in rulesets
+/// (`ruleSets`, PLAN.md §15.15), one in effect each day. Edited on parent phones and synced as one record, `Policy.<kid id>`.
 /// Items are `TrackedItem` ids (apps, websites and categories found in Apple's activity data) or `ItemGroup` ids, which
 /// stand for their items (`resolved`).
 public struct Policy: Codable, Sendable, Hashable {
@@ -9,6 +10,8 @@ public struct Policy: Codable, Sendable, Hashable {
     public var updatedAt: Date
     /// Off: nothing is blocked or restricted (the policy is kept).
     public var enabled: Bool
+    /// With rulesets, the ruleset's in effect (`current(at:)` sets them, and saves keep the ruleset in effect then, for
+    /// older builds); edit the rulesets instead.
     public var downtime: [DowntimeWindow]
     /// Leaving Always Allowed leaves Uncounted too.
     public var alwaysAllowed: Set<UUID> {
@@ -26,11 +29,16 @@ public struct Policy: Codable, Sendable, Hashable {
     public var temporary: [TemporaryChange]
     /// Mandatory breaks (PLAN.md §15.13); nil when never set up.
     public var breaks: BreakRule?
+    /// Downtime, limits and Blocked for some days each (PLAN.md §15.15); empty for a policy saved before rulesets, whose
+    /// own `downtime`, `limits` and `blocked` are then in effect every day.
+    public var ruleSets: [PolicyRuleSet]
+    /// A ruleset a parent chose for some days, over the weekdays' own.
+    public var ruleSetChoice: RuleSetChoice?
 
     public init(kidID: UUID, updatedAt: Date = Date(), enabled: Bool = true, downtime: [DowntimeWindow] = [],
                 alwaysAllowed: Set<UUID> = [], uncounted: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
                 restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = [], temporary: [TemporaryChange] = [],
-                breaks: BreakRule? = nil) {
+                breaks: BreakRule? = nil, ruleSets: [PolicyRuleSet] = [], ruleSetChoice: RuleSetChoice? = nil) {
         self.kidID = kidID
         self.updatedAt = updatedAt
         self.enabled = enabled
@@ -43,6 +51,8 @@ public struct Policy: Codable, Sendable, Hashable {
         self.groups = groups
         self.temporary = temporary
         self.breaks = breaks
+        self.ruleSets = ruleSets
+        self.ruleSetChoice = ruleSetChoice
     }
 
     /// Policies saved before a field existed still load.
@@ -60,6 +70,8 @@ public struct Policy: Codable, Sendable, Hashable {
         groups = try container.decodeIfPresent([ItemGroup].self, forKey: .groups) ?? []
         temporary = try container.decodeIfPresent([TemporaryChange].self, forKey: .temporary) ?? []
         breaks = try container.decodeIfPresent(BreakRule.self, forKey: .breaks)
+        ruleSets = try container.decodeIfPresent([PolicyRuleSet].self, forKey: .ruleSets) ?? []
+        ruleSetChoice = try container.decodeIfPresent(RuleSetChoice.self, forKey: .ruleSetChoice)
     }
 
     /// `ids` with each group's id replaced by its items (a category's moved-in apps too).
@@ -130,9 +142,11 @@ public struct Policy: Codable, Sendable, Hashable {
         var policy = self
         policy.uncounted = follow(uncounted)
         policy.alwaysAllowed = follow(alwaysAllowed)
-        policy.blocked = follow(blocked)
-        for index in policy.limits.indices { policy.limits[index].items = follow(limits[index].items) }
-        for index in policy.downtime.indices { policy.downtime[index].items = follow(downtime[index].items) }
+        policy.editAllRules { downtime, limits, blocked in
+            blocked = follow(blocked)
+            for index in limits.indices { limits[index].items = follow(limits[index].items) }
+            for index in downtime.indices { downtime[index].items = follow(downtime[index].items) }
+        }
         for index in policy.groups.indices { policy.groups[index].items = follow(groups[index].items) }
         for index in policy.temporary.indices {
             policy.temporary[index].before = temporary[index].before.replacingItems(replacements)
@@ -147,11 +161,14 @@ public struct Policy: Codable, Sendable, Hashable {
         ids.filter { id in items[id].map { $0.isScanned && $0.tokenData == nil } ?? false }
     }
 
-    /// Every item id the policy names, in groups and temporary changes too.
+    /// Every item id the policy names, in rulesets, groups and temporary changes too.
     var allItemIDs: Set<UUID> {
-        var ids = alwaysAllowed.union(blocked)
-        for limit in limits { ids.formUnion(limit.items) }
-        for window in downtime { ids.formUnion(window.items) }
+        var ids = alwaysAllowed
+        for rules in ruleSets + [PolicyRuleSet(name: "", downtime: downtime, limits: limits, blocked: blocked)] {
+            ids.formUnion(rules.blocked)
+            for limit in rules.limits { ids.formUnion(limit.items) }
+            for window in rules.downtime { ids.formUnion(window.items) }
+        }
         for group in groups { ids.formUnion(group.items) }
         for change in temporary { ids.formUnion(change.before.allItemIDs.union(change.after.allItemIDs)) }
         return ids
@@ -177,12 +194,12 @@ public struct Policy: Codable, Sendable, Hashable {
     }
 
     /// The policy with an approved request to always allow an app applied: the app is Always Allowed, and no longer
-    /// Blocked. Any other grant leaves the policy as it is.
+    /// Blocked in any ruleset. Any other grant leaves the policy as it is.
     public func applying(_ grant: TimeGrant) -> Policy {
         guard grant.approved, grant.reason == .alwaysAllow, let itemID = grant.itemID else { return self }
         var policy = self
         policy.alwaysAllowed.insert(itemID)
-        policy.blocked.remove(itemID)
+        policy.editAllRules { _, _, blocked in blocked.remove(itemID) }
         return policy
     }
 
@@ -191,9 +208,11 @@ public struct Policy: Codable, Sendable, Hashable {
         groups.removeAll { $0.id == id }
         alwaysAllowed.remove(id)
         uncounted.remove(id)
-        blocked.remove(id)
-        for index in limits.indices { limits[index].items.remove(id) }
-        for index in downtime.indices { downtime[index].items.remove(id) }
+        editAllRules { downtime, limits, blocked in
+            blocked.remove(id)
+            for index in limits.indices { limits[index].items.remove(id) }
+            for index in downtime.indices { downtime[index].items.remove(id) }
+        }
     }
 }
 

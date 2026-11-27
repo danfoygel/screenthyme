@@ -262,13 +262,15 @@ p.node("replay", 3, 9, "Replay", "ReplayView")
 p.node("toKid", 3, 10, "Kid mode  ›", kind="mode")
 
 p.node("popover", 4, 0, "Block details", "UsageCalendar popover", kind="popover")
-p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "edits a draft; Save asks how long")
+p.node("ruleSets", 4, 2, "Rulesets", "RuleSetsView", "names and weekdays, in the draft")
+p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "ruleset in effect; a ruleset's\nDowntime, limits, Blocked;\nSave asks how long", h=72)
 p.node("apps", 4, 5, "‹kid›'s apps", "TrackedItemsView", "every app and site seen")
 p.node("raw", 4, 6, "Raw usage", "RawUsageView")
 p.node("matches", 4, 7, "App matches", "TokenMatchesView", "also Website, Category matches")
 p.node("battery", 4, 8, "Battery use", "EnergyHistoryView")
 p.node("rule", 4, 9, "‹rule name›", "RuleEditor", "Cancel / Save", kind="sheet")
 
+p.node("ruleSet", 5, 0, "‹ruleset›", "RuleSetEditor", "name, weekdays; Cancel / Done", kind="sheet")
 p.node("downtime", 5, 1, "Downtime", "DowntimeEditor", "Cancel / Done", kind="sheet")
 p.node("limit", 5, 2, "App Limit", "LimitEditor", "Cancel / Done", kind="sheet")
 p.node("group", 5, 3, "Group", "GroupEditor", "Cancel / Done", kind="sheet")
@@ -276,6 +278,7 @@ p.node("allowed", 5, 4, "Always Allowed", "SelectedItemsView", "read-only list, 
 p.node("blocked", 5, 5, "Blocked", "SelectedItemsView", "read-only list, Edit")
 p.node("content", 5, 6, "Content & Privacy", "RestrictionsView")
 p.node("save", 5, 7, "Save changes", "SavePolicySheet", "Permanent or Temporary", kind="sheet")
+p.node("switchRuleSet", 5, 8, "Switch ruleset", "ChooseRuleSetSheet", "a ruleset, today or some days;\nsaved at once", kind="sheet")
 p.node("what", 5, 9, "What", "navigationLink Picker", "daily-limit rules only")
 
 p.node("select", 6, 0, "‹list name›", "ItemSelectionView",
@@ -317,6 +320,9 @@ p.edge("policy", "allowed", "Always Allowed,\nUncounted")
 p.edge("policy", "blocked", "Blocked")
 p.edge("policy", "content", "Content & Privacy")
 p.edge("policy", "save", "Save", kind="sheet")
+p.edge("policy", "switchRuleSet", "Switch ruleset…", kind="sheet")
+p.edge("policy", "ruleSets", "Rulesets")
+p.edge("ruleSets", "ruleSet", "a ruleset, Add ruleset", kind="sheet")
 p.edge("rule", "what", "What")
 for src, lab in (("downtime", "Included · Some apps"), ("limit", "Included · not all apps"), ("group", "Included"),
                  ("allowed", "Edit"), ("blocked", "Edit")):

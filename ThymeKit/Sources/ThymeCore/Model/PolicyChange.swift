@@ -63,15 +63,39 @@ public enum PolicyEdit: Sendable, Hashable {
     case restriction(name: String, from: String, to: String)
     case websites(list: String, added: [String], removed: [String])
     case breaks(from: BreakRule?, to: BreakRule?)
+    /// The default rulesets set up (`Policy.withDefaultRuleSets`), by name.
+    case ruleSetsSetUp([String])
+    case ruleSetAdded(PolicyRuleSet)
+    case ruleSetRemoved(PolicyRuleSet)
+    /// A ruleset renamed, or its weekdays changed. Changes to its rules are `inRuleSet`.
+    case ruleSetChanged(from: PolicyRuleSet, to: PolicyRuleSet)
+    /// A change to one ruleset's Downtime, limits or Blocked, with the ruleset's name.
+    indirect case inRuleSet(String, PolicyEdit)
+    /// A parent chose a ruleset for some days; nil: back to each weekday's own.
+    case ruleSetChosen(RuleSetChoice?)
 
     /// In the order the policy screen shows them.
     public static func between(_ old: Policy, _ new: Policy) -> [PolicyEdit] {
         var edits: [PolicyEdit] = []
         if old.enabled != new.enabled { edits.append(.enforcement(on: new.enabled)) }
-        edits += changes(old.downtime, new.downtime, added: PolicyEdit.downtimeAdded, removed: PolicyEdit.downtimeRemoved,
-                         changed: PolicyEdit.downtimeChanged)
-        edits += changes(old.limits, new.limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
-                         changed: PolicyEdit.limitChanged)
+        if new.ruleSets.isEmpty {
+            edits += ruleChanges(old.downtime, old.limits, old.blocked, new.downtime, new.limits, new.blocked)
+        } else {
+            // With rulesets, the policy's own Downtime, limits and Blocked are only the ruleset in effect's.
+            var old = old
+            if old.ruleSets.isEmpty {
+                old = old.withDefaultRuleSets()
+                edits.append(.ruleSetsSetUp(old.ruleSets.map(\.name)))
+            }
+            if old.ruleSetChoice != new.ruleSetChoice { edits.append(.ruleSetChosen(new.ruleSetChoice)) }
+            edits += changes(old.ruleSets, new.ruleSets, added: PolicyEdit.ruleSetAdded, removed: PolicyEdit.ruleSetRemoved,
+                             changed: { $0.name == $1.name && $0.weekdays == $1.weekdays ? nil : .ruleSetChanged(from: $0, to: $1) })
+            for set in new.ruleSets {
+                let previous = old.ruleSet(set.id) ?? PolicyRuleSet(id: set.id, name: set.name)
+                edits += ruleChanges(previous.downtime, previous.limits, previous.blocked, set.downtime, set.limits,
+                                     set.blocked).map { .inRuleSet(set.name, $0) }
+            }
+        }
         edits += changes(old.groups.filter { !$0.isCategory }, new.groups.filter { !$0.isCategory },
                          added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved, changed: PolicyEdit.groupChanged)
         edits += categoryChanges(old.groups.filter(\.isCategory), new.groups.filter(\.isCategory))
@@ -86,9 +110,6 @@ public enum PolicyEdit: Sendable, Hashable {
             edits.append(.uncounted(added: new.uncounted.subtracting(old.uncounted),
                                     removed: old.uncounted.subtracting(new.uncounted)))
         }
-        if old.blocked != new.blocked {
-            edits.append(.blocked(added: new.blocked.subtracting(old.blocked), removed: old.blocked.subtracting(new.blocked)))
-        }
         for setting in Restrictions.settings {
             let (from, to) = (setting.value(old.restrictions), setting.value(new.restrictions))
             if from != to { edits.append(.restriction(name: setting.name, from: from, to: to)) }
@@ -98,6 +119,19 @@ public enum PolicyEdit: Sendable, Hashable {
             let (from, to) = (oldLists[list] ?? [], newLists[list] ?? [])
             let added = to.filter { !from.contains($0) }, removed = from.filter { !to.contains($0) }
             if !added.isEmpty || !removed.isEmpty { edits.append(.websites(list: list, added: added, removed: removed)) }
+        }
+        return edits
+    }
+
+    /// Downtime, limits and Blocked: the policy's own, or a ruleset's.
+    private static func ruleChanges(_ oldDowntime: [DowntimeWindow], _ oldLimits: [AppLimit], _ oldBlocked: Set<UUID>,
+                                    _ downtime: [DowntimeWindow], _ limits: [AppLimit], _ blocked: Set<UUID>) -> [PolicyEdit] {
+        var edits = changes(oldDowntime, downtime, added: PolicyEdit.downtimeAdded, removed: PolicyEdit.downtimeRemoved,
+                            changed: PolicyEdit.downtimeChanged)
+        edits += changes(oldLimits, limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
+                         changed: PolicyEdit.limitChanged)
+        if oldBlocked != blocked {
+            edits.append(.blocked(added: blocked.subtracting(oldBlocked), removed: oldBlocked.subtracting(blocked)))
         }
         return edits
     }
@@ -120,7 +154,7 @@ public enum PolicyEdit: Sendable, Hashable {
     }
 
     private static func changes<T: Identifiable & Equatable>(
-        _ old: [T], _ new: [T], added: (T) -> PolicyEdit, removed: (T) -> PolicyEdit, changed: (T, T) -> PolicyEdit
+        _ old: [T], _ new: [T], added: (T) -> PolicyEdit, removed: (T) -> PolicyEdit, changed: (T, T) -> PolicyEdit?
     ) -> [PolicyEdit] {
         let oldByID = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let newIDs = Set(new.map(\.id))
@@ -210,6 +244,23 @@ public enum PolicyEdit: Sendable, Hashable {
         case let .websites(list, added, removed):
             return ("Changed \(list)", (added.isEmpty ? [] : ["Added \(added.joined(separator: ", "))"])
                 + (removed.isEmpty ? [] : ["Removed \(removed.joined(separator: ", "))"]))
+        case let .ruleSetsSetUp(names):
+            return ("Set up rulesets", [names.joined(separator: ", ")])
+        case let .ruleSetAdded(set):
+            return ("Added ruleset \u{201C}\(set.name)\u{201D}", [set.days(calendar: calendar)])
+        case let .ruleSetRemoved(set):
+            return ("Removed ruleset \u{201C}\(set.name)\u{201D}", [set.days(calendar: calendar)])
+        case let .ruleSetChanged(old, new):
+            var details: [String] = []
+            if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
+            if old.weekdays != new.weekdays { details.append("\(old.days(calendar: calendar)) → \(new.days(calendar: calendar))") }
+            return ("Changed ruleset \u{201C}\(new.name)\u{201D}", details)
+        case let .inRuleSet(ruleSet, edit):
+            let inner = edit.describe(calendar: calendar, name: name)
+            return ("\(ruleSet): \(inner.title)", inner.details)
+        case let .ruleSetChosen(choice):
+            guard let choice else { return ("Back to each day's own ruleset", []) }
+            return ("Switched to \u{201C}\(choice.name)\u{201D}", [choice.span(calendar: calendar)])
         }
     }
 

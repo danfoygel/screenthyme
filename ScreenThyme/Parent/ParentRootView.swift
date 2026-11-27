@@ -117,6 +117,9 @@ struct KidCard: View {
                 }
             }
             .font(.subheadline)
+            if let policy = model.data.storedPolicy(for: kid.id)?.current(at: Date()), policy.enabled {
+                RuleSetBadge(policy: policy).font(.subheadline)
+            }
             if let night = Overnight.rest(yesterday: model.timeline(kid: kid.id, day: today.adding(days: -1)).timeline.runs,
                                           today: timeline.runs, dayStart: today.start()) {
                 Label("Not used \(Format.time(night.start)) – \(Format.time(night.end)) (\(Format.hours(night.duration)))",

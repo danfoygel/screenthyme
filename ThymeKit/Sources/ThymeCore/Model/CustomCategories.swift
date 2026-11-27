@@ -106,16 +106,19 @@ extension Policy {
         return policy
     }
 
-    /// Apple's category items named in Downtime, limits, Always Allowed, Uncounted and Blocked → their custom category.
+    /// Apple's category items named in Downtime, limits, Always Allowed, Uncounted and Blocked (every ruleset's) → their
+    /// custom category.
     private mutating func replaceCategories(_ groupOf: [UUID: UUID]) {
         func replace(_ ids: Set<UUID>) -> Set<UUID> { Set(ids.map { groupOf[$0] ?? $0 }) }
         // Uncounted first: setting Always Allowed keeps only Uncounted entries it holds.
         let uncounted = replace(self.uncounted)
         alwaysAllowed = replace(alwaysAllowed)
         self.uncounted = uncounted
-        blocked = replace(blocked)
-        for index in limits.indices { limits[index].items = replace(limits[index].items) }
-        for index in downtime.indices { downtime[index].items = replace(downtime[index].items) }
+        editAllRules { downtime, limits, blocked in
+            blocked = replace(blocked)
+            for index in limits.indices { limits[index].items = replace(limits[index].items) }
+            for index in downtime.indices { downtime[index].items = replace(downtime[index].items) }
+        }
     }
 
     /// Moves an app or website (Apple's item) to custom category `groupID`, or with nil back to Apple's category. Moving
