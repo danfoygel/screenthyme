@@ -1,9 +1,10 @@
 import Foundation
 
 /// When in the week the phone, or one app, is used: the average use in each hour of each weekday over the last four
-/// weeks. Apple's samples fall within one hour each (`Sampler`), so a sample counts in its start's hour. An hour is
-/// averaged over the days the phone reported any use, up to now: a day without reports is unknown, not unused, and
-/// today's later hours haven't happened yet.
+/// weeks. Apple's samples fall within one hour each (`Sampler`), so a sample counts in its start's hour, and one day's
+/// hour counts at most an hour: samples counted twice can't raise it past that. An hour is averaged over the days the
+/// phone reported any use, up to now: a day without reports is unknown, not unused, and today's later hours haven't
+/// happened yet.
 public struct UsageHeatmap: Sendable, Hashable {
     public struct Cell: Sendable, Hashable {
         /// `Calendar`'s weekday: 1 is Sunday.
@@ -63,9 +64,13 @@ public struct UsageHeatmap: Sendable, Hashable {
                 guard let hourStart = calendar.date(byAdding: .hour, value: hour, to: start), hourStart < now else { break }
                 covered[weekday][hour] += 1
             }
+            var byHour = [Int: [Int: Double]]()
             for sample in all where counts(sample) && sample.seconds > 0 {
                 let parts = calendar.dateComponents([.weekday, .hour], from: sample.start)
-                seconds[parts.weekday! - 1][parts.hour!] += sample.seconds
+                byHour[parts.weekday! - 1, default: [:]][parts.hour!, default: 0] += sample.seconds
+            }
+            for (weekday, hours) in byHour {
+                for (hour, used) in hours { seconds[weekday][hour] += Swift.min(used, 3600) }
             }
         }
         let cells = (0..<7).map { weekday in
@@ -78,9 +83,13 @@ public struct UsageHeatmap: Sendable, Hashable {
         return UsageHeatmap(cells: cells, reportedDays: reportedDays)
     }
 
-    /// How dark a cell is drawn, GitHub's way: 0 for no use, then 1 to 4 by quarters of the busiest hour.
+    /// The minutes in an hour where each level from 2 to 4 starts.
+    public static let levelMinutes = [5.0, 15, 30]
+
+    /// How dark a cell is drawn, GitHub's way: 0 for no use, then 1 to 4 by fixed bands of minutes in the hour (under
+    /// 5, 5 to 15, 15 to 30, 30 or more), so one busy hour doesn't make every other one look the same.
     public func level(_ cell: Cell) -> Int {
-        guard let seconds = cell.seconds, seconds > 0, max > 0 else { return 0 }
-        return Swift.min(4, Swift.max(1, Int((seconds / max * 4).rounded(.up))))
+        guard let seconds = cell.seconds, seconds > 0 else { return 0 }
+        return 1 + Self.levelMinutes.filter { seconds >= $0 * 60 }.count
     }
 }

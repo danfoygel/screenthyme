@@ -2,7 +2,7 @@ import SwiftUI
 import ThymeCore
 
 /// When in the week use happens (`UsageHeatmap`), GitHub's way: weekdays down, hours across, darker for more use on
-/// average. Hollow squares are hours no reported day covers yet. Tap a square for its numbers.
+/// average (fixed bands of minutes, `UsageHeatmap.level`). Hollow squares are hours no reported day covers yet. Tap a square for its numbers.
 struct UsageHeatmapView: View {
     let heatmap: UsageHeatmap
     var tint: Color = .accentColor
@@ -92,7 +92,7 @@ struct UsageHeatmapView: View {
 
     // MARK: - Text
 
-    static let footer = "Average use in each hour of the week over the last 4 weeks, on the days the phone reported use. Tap a square for its numbers."
+    static let footer = "Average use in each hour of the week over the last 4 weeks, on the days the phone reported use. Darker squares mean 5, 15 and 30 min or more. Tap a square for its numbers."
 
     private var summary: String {
         guard let busiest = heatmap.busiest else { return "No use in the last 4 weeks." }

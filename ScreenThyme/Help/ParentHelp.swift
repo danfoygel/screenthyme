@@ -53,8 +53,8 @@ extension ScreenHelp {
                 "The **Timeline** has a strip for when the phone was in use, then a row for each app. A fainter "
                     + "block means the app was in use for only part of that time. Tap a block for its times.",
                 "Switch the timeline between **Active hours** and **Whole day**.",
-                "**When** shows the average use in each hour of the week over the last 4 weeks. Tap a square for "
-                    + "its numbers.",
+                "**When** shows the average use in each hour of the week over the last 4 weeks. Darker squares "
+                    + "mean 5, 15 and 30 minutes or more in the hour. Tap a square for its numbers.",
                 "**Where** splits the day's use by place, when your kid's phone shares its location. Name places in "
                     + "the **Places** tab."
             ),

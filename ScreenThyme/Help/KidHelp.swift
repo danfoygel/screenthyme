@@ -138,8 +138,8 @@ extension ScreenHelp {
         [
             topic(
                 "What you see",
-                "**When** shows your average use in each hour of the week over the last 4 weeks. Tap a square for "
-                    + "its numbers.",
+                "**When** shows your average use in each hour of the week over the last 4 weeks. Darker squares "
+                    + "mean 5, 15 and 30 minutes or more in the hour. Tap a square for its numbers.",
                 "Each row shows today's time on the right and the last 30 days' time under its name. Apps and "
                     + "websites used only a few seconds aren't listed.",
                 "Tap an app or website for its details: its Downtime and limits, and when you used it."),
