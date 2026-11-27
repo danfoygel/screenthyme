@@ -281,6 +281,7 @@ struct TokenPairingTests {
         #expect(BuiltInApps.isSystemProcess("com.apple.CoreServicesUIAgent"))
         #expect(BuiltInApps.isSystemProcess("com.apple.SOSBuddy"))
         #expect(BuiltInApps.isSystemProcess("com.apple.ContactsUI.LimitedAccessPromptView"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.BusinessActionSheet"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.findmy"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.Preview"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.DocumentsApp"))
@@ -289,6 +290,17 @@ struct TokenPairingTests {
         #expect(!BuiltInApps.isSystemProcess("com.apple.Pages"))
         #expect(!BuiltInApps.isSystemProcess("com.uo.StoreLocator"))
         #expect(!BuiltInApps.isSystemProcess("com.example.PushService"))
+    }
+
+    @Test func sheetsOverAnAppAreTold() {
+        #expect(BuiltInApps.isOverlay("com.apple.LocalAuthenticationUIService"))
+        #expect(BuiltInApps.isOverlay("com.apple.ScreenshotServicesService"))
+        #expect(BuiltInApps.isOverlay("com.apple.PassbookUIService"))
+        #expect(BuiltInApps.isOverlay("com.apple.BusinessActionSheet"))
+        #expect(!BuiltInApps.isOverlay("com.apple.InCallService"))
+        #expect(!BuiltInApps.isOverlay("com.apple.springboard"))
+        #expect(!BuiltInApps.isOverlay("com.apple.mobilephone"))
+        #expect(!BuiltInApps.isOverlay("com.apple.Passwords"))
     }
 
     /// A scan re-issued every token: the old scanned items lost theirs but kept their matches. Their apps are matched

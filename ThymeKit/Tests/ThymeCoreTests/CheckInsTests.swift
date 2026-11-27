@@ -177,6 +177,40 @@ struct CheckInsTests {
         #expect(seconds[news] == 300)
     }
 
+    @Test func aBrowserTakesTheSiteThatMatchesItsTimeOverAdsThatFit() {
+        // A web app for 300 s on its site, which Apple gives 303 s; two ads in a game beside it, 120 s each. Both ads
+        // fit in the web app's time and its site doesn't, but the site is the match: the ads were the game's.
+        let webApp = UUID(), site = UUID(), game = UUID(), ad1 = UUID(), ad2 = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(webApp, at(17, 0), at(18, 0), 300, reported: at(18, 30)),
+            sample(site, at(17, 0), at(18, 0), 303, reported: at(18, 30)),
+            sample(game, at(17, 0), at(18, 0), 400, reported: at(18, 30)),
+            sample(ad1, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
+            sample(ad2, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
+        ])
+        input.websites = [site, ad1, ad2]
+        input.browsers = [webApp]
+        let timeline = Reconstructor.build(input)
+        #expect(timeline.attributed.mapValues(\.seconds) == [site: 300, game: 400])
+        #expect(timeline.blocks.allSatisfy { [webApp, site, game].contains($0.itemID) })
+        #expect(timeline.blocks.first { $0.itemID == webApp }?.site == site)
+    }
+
+    @Test func iOSSheetsOverAnAppAreGone() {
+        // Photos for 100 s with the Face ID prompt over it for 3 of them; Apple counts the prompt on top.
+        let photos = UUID(), prompt = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(photos, at(17, 0), at(18, 0), 100, reported: at(18, 30)),
+            sample(prompt, at(17, 0), at(18, 0), 3, reported: at(18, 30)),
+        ])
+        input.overlays = [prompt]
+        let timeline = Reconstructor.build(input)
+        #expect(timeline.attributed.mapValues(\.seconds) == [photos: 100])
+        #expect(timeline.blocks.allSatisfy { $0.itemID == photos })
+        // Apple's numbers stay as they were.
+        #expect(timeline.items[prompt]?.seconds == 3)
+    }
+
     @Test func aSiteSeenOnlyInsideAppsIsGone() {
         // An ad's site in a game, with no browser used at all.
         let game = UUID(), ad = UUID()

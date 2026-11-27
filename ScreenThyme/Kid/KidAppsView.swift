@@ -70,10 +70,12 @@ struct KidAppsView: View {
         let byDay = Dictionary(grouping: samples, by: \.day)
         let websites = Set(items.filter { $0.kind == .domain }.map(\.id))
         let browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
+        let overlays = Set(items.filter(\.isOverlay).map(\.id))
         heatmap = UsageHeatmap.build(today: today, now: Date(), samples: { byDay[$0] ?? [] },
-                                     counts: { !websites.contains($0.itemID) })
-        // A browser's time on a website is the site's.
-        for sample in BrowserSites.attributed(samples, websites: websites, browsers: browsers) where sample.day >= since {
+                                     counts: { !websites.contains($0.itemID) && !overlays.contains($0.itemID) })
+        // A browser's time on a website is the site's; iOS's sheets over an app are in its time already.
+        for sample in BrowserSites.attributed(samples, websites: websites, browsers: browsers)
+        where sample.day >= since && !overlays.contains(sample.itemID) {
             monthSeconds[sample.itemID, default: 0] += sample.seconds
             if sample.day == today { todaySeconds[sample.itemID, default: 0] += sample.seconds }
         }

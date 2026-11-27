@@ -245,7 +245,7 @@ struct KidDayView: View {
             Section {
                 UsageHeatmapView(heatmap: UsageHeatmap.build(today: DayKey(Date()), now: Date(),
                                                              samples: { model.data.samples(kid: kid.id, day: $0) },
-                                                             counts: { items[$0.itemID]?.kind != .domain }),
+                                                             counts: { items[$0.itemID].map { $0.kind != .domain && !$0.isOverlay } ?? true }),
                                  tint: kid.color)
             } header: {
                 Text("When")

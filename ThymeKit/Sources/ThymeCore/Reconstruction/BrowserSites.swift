@@ -9,6 +9,11 @@ import Foundation
 /// in-app browser has its site's time beside the app's own, which already holds it. A banner ad on screen for a whole
 /// game had hours. A site's time that no browser in its fetch can account for was in such an app, so lists leave it out.
 public enum BrowserSites {
+    /// A site within this many seconds, or this share, of a browser's time is the one it showed: Apple's two numbers
+    /// can differ by a fraction of a second on a short visit and a few percent on a longer one, either way.
+    static let matchSlack: Double = 1
+    static let matchShare = 0.05
+
     /// How a fetch's website use splits, by sample id.
     struct Split {
         /// Each browser sample's share of each site's use.
@@ -42,11 +47,18 @@ public enum BrowserSites {
         return split
     }
 
-    /// The site a browser's `own` seconds most likely showed: the busiest that fits in them whole, else the one closest
-    /// to them. An ad inside a game can have far more time than the site read in Safari beside it, so the busiest
-    /// isn't it.
+    /// The site a browser's `own` seconds most likely showed: one that matches them (closest first), else the busiest
+    /// that fits in them whole, else the one closest to them. An ad inside a game can have far more time than the site
+    /// read in Safari beside it, so the busiest isn't it; and a site can have a little more than its browser, so it
+    /// may not fit whole when the ads beside it do.
     private static func bestMatch(_ sites: [UsageSample], left: [UUID: Double], own: Double) -> UsageSample? {
         let open = sites.filter { (left[$0.id] ?? 0) > 0 }
+        let slack = max(matchSlack, own * matchShare)
+        let distance = { (site: UsageSample) in abs(left[site.id]! - own) }
+        if let match = open.filter({ distance($0) <= slack })
+            .min(by: { (distance($0), $0.itemID.uuidString) < (distance($1), $1.itemID.uuidString) }) {
+            return match
+        }
         let fits = open.filter { left[$0.id]! <= own }
         if let best = fits.max(by: { (left[$0.id]!, $1.itemID.uuidString) < (left[$1.id]!, $0.itemID.uuidString) }) {
             return best

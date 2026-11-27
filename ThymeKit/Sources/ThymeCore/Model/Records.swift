@@ -75,6 +75,9 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     /// From the app scan: has a token for shields, but no usage in Apple's data (that has bundle IDs, no tokens).
     public var isScanned: Bool { identifier.hasPrefix(Self.scannedPrefix) }
 
+    /// One of iOS's sheets over another app (`BuiltInApps.isOverlay`), whose time that app's already holds.
+    public var isOverlay: Bool { kind == .app && BuiltInApps.isOverlay(identifier) }
+
     /// The match of a scanned item that still has its token: only those stand for their app. Others are left over from
     /// an earlier scan (`Policy.followingNewTokens`).
     public var liveMatch: UUID? { isScanned && tokenData != nil ? match : nil }

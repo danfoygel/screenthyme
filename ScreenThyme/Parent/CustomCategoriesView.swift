@@ -94,7 +94,7 @@ struct CustomCategoriesView: View {
     }
 
     /// Each custom category's use over the last 7 days, most first, with the moved apps and websites it holds even
-    /// when unused. Websites take a browser's time on them.
+    /// when unused. Websites take a browser's time on them; iOS's sheets over an app are left out.
     private func rows(custom: CustomCategories, items: [UUID: TrackedItem]) -> [Row] {
         let today = DayKey(Date())
         let websites = Set(items.values.filter { $0.kind == .domain }.map(\.id))
@@ -103,7 +103,8 @@ struct CustomCategoriesView: View {
         var seconds: [UUID: Double] = [:]
         for offset in 0..<7 {
             let samples = ItemAliases.apply(aliases, to: model.data.samples(kid: kid.id, day: today.adding(days: -offset)))
-            for sample in BrowserSites.attributed(samples, websites: websites, browsers: browsers) {
+            for sample in BrowserSites.attributed(samples, websites: websites, browsers: browsers)
+            where items[sample.itemID]?.isOverlay != true {
                 seconds[sample.itemID, default: 0] += sample.seconds
             }
         }

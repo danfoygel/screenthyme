@@ -53,7 +53,8 @@ public struct DayTimeline: Sendable {
     /// Apple's numbers, each app's and website's (the call screen's as Phone's, `ItemAliases`).
     public var items: [UUID: ItemUsage]
     /// Each app's and website's use as lists show it: a browser's time on a website is the site's, a website's time
-    /// inside another app (an ad) is the app's (`BrowserSites`), and anything left with under a second is gone.
+    /// inside another app (an ad) is the app's (`BrowserSites`), iOS's sheets over an app are gone (`DayInput.overlays`),
+    /// and so is anything left with under a second.
     public var attributed: [UUID: ItemUsage] = [:]
     /// From the total ladder.
     public var totalMinutes: Int
@@ -84,6 +85,9 @@ public enum Reconstructor {
     public static func build(_ input: DayInput) -> DayTimeline {
         var input = input
         input.samples = ItemAliases.apply(input.aliases, to: input.samples)
+        let apple = input.samples
+        // iOS's sheets over an app are in its time already.
+        input.samples.removeAll { input.overlays.contains($0.itemID) }
         let total = clean(input.total, dayStart: input.dayStart)
         let (inUse, preTracking) = inUseMinutes(total.points, dayStart: input.dayStart,
                                                 trackingStarts: input.trackingStarts)
@@ -93,7 +97,7 @@ public enum Reconstructor {
                                    coverage: CheckIns.coverage(stretches),
                                    runs: mergeRuns(inUse),
                                    blocks: merge(pieces).map(withSite),
-                                   items: usage(input.samples),
+                                   items: usage(apple),
                                    totalMinutes: total.points.last?.minute ?? 0,
                                    preTrackingMinutes: preTracking,
                                    suspectFires: total.suspects,
