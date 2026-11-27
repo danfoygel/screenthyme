@@ -498,8 +498,9 @@ struct AppDetailsData {
         let policy = family.policy(for: kid)
         let uses = family.extraMinutes.values.filter { $0.kidID == kid }
         let plan = parentPlan(family, kid: kid, items: items, policy: policy, now: now)
+        let aliases = ItemAliases.build(items.values)
         return AppDetailsData(canEnd: true, items: items, policy: policy, hasPolicy: family.storedPolicy(for: kid) != nil, plan: plan,
-                              samples: { family.samples(kid: kid, day: $0) },
+                              samples: { ItemAliases.apply(aliases, to: family.samples(kid: kid, day: $0)) },
                               requests: family.requests.values.filter { $0.kidID == kid },
                               grants: family.grants.values.filter { $0.kidID == kid }, extraMinutes: Array(uses),
                               rules: family.rules(for: kid), alerts: family.alerts.values.filter { $0.kidID == kid })
@@ -531,7 +532,8 @@ struct AppDetailsData {
     static func kid() -> AppDetailsData {
         let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let stored = AppGroup.loadPolicy()?.followingNewTokens(items: items)
-        let samples = Dictionary(grouping: AppGroup.samples.readAll(), by: \.day)
+        let samples = Dictionary(grouping: ItemAliases.apply(ItemAliases.build(items.values), to: AppGroup.samples.readAll()),
+                                 by: \.day)
         // The latest copy of each: a parent's end follows the answer.
         var grants = Dictionary(AppGroup.grantHistory.readAll().map { ($0.requestID, $0) }, uniquingKeysWith: { _, b in b })
         // Answers applied before the history file existed are still in today's state.

@@ -50,7 +50,7 @@ public struct DayTimeline: Sendable {
     /// Stretches of continuous use (gaps of at most `Reconstructor.runGap`).
     public var runs: [DateInterval]
     public var blocks: [UsageBlock]
-    /// Apple's numbers, each app's and website's.
+    /// Apple's numbers, each app's and website's (the call screen's as Phone's, `ItemAliases`).
     public var items: [UUID: ItemUsage]
     /// Each app's and website's use as lists show it: a browser's time on a website is the site's, a website's time
     /// inside another app (an ad) is the app's (`BrowserSites`), and anything left with under a second is gone.
@@ -82,6 +82,8 @@ public enum Reconstructor {
     static let blockGap: TimeInterval = 5
 
     public static func build(_ input: DayInput) -> DayTimeline {
+        var input = input
+        input.samples = ItemAliases.apply(input.aliases, to: input.samples)
         let total = clean(input.total, dayStart: input.dayStart)
         let (inUse, preTracking) = inUseMinutes(total.points, dayStart: input.dayStart,
                                                 trackingStarts: input.trackingStarts)
