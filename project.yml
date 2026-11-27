@@ -54,8 +54,6 @@ targets:
         # The nearby link: Bonjour over Wi-Fi and peer-to-peer Wi-Fi, no internet (PLAN.md §17).
         NSBonjourServices: [_screenthyme._tcp]
         NSLocalNetworkUsageDescription: ScreenThyme talks to your family's phones nearby, so usage and answers to requests for more time arrive even without the internet.
-        # Matching a kid's scanned apps: a parent's camera reads the codes on the kid's screen (PLAN.md §15.6).
-        NSCameraUsageDescription: ScreenThyme reads the codes on your kid's screen to match the apps it scanned.
         NSBluetoothAlwaysUsageDescription: ScreenThyme talks to your family's phones nearby over Bluetooth when Wi-Fi is off, so usage and answers to requests for more time still arrive.
         # The location test on kid phones: geofences and visits, no location background mode (PLAN.md §19).
         NSLocationWhenInUseUsageDescription: ScreenThyme notes which of your places (like home or school) your phone is at, so your parents can see where apps get used.

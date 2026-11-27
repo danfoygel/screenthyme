@@ -1,4 +1,3 @@
-import AVFoundation
 import FamilyControls
 import SwiftUI
 import ThymeCore
@@ -77,7 +76,6 @@ struct PermissionsView: View {
     private func ask(_ permission: DevicePermission) -> (label: String, action: () async -> Void)? {
         switch (permission, states[permission]) {
         case (.notifications, .notAsked): ("Ask for notifications", { await Notifier.requestPermission() })
-        case (.camera, .notAsked): ("Ask for the camera", { _ = await AVCaptureDevice.requestAccess(for: .video) })
         case (.screenTime, let state) where model.isKid && state != .allowed:
             (model.isAuthorized ? "Allow usage data access" : "Allow Screen Time access", { await model.requestAuthorization() })
         default: nil

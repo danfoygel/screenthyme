@@ -434,7 +434,7 @@ public enum EnforcementPlanner {
     }
 
     /// The category names `ids` stand for, which apps and websites name in `TrackedItem.category`: a scanned category's
-    /// is its match's, from Apple's data (`TokenPairing`).
+    /// is its match's, from Apple's data (`TokenMatching`).
     public static func categoryNames(_ ids: some Sequence<UUID>, items: [UUID: TrackedItem]) -> Set<String> {
         Set(ids.compactMap { items[$0] }.filter { $0.kind == .category }.map { item in
             item.match.flatMap { items[$0] }?.identifier ?? item.identifier

@@ -51,18 +51,17 @@ extension ScreenHelp {
                 "**Allow Screen Time access** (or **Allow usage data access**) needs a parent's approval on this "
                     + "phone. After approving, restart the phone once. **Upload now** sends the latest use right away.",
                 "**Apps for Screen Time**: scan all apps (again after installing new ones), choose ScreenThyme alone "
-                    + "so Downtime never blocks it, then match apps with a parent's camera or by screenshot so "
-                    + "limits count them. An orange number means new apps are waiting to be matched.",
+                    + "so Downtime never blocks it. This phone matches apps with Apple's Screen Time data by "
+                    + "itself, so limits count them.",
                 "**Join the family** shows until this phone joins: open the invite link a parent sent to this "
                     + "phone's Apple Account, in Messages or Mail."),
             topic(
                 "Parent controls",
-                "Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring and **Debug** are "
+                "Scanning apps, choosing ScreenThyme, starting monitoring and **Debug** are "
                     + "locked. A parent unlocks them from their own phone, near this one: Settings › Kids › the "
                     + "kid › Unlock.",
                 "The screen shows who unlocked them and until when. They lock again when ScreenThyme leaves the "
-                    + "screen, or with **Lock now**.",
-                "**Match with a parent's camera** is never locked: it needs a parent's phone anyway."),
+                    + "screen, or with **Lock now**."),
         ])
 
     static let askForTime = ScreenHelp(
@@ -148,51 +147,6 @@ extension ScreenHelp {
                 "Good to know",
                 "Time in a web browser on a website counts as that website's.",
                 "A new app shows up once this phone has shared some use of it. Pull down to refresh."),
-        ])
-
-    static let cameraPairing = ScreenHelp(
-        "Match with a parent's camera",
-        summary: "Matches the apps from the app scan with Apple's Screen Time data, so Downtime and limits know "
-            + "which app is which. A parent's phone reads the codes this screen shows.",
-        [
-            topic(
-                "How to match",
-                "On the parent's phone, open ScreenThyme › Settings › this kid › Match apps with camera, and "
-                    + "hold its camera over this screen.",
-                "Each code moves on by itself once it's read. **Skip** passes over one that doesn't show a code.",
-                "When every code is read, this phone saves the matches and shows what it found, on both phones."),
-            topic(
-                "Choose what to match",
-                "**New apps** matches only what isn't matched yet, which is quick. **Everything** checks every "
-                    + "match again.",
-                "Apps installed since the last scan need a new scan first."),
-            topic(
-                "Good to know",
-                "The screen stays on while this is open.",
-                "This works without the internet: the phones talk directly over Wi-Fi or Bluetooth."),
-        ])
-
-    static let tokenPairing = ScreenHelp(
-        "Match by screenshot",
-        summary: "Matches the apps from the app scan with Apple's Screen Time data, so Downtime and limits know "
-            + "which app is which, using screenshots of the codes on this screen. For a parent.",
-        [
-            topic(
-                "How to match",
-                "Take screenshots that together show every code on this screen (scroll for more), then tap **Import "
-                    + "screenshots** and pick them, up to 10.",
-                "If a code is missing, the screen says which; take another screenshot that shows it and import "
-                    + "again.",
-                "Once it's matched, you can delete the screenshots."),
-            topic(
-                "Choose what to match",
-                "**New apps** matches only apps, websites and categories not matched yet, so a few small codes do. "
-                    + "**Everything** checks every match again.",
-                "Apps installed since the last scan need a new scan first."),
-            topic(
-                "Good to know",
-                "This is a parent control: it's locked until a parent's phone nearby unlocks it.",
-                "With a parent's phone nearby, **Match with a parent's camera** does the same without screenshots."),
         ])
 
     static let kidDebug = ScreenHelp(

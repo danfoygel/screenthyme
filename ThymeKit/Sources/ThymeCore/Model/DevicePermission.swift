@@ -18,8 +18,6 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
     case bluetooth
     /// Sync: signed in, with iCloud on for ScreenThyme.
     case iCloud
-    /// Matching a kid's scanned apps by a parent's camera (PLAN.md §15.6).
-    case camera
     /// Never asked: screenshots come through Apple's photo picker.
     case photos
     /// Where apps get used, on a kid's phone watching places (PLAN.md §19): Always, with Precise Location.
@@ -34,7 +32,6 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case .localNetwork: "Local Network"
         case .bluetooth: "Bluetooth"
         case .iCloud: "iCloud"
-        case .camera: "Camera"
         case .photos: "Photos"
         case .location: "Location"
         }
@@ -52,7 +49,6 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case (.localNetwork, false): "Gets usage from kids' phones nearby, with no internet"
         case (.bluetooth, _): "The nearby link when Wi-Fi is off"
         case (.iCloud, _): "Syncs with the family"
-        case (.camera, false): "Matches a kid's apps by reading the codes on their screen"
         case (.location, true): "Notes where apps get used, while Debug → Places watches places"
         default: nil
         }
@@ -70,7 +66,7 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
     public var settingsPath: String? {
         switch self {
         case .screenTime: "A parent approves it from ScreenThyme's Allow Screen Time access"
-        case .notifications, .localNetwork, .bluetooth, .camera: "Settings → Apps → ScreenThyme → \(title)"
+        case .notifications, .localNetwork, .bluetooth: "Settings → Apps → ScreenThyme → \(title)"
         case .backgroundRefresh: "Settings → General → Background App Refresh, and Low Power Mode off"
         case .cellularData: "Settings → Cellular → ScreenThyme"
         case .iCloud: "Settings → Apple Account → iCloud: signed in, with ScreenThyme on"
@@ -98,7 +94,7 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case .bluetooth: heartbeat.bluetooth
         case .iCloud: heartbeat.iCloud
         case .location: heartbeat.location
-        case .screenTime, .notifications, .camera, .photos: nil
+        case .screenTime, .notifications, .photos: nil
         }
     }
 }

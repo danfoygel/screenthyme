@@ -1,7 +1,7 @@
 import SwiftUI
 import ThymeCore
 
-/// Which of a kid's scanned apps, websites or categories have been matched to Apple's usage data, and to what (PLAN.md §15.6).
+/// Which of a kid's scanned apps, websites or categories have been matched to Apple's usage data, and to what (PLAN.md §15.3).
 /// Each row shows Apple's own label for the scanned token above the bundle ID or domain it was matched to, so a wrong
 /// match stands out.
 struct TokenMatchesView: View {
@@ -41,7 +41,7 @@ struct TokenMatchesView: View {
             } header: {
                 Text("Not matched yet · \(unmatched.count)")
             } footer: {
-                Text("Matched once it has been used: Settings → \(kid.displayName) → Match apps with camera, with \(kid.displayName)'s phone on Apps for Screen Time → Match with a parent's camera (or by screenshot there).")
+                Text("\(kid.displayName)'s phone matches them from Apple's list of what's installed, when ScreenThyme opens there and in the background. One still unmatched isn't on that list.")
             }
         }
         .navigationTitle(Self.title(kind))

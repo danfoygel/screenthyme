@@ -51,7 +51,7 @@ public struct TrackedItem: Codable, Sendable, Hashable, Identifiable {
     public var category: String?
     public var nickname: String?
     public var firstSeen: Date
-    /// For a scanned item: the item from Apple's data for the same app, learned from screenshots (`TokenPairing`). One
+    /// For a scanned item: the item from Apple's data for the same app, learned from Apple's lists (`FamilyInventory`, `TokenMatching`). One
     /// that lost its token (a later scan gave its app a new one) keeps it, to say what it was.
     public var match: UUID?
 
@@ -198,8 +198,9 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     /// Always and Precise Location, while the location test watches places (PLAN.md §19); nil when it doesn't.
     public var location: PermissionState?
     public var lowPowerMode: Bool?
-    /// When the phone last matched scanned apps to Apple's data (`TokenPairing`): parents count the apps that turned up
-    /// since (`TokenPairing.unmatched`). Nil before the first match, and from older builds.
+    /// When the phone last matched scanned apps to Apple's data, from Apple's lists (`FamilyInventory`): parents tell
+    /// apps not installed from those that turned up since (`TokenMatching.unmatched`). Nil before the first import, and
+    /// from older builds.
     public var lastTokenPairing: Date?
     /// The last time a parent's phone unlocked this phone's parent controls (`ParentUnlock`), so the other parent
     /// sees it. Nil before the first, and from older builds.

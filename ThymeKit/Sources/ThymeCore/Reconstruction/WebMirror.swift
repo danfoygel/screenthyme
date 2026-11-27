@@ -64,7 +64,7 @@ public struct WebMirror: Codable, Sendable, Equatable {
     }
 
     /// The apps used over the last `days`, as far as this tally has seen; with `items`, not those whose use was Safari's
-    /// on their website. On a kid's phone, the apps a match round can pair (`TokenPairing.unmatched(used:)`).
+    /// on their website. On a kid's phone, the apps parents see unmatched (`TokenMatching.unmatched(used:)`).
     public func used(today: DayKey, items: [UUID: TrackedItem]? = nil) -> Set<UUID> {
         let first = today.adding(days: 1 - Self.days)
         let used = Set(byDay.filter { $0.key >= first && $0.key <= today }.values.flatMap { apps in
@@ -85,7 +85,7 @@ public struct WebMirror: Codable, Sendable, Equatable {
                 total[id, default: Seconds()].inApp += seconds.inApp
             }
         }
-        let matched = TokenPairing.matchedIDs(Array(items.values))
+        let matched = TokenMatching.matchedIDs(Array(items.values))
         return Set(total.filter { id, seconds in
             guard seconds.all > 0, !matched.contains(id) else { return false }
             return seconds.inSafari >= Self.share * seconds.all

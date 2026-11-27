@@ -35,7 +35,7 @@ struct ParentUnlockTests {
         #expect(decoded == bundle)
         var filter = LinkSentFilter()
         #expect(filter.unsent(bundle).unlock == bundle.unlock)
-        #expect(filter.unsent(bundle).unlock == bundle.unlock)  // every time, like pairing
+        #expect(filter.unsent(bundle).unlock == bundle.unlock)  // every time
     }
 
     @Test func olderBundlesAndHeartbeatsStillOpen() throws {

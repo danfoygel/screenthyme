@@ -2,7 +2,7 @@ import Foundation
 
 /// What one app's or website's details screen shows, on parents' phones and the kid's: the parts of the kid's policy
 /// that reach it, its use over the last month, and the kid's requests for more time and one more minute for it.
-/// A matched app is two items (`TokenPairing`): Apple's, with a bundle ID and usage, and the scan's, with a token,
+/// A matched app is two items (`TokenMatching`): Apple's, with a bundle ID and usage, and the scan's, with a token,
 /// which the policy names. The details cover both, and the app's category.
 public struct AppDetails: Sendable {
     /// How a part of the policy reaches the app.

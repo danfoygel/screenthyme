@@ -56,7 +56,7 @@ struct EnforcementTests {
         #expect(result.limitedItems == [social.id, instagram.id])
     }
 
-    /// Limits and Always Allowed name scanned items, which count through their matches (`TokenPairing`).
+    /// Limits and Always Allowed name scanned items, which count through their matches (`TokenMatching`).
     @Test func scannedCategoriesCountThroughTheirMatch() {
         var scannedSocial = TrackedItem(kidID: kid, kind: .category, identifier: TrackedItem.scannedPrefix + "s",
                                         firstSeen: dayStart)

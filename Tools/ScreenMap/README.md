@@ -31,5 +31,5 @@ Tools/ScreenMap/publish.sh /tmp/screen-map                 # push to gh-pages
   time, except a short settle before each screenshot: keep it that way when adding screens. The app runs with
   `-screenTour`, which turns its animations off, so each tap's wait for the app to settle is short.
 - Some boxes can't have a Simulator screenshot: the block page, Apple's Screen Time prompt, anything that needs limits
-  in force, data access, an iCloud family or a real camera. Their `WHY` notes say so.
+  in force, data access or an iCloud family. Their `WHY` notes say so.
 - **Only test data.** The site is public: never capture from a real family's phones.

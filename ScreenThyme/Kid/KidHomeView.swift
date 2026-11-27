@@ -88,20 +88,6 @@ struct KidHomeView: View {
                     Section {
                         if open {
                             Button("Scan apps (\(scan.all.applicationTokens.count) apps)") { pickingAll = true }
-                        }
-                        NavigationLink {
-                            CameraPairingView()
-                        } label: {
-                            // As parents count them: apps used this week, not those whose use was Safari's on their website.
-                            let items = AppGroup.loadItems()
-                            let used = AppGroup.load(WebMirror.self, from: AppGroup.webMirrorURL)?.used(
-                                today: DayKey(Date()), items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }))
-                            let count = TokenPairing.unmatched(items, lastImport: TokenPairingView.lastImport(), used: used).toMatch.count
-                            LabeledContent("Match with a parent's camera", value: count == 0 ? "" : "\(count) new")
-                                .foregroundStyle(count == 0 ? Color.primary : .orange)
-                        }
-                        if open {
-                            NavigationLink("Match apps by screenshot") { TokenPairingView() }
                             // Once, at setup; again only if its token stops working (a new authorization can void it).
                             Button(scan.screenThyme.applicationTokens.isEmpty ? "Choose ScreenThyme" : "ScreenThyme chosen: choose again") {
                                 pickingSelf = true
@@ -110,7 +96,7 @@ struct KidHomeView: View {
                     } header: {
                         Text("Apps for Screen Time")
                     } footer: {
-                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it. Match after a scan, and when new apps have been used, so limits count them: with a parent's phone nearby, or by screenshot.")
+                        Text("For a parent. Scan: select All Apps & Categories, then Done; scan again after installing apps. Then choose ScreenThyme alone, so Downtime never blocks it.")
                     }
                     .familyActivityPicker(headerText: "Select All Apps & Categories", isPresented: $pickingAll,
                                           selection: $scan.all)
@@ -148,10 +134,6 @@ struct KidHomeView: View {
             }
             .navigationTitle("ScreenThyme")
             .bugButton(help: .kidHome)
-            // A parent's phone nearby opened its camera to match apps.
-            .navigationDestination(isPresented: Binding { model.cameraPairingRequested } set: { model.cameraPairingRequested = $0 }) {
-                CameraPairingView()
-            }
             .sheet(item: $ask) { AskForTimeView(ask: $0.ask) }
             .onChange(of: scenePhase, initial: true) {
                 if scenePhase == .active, let taken = ShieldContext.Ask.take() { ask = AskSheet(ask: taken) }
@@ -203,7 +185,7 @@ private struct ParentControlsSection: View {
             Text("Parent controls")
         } footer: {
             if !model.parentControlsOpen {
-                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring and Debug. A parent unlocks them from their phone, near this one: Settings › Kids › \(model.config.kid?.displayName ?? "this kid") › Unlock.")
+                Text("Scanning apps, choosing ScreenThyme, starting monitoring and Debug. A parent unlocks them from their phone, near this one: Settings › Kids › \(model.config.kid?.displayName ?? "this kid") › Unlock.")
             }
         }
     }

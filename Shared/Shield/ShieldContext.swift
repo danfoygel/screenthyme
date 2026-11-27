@@ -56,7 +56,7 @@ struct ShieldContext {
         return Target(item: nil, category: category, name: category.map(name(of:)) ?? "These apps")
     }
 
-    /// A scanned category goes by its match's name, from Apple's data (`TokenPairing`).
+    /// A scanned category goes by its match's name, from Apple's data (`TokenMatching`).
     func name(of category: TrackedItem) -> String {
         if category.nickname == nil, let match = category.match, let named = items.first(where: { $0.id == match }) {
             return named.displayName

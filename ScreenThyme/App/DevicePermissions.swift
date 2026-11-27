@@ -1,4 +1,3 @@
-import AVFoundation
 import CloudKit
 import CoreBluetooth
 import CoreTelephony
@@ -48,12 +47,6 @@ import UserNotifications
         case .bluetooth: bluetooth
         case .iCloud: iCloud
         case .location: location
-        case .camera:
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
-            case .authorized: .allowed
-            case .notDetermined: .notAsked
-            default: .denied
-            }
         case .photos: nil
         }
     }
