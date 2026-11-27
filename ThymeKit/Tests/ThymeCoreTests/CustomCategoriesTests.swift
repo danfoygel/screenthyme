@@ -124,4 +124,57 @@ struct CustomCategoriesTests {
         #expect(details.categoryName == "Games")
         #expect(details.limits.map(\.limit.name) == ["Games"])
     }
+
+    /// A second kid's copy of `item`'s app or website.
+    func sibling(_ item: TrackedItem, kid: UUID) -> TrackedItem {
+        TrackedItem(kidID: kid, kind: item.kind, identifier: item.identifier, category: item.category, firstSeen: dayStart)
+    }
+
+    @Test func movesAreTheFamilys() {
+        let twin = UUID()
+        let siblingSite = sibling(site, kid: twin), siblingRoblox = sibling(roblox, kid: twin)
+        let siblingItems = Dictionary(uniqueKeysWithValues: [siblingSite, siblingRoblox, sibling(other, kid: twin)]
+            .map { ($0.id, $0) })
+        let all = items.merging(siblingItems) { a, _ in a }
+        let siblingPolicy = Policy(kidID: twin).withCustomCategories(items: siblingItems)
+
+        // Moved for one kid, the same website moves for the other, into a Games category their phone hasn't seen yet.
+        let moves = FamilyCategoryMoves(policies: [movedPolicy(), siblingPolicy], items: all)
+        #expect(moves.category(of: siblingSite) == "Games")
+        #expect(moves.category(of: siblingRoblox) == nil)
+        let shared = siblingPolicy.withFamilyMoves(moves, items: siblingItems)
+        let siblingGames = Policy.categoryGroupID(kid: twin, category: "Games")
+        #expect(shared.groups.first { $0.id == siblingGames }?.moved == [siblingSite.id])
+        #expect(CustomCategories(policy: shared, items: siblingItems).categoryName(of: siblingSite) == "Games")
+        // Twice changes nothing; once their phone sees Games, set-up fills its items and keeps the move.
+        #expect(shared.withFamilyMoves(moves, items: siblingItems) == shared)
+        let siblingGamesItem = sibling(games, kid: twin)
+        let seen = shared.withCustomCategories(items: siblingItems.merging([siblingGamesItem.id: siblingGamesItem]) { a, _ in a })
+        #expect(seen.groups.first { $0.id == siblingGames }?.items == [siblingGamesItem.id])
+        #expect(seen.groups.first { $0.id == siblingGames }?.moved == [siblingSite.id])
+
+        // Moving it back, from either kid, moves it back for both.
+        var back = moves
+        back.move(siblingSite, to: "Other")
+        #expect(back.categories.isEmpty)
+        #expect(shared.withFamilyMoves(back, items: siblingItems).groups.allSatisfy { $0.moved.isEmpty })
+        #expect(movedPolicy().withFamilyMoves(back, items: items).groups.allSatisfy { $0.moved.isEmpty })
+    }
+
+    @Test func disagreeingMovesGoToTheNewestPolicy() {
+        let twin = UUID()
+        let siblingSite = sibling(site, kid: twin)
+        let siblingItems = [siblingSite.id: siblingSite]
+        var mine = movedPolicy()
+        mine.updatedAt = dayStart
+        var theirs = Policy(kidID: twin, updatedAt: dayStart.addingTimeInterval(60))
+        theirs.groups = [ItemGroup(id: Policy.categoryGroupID(kid: twin, category: "Education"), name: "Education",
+                               category: "Education", moved: [siblingSite.id])]
+        let all = items.merging(siblingItems) { a, _ in a }
+        #expect(FamilyCategoryMoves(policies: [mine, theirs], items: all).category(of: site) == "Education")
+        mine.updatedAt = dayStart.addingTimeInterval(120)
+        #expect(FamilyCategoryMoves(policies: [mine, theirs], items: all).category(of: site) == "Games")
+        // Scanned items and categories never move between kids.
+        #expect(FamilyCategoryMoves(policies: [mine], items: all).category(of: scannedSite) == nil)
+    }
 }

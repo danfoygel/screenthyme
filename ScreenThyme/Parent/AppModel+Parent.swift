@@ -72,14 +72,15 @@ extension AppModel {
         }
     }
 
-    /// Gives a kid's policy a custom category for each of Apple's categories the kid's phone has seen, and moves every
-    /// use of an Apple category to its custom category (`Policy.withCustomCategories`, PLAN.md §15.14). Saves, with a
-    /// change history entry, only when that changes something. With `onlyStored`, kids with no policy yet are left as
-    /// they are.
+    /// Gives a kid's policy a custom category for each of Apple's categories the kid's phone has seen, moves every
+    /// use of an Apple category to its custom category (`Policy.withCustomCategories`, PLAN.md §15.14), and puts the
+    /// kid's apps and websites where the family's moves have them (`Policy.withFamilyMoves`). Saves, with a change
+    /// history entry, only when that changes something. With `onlyStored`, kids with no policy yet are left as they are.
     func setUpCustomCategories(for kid: Kid, onlyStored: Bool = false) async {
         guard !editsBlocked, !onlyStored || data.storedPolicy(for: kid.id) != nil else { return }
         let policy = data.policy(for: kid.id)
-        let updated = policy.withCustomCategories(items: data.items(for: kid.id))
+        let items = data.items(for: kid.id)
+        let updated = policy.withCustomCategories(items: items).withFamilyMoves(data.categoryMoves, items: items)
         if updated != policy { await save(updated) }
     }
 
@@ -101,12 +102,19 @@ extension AppModel {
         await save(policy)
     }
 
-    /// Moves an app or website to custom category `groupID` (nil: back to Apple's category), and saves it.
+    /// Moves an app or website to custom category `groupID` of `kid`'s (nil: back to Apple's category) for every kid:
+    /// the same bundle ID or domain moves in each kid's policy (`FamilyCategoryMoves`), saved for each it changes. Kids
+    /// with no policy yet get it at set-up.
     func move(_ itemID: UUID, to groupID: UUID?, kid: Kid) async {
-        guard !refuseWhileRebuilding() else { return }
-        var policy = data.policy(for: kid.id)
-        policy.move(itemID, to: groupID, items: data.items(for: kid.id))
-        await save(policy)
+        guard !refuseWhileRebuilding(), let item = data.items(for: kid.id)[itemID] else { return }
+        let category = groupID.flatMap { id in data.policy(for: kid.id).groups.first { $0.id == id } }?.category
+        var moves = data.categoryMoves
+        moves.move(item, to: category)
+        for other in data.sortedKids where other.id == kid.id || data.storedPolicy(for: other.id) != nil {
+            let policy = data.policy(for: other.id)
+            let updated = policy.withFamilyMoves(moves, items: data.items(for: other.id))
+            if updated != policy { await save(updated) }
+        }
     }
 
     /// Answers a kid's request for more time; the kid's phone fetches the grant by name or gets it nearby. Offline,
