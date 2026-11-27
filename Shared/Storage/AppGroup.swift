@@ -228,6 +228,7 @@ struct SharedConfig: Codable, Sendable {
         input.websites = Set(items.filter { $0.kind == .domain }.map(\.id))
         input.browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
         input.aliases = ItemAliases.build(items)
+        input.overlays = Set(items.filter(\.isOverlay).map(\.id))
         return input
     }
 }

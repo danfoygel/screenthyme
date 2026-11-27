@@ -104,7 +104,9 @@ exactly), and tracking starts (minute-0 fires uploaded at each registration).
   Apple also counts a web view inside any other app under its site: ads (googleads.g.doubleclick.net,
   imasdk.googleapis.com) and in-app browsers, beside the app's own time, which already holds it. A banner ad gets as
   much time as the game it sits in. A site's time that no browser in its fetch can account for is the app's: lists,
-  blocks and places leave it out. Limits and shields still go by Apple's numbers.
+  blocks and places leave it out. iOS's own sheets over an app (the Face ID prompt, the screenshot editor, Wallet's pay
+  sheet: `BuiltInApps.isOverlay`) are counted on top of the app beneath too, so they get no blocks and lists leave them
+  out. Limits and shields still go by Apple's numbers.
 - **The call screen** (`ItemAliases`): Apple's data has iOS's call screen (`com.apple.InCallService`) apart from Phone.
   Phone's own time is dialing, recents and voicemail; the call screen's is a call with the screen on (phone, FaceTime
   and other apps' calls, which Apple doesn't tell apart). Their seconds never matched, so lists and timelines show the

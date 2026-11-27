@@ -73,6 +73,16 @@ public enum BuiltInApps {
         let parts = bundleID.dropFirst("com.apple.".count).split(separator: ".").map { $0.lowercased() }
         guard let name = parts.last else { return false }
         return ["springboard", "printcenter"].contains(name)
-            || parts.contains { part in ["service", "services", "ui", "agent", "angel", "buddy"].contains { part.hasSuffix($0) } }
+            || parts.contains { part in
+                ["service", "services", "ui", "agent", "angel", "buddy", "sheet"].contains { part.hasSuffix($0) }
+            }
+    }
+
+    /// iOS's own sheets over another app, such as the Face ID prompt, the screenshot editor or Wallet's pay sheet:
+    /// Apple counts their time on top of the app beneath (they never had a fetch to themselves on a kid's phone, and
+    /// often took its apps past the fetch's length), so lists and blocks leave them out. The call screen (shown as
+    /// Phone's) and the Home Screen are use of their own.
+    public static func isOverlay(_ bundleID: String) -> Bool {
+        isSystemProcess(bundleID) && ![callScreen, "com.apple.springboard"].contains(bundleID)
     }
 }

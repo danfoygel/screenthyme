@@ -26,6 +26,9 @@ public struct DayInput: Sendable {
     public var browsers: Set<UUID> = []
     /// Items whose use is shown as another's (`ItemAliases`): the call screen's as Phone's.
     public var aliases: [UUID: UUID] = [:]
+    /// iOS's sheets over another app (`TrackedItem.isOverlay`), whose time that app's already holds: no blocks, and left
+    /// out of lists and of how much use a stretch held.
+    public var overlays: Set<UUID> = []
 
     public init(dayStart: Date, total: [FirePoint], samples: [UsageSample] = [], trackingStarts: [Date] = []) {
         self.dayStart = dayStart
