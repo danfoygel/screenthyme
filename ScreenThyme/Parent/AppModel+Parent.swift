@@ -49,7 +49,7 @@ extension AppModel {
     func save(_ policy: Policy, until: Date? = nil) async {
         guard !refuseWhileRebuilding() else { return }
         let now = Date()
-        var policy = policy.current(at: now)
+        var policy = policy.saving(at: now)
         policy.updatedAt = now
         let before = data.storedPolicy(for: policy.kidID)?.current(at: now)
         let id = UUID()
@@ -81,6 +81,24 @@ extension AppModel {
         let policy = data.policy(for: kid.id)
         let updated = policy.withCustomCategories(items: data.items(for: kid.id))
         if updated != policy { await save(updated) }
+    }
+
+    /// Gives a kid's stored policy the default rulesets, Weekday, Weekend and Travel, each with the rules it had
+    /// (`Policy.withDefaultRuleSets`, PLAN.md §15.15). Kids with no policy yet get them with their first save.
+    func setUpRuleSets(for kid: Kid) async {
+        guard !editsBlocked, data.storedPolicy(for: kid.id)?.ruleSets.isEmpty == true else { return }
+        await save(data.policy(for: kid.id).withDefaultRuleSets())
+    }
+
+    /// Puts ruleset `id` in effect for `days` days counting today (1: today only), over each weekday's own; nil goes
+    /// back to the weekdays' own now. The kid's phone goes back by itself at the end (`Policy.ruleSet(on:)`).
+    func chooseRuleSet(_ id: UUID?, days: Int, kid: Kid) async {
+        guard !refuseWhileRebuilding() else { return }
+        var policy = data.policy(for: kid.id).withDefaultRuleSets()
+        policy.ruleSetChoice = id.flatMap(policy.ruleSet).map {
+            RuleSetChoice(ruleSet: $0, days: days, at: Date(), by: senderName)
+        }
+        await save(policy)
     }
 
     /// Moves an app or website to custom category `groupID` (nil: back to Apple's category), and saves it.

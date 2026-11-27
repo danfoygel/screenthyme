@@ -1,9 +1,10 @@
 import SwiftUI
 import ThymeCore
 
-/// ScreenThyme's replacement for Apple's Screen Time settings for one kid (PLAN.md §15): Downtime, App Limits,
-/// Always Allowed, blocked apps and Content & Privacy. Edits a draft; Save asks whether it's for good or for some days
-/// (PLAN.md §15.10), then sends it to the kid's phone.
+/// ScreenThyme's replacement for Apple's Screen Time settings for one kid (PLAN.md §15): the ruleset in effect and a
+/// switch (§15.15), each ruleset's Downtime, App Limits and blocked apps, then Always Allowed and Content & Privacy
+/// for all of them. Edits a draft; Save asks whether it's for good or for some days (PLAN.md §15.10), then sends it to
+/// the kid's phone.
 struct PolicyView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
@@ -12,11 +13,17 @@ struct PolicyView: View {
     @State private var editingLimit: AppLimit?
     @State private var editingGroup: ItemGroup?
     @State private var saving = false
+    @State private var choosingRuleSet = false
+    /// The ruleset whose Downtime, limits and Blocked are shown; nil for the one in effect today.
+    @State private var shownRuleSet: UUID?
 
     var body: some View {
-        let stored = model.data.policy(for: kid.id)
+        // A kid with no policy yet starts with the default rulesets.
+        let stored = model.data.policy(for: kid.id).withDefaultRuleSets()
         let policy = draft ?? stored
         let items = model.data.items(for: kid.id)
+        let dirty = draft != nil && draft != stored
+        let rules = shownRuleSet.flatMap(policy.ruleSet) ?? policy.ruleSet(on: Date()) ?? policy.ruleSets[0]
         Form {
             RebuildingNotice()
             Section {
@@ -24,6 +31,8 @@ struct PolicyView: View {
             } footer: {
                 Text("ScreenThyme blocks apps itself because it holds \(kid.displayName)'s usage data, which Apple's Screen Time then can't use. Don't set up Screen Time for \(kid.displayName) in Settings: it would take the data back.")
             }
+            RuleSetInEffectSection(kid: kid, policy: stored, dirty: dirty, editing: binding(policy, \.self),
+                                   choosing: $choosingRuleSet)
             let reverts = stored.reverts(through: .distantFuture).filter { !$0.edits.isEmpty }
             if !reverts.isEmpty {
                 Section {
@@ -42,8 +51,18 @@ struct PolicyView: View {
                     Text("Each changes back by itself at midnight, on \(kid.displayName)'s phone too. What's changed again before then stays.")
                 }
             }
-            Section("Downtime") {
-                ForEach(policy.downtime) { window in
+            Section {
+                Picker("Rules of", selection: Binding(get: { rules.id }, set: { shownRuleSet = $0 })) {
+                    ForEach(policy.ruleSets) { Text($0.name).tag($0.id) }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Rules of")
+            } footer: {
+                Text("Downtime, App Limits and Blocked below are for \(rules.name) (\(rules.days()))" + (rules.id == stored.ruleSet(on: Date())?.id ? ", in effect today." : "."))
+            }
+            Section("Downtime · \(rules.name)") {
+                ForEach(rules.downtime) { window in
                     Button { editingWindow = window } label: {
                         LabeledContent {
                             Text(window.schedule())
@@ -52,7 +71,11 @@ struct PolicyView: View {
                             if !window.isWholePhone { Text(Self.names(window.items, items: items, groups: policy.groups)) }
                         }
                     }
-                    .swipeActions { Button("Delete", role: .destructive) { update(policy) { $0.downtime.removeAll { $0.id == window.id } } } }
+                    .swipeActions {
+                        Button("Delete", role: .destructive) {
+                            update(policy) { $0.editRuleSet(rules.id) { $0.downtime.removeAll { $0.id == window.id } } }
+                        }
+                    }
                 }
                 Button("Add Downtime") {
                     editingWindow = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60 + 30, endMinute: 7 * 60)
@@ -60,7 +83,7 @@ struct PolicyView: View {
             }
             Section {
                 let today = model.data.grants.values.filter { $0.kidID == kid.id && Calendar.current.isDateInToday($0.at) }
-                ForEach(policy.limits) { limit in
+                ForEach(rules.limits) { limit in
                     Button { editingLimit = limit } label: {
                         LabeledContent {
                             Text(limit.enabled ? Format.minutes(limit.minutes) + " a day" : "Off")
@@ -79,13 +102,31 @@ struct PolicyView: View {
                             }
                         }
                     }
-                    .swipeActions { Button("Delete", role: .destructive) { update(policy) { $0.limits.removeAll { $0.id == limit.id } } } }
+                    .swipeActions {
+                        Button("Delete", role: .destructive) {
+                            update(policy) { $0.editRuleSet(rules.id) { $0.limits.removeAll { $0.id == limit.id } } }
+                        }
+                    }
                 }
                 Button("Add limit") { editingLimit = AppLimit(name: "", items: [], minutes: 60) }
             } header: {
-                Text("App Limits")
+                Text("App Limits · \(rules.name)")
             } footer: {
                 Text("Always Allowed apps, ScreenThyme and Phone don't count toward limits. Extra time is what a parent gave today, when \(kid.displayName) asked for more; time asked from one app is for that app only.")
+            }
+            Section {
+                NavigationLink {
+                    SelectedItemsView(title: "Blocked", items: items, footer: "These never open while \u{201C}\(rules.name)\u{201D} is in effect.",
+                                      groups: policy.groups, selection: Binding(get: { rules.blocked }, set: { blocked in
+                                          update(draft ?? policy) { $0.editRuleSet(rules.id) { $0.blocked = blocked } }
+                                      }))
+                } label: {
+                    LabeledContent("Blocked", value: "\(rules.blocked.count)")
+                }
+            } header: {
+                Text("Blocked · \(rules.name)")
+            } footer: {
+                Text("Blocked apps never open. Always Allowed apps, below, are allowed in every ruleset.")
             }
             Section {
                 let breaks = Binding(get: { policy.breaks ?? BreakRule(enabled: false) },
@@ -108,11 +149,11 @@ struct PolicyView: View {
                     LabeledContent("Categories", value: categories > 0 ? "\(categories)" : "")
                 }
                 // The categories screen saves moves itself: a draft saved after them would undo them.
-                .disabled(draft != nil && draft != stored)
+                .disabled(dirty)
             } header: {
                 Text("Categories")
             } footer: {
-                Text("Apple's categories, as you sort them: move an app or website to another category, and Downtime, limits, Always Allowed and Blocked treat it as that category's." + (draft != nil && draft != stored ? " Save or revert your changes first." : ""))
+                Text("Apple's categories, as you sort them: move an app or website to another category, and Downtime, limits, Always Allowed and Blocked treat it as that category's." + (dirty ? " Save or revert your changes first." : ""))
             }
             Section {
                 ForEach(policy.groups.filter { !$0.isCategory }) { group in
@@ -144,14 +185,10 @@ struct PolicyView: View {
                     LabeledContent("Uncounted", value: "\(policy.uncounted.count)")
                 }
                 .disabled(policy.alwaysAllowed.isEmpty)
-                NavigationLink {
-                    SelectedItemsView(title: "Blocked", items: items, footer: "These never open.",
-                                      groups: policy.groups, selection: binding(policy, \.blocked))
-                } label: {
-                    LabeledContent("Blocked", value: "\(policy.blocked.count)")
-                }
+            } header: {
+                Text("Every ruleset")
             } footer: {
-                Text("Always Allowed apps work during Downtime and don't count toward limits. Uncounted ones, chosen from those, don't count toward the day's total either. Blocked apps never open. ScreenThyme and Phone are always allowed.")
+                Text("Always Allowed apps work during Downtime and don't count toward limits, in every ruleset. Uncounted ones, chosen from those, don't count toward the day's total either. ScreenThyme and Phone are always allowed.")
             }
             Section {
                 NavigationLink("Content & Privacy") { RestrictionsView(restrictions: binding(policy, \.restrictions)) }
@@ -186,24 +223,33 @@ struct PolicyView: View {
                 }
             }
         }
+        .sheet(isPresented: $choosingRuleSet) {
+            ChooseRuleSetSheet(kidName: kid.displayName, policy: stored) { id, days in
+                Task { await model.chooseRuleSet(id, days: days, kid: kid) }
+            }
+        }
         .sheet(item: $editingWindow) { window in
             DowntimeEditor(window: window, items: items, groups: policy.groups) { saved in
-                update(policy) { policy in
-                    if let index = policy.downtime.firstIndex(where: { $0.id == saved.id }) {
-                        policy.downtime[index] = saved
-                    } else {
-                        policy.downtime.append(saved)
+                update(draft ?? policy) { policy in
+                    policy.editRuleSet(rules.id) { set in
+                        if let index = set.downtime.firstIndex(where: { $0.id == saved.id }) {
+                            set.downtime[index] = saved
+                        } else {
+                            set.downtime.append(saved)
+                        }
                     }
                 }
             }
         }
         .sheet(item: $editingLimit) { limit in
             LimitEditor(limit: limit, items: items, groups: policy.groups) { saved in
-                update(policy) { policy in
-                    if let index = policy.limits.firstIndex(where: { $0.id == saved.id }) {
-                        policy.limits[index] = saved
-                    } else {
-                        policy.limits.append(saved)
+                update(draft ?? policy) { policy in
+                    policy.editRuleSet(rules.id) { set in
+                        if let index = set.limits.firstIndex(where: { $0.id == saved.id }) {
+                            set.limits[index] = saved
+                        } else {
+                            set.limits.append(saved)
+                        }
                     }
                 }
             }
@@ -229,13 +275,18 @@ struct PolicyView: View {
         return "\(names[0]), \(names[1]) and \(names.count - 2) more"
     }
 
-    /// What uses group `id`: Downtime windows, limits, Always Allowed, Uncounted and Blocked.
+    /// What uses group `id`: each ruleset's Downtime windows, limits and Blocked, Always Allowed and Uncounted.
     static func uses(of id: UUID, in policy: Policy) -> [String] {
-        policy.downtime.filter { $0.items.contains(id) }.map { "Downtime \u{201C}\($0.name)\u{201D}" }
-            + policy.limits.filter { !$0.allApps && $0.items.contains(id) }.map { "Limit \u{201C}\($0.name)\u{201D}" }
+        let sets = policy.ruleSets.isEmpty
+            ? [PolicyRuleSet(name: "", downtime: policy.downtime, limits: policy.limits, blocked: policy.blocked)] : policy.ruleSets
+        return sets.flatMap { set in
+            let of = sets.count > 1 ? " (\(set.name))" : ""
+            return set.downtime.filter { $0.items.contains(id) }.map { "Downtime \u{201C}\($0.name)\u{201D}\(of)" }
+                + set.limits.filter { !$0.allApps && $0.items.contains(id) }.map { "Limit \u{201C}\($0.name)\u{201D}\(of)" }
+                + (set.blocked.contains(id) ? ["Blocked\(of)"] : [])
+        }
             + (policy.alwaysAllowed.contains(id) ? ["Always Allowed"] : [])
             + (policy.uncounted.contains(id) ? ["Uncounted"] : [])
-            + (policy.blocked.contains(id) ? ["Blocked"] : [])
     }
 
     private func update(_ policy: Policy, _ change: (inout Policy) -> Void) {

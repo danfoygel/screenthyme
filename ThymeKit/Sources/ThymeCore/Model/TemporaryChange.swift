@@ -8,14 +8,15 @@ public struct TemporaryChange: Codable, Sendable, Hashable, Identifiable {
     /// The `PolicyChange` that made it.
     public var id: UUID
     public var until: Date
-    /// Both without temporary changes of their own.
+    /// Both without temporary changes of their own. With rulesets after, `before` has them too: changing back must not
+    /// take them away.
     public var before: Policy
     public var after: Policy
 
     public init(id: UUID, until: Date, before: Policy, after: Policy) {
         self.id = id
         self.until = until
-        self.before = before
+        self.before = after.ruleSets.isEmpty ? before : before.withDefaultRuleSets()
         self.after = after
         self.before.temporary = []
         self.after.temporary = []
@@ -37,10 +38,11 @@ public struct PolicyRevertStep: Sendable, Hashable {
 }
 
 extension Policy {
-    /// The policy in force at `date`: the temporary changes that ended by then changed back, and dropped.
-    public func current(at date: Date) -> Policy {
-        guard temporary.contains(where: { $0.until <= date }) else { return self }
-        return reverts(through: date).last!.after
+    /// The policy in force at `date`: the temporary changes that ended by then changed back, and dropped, with the
+    /// Downtime, limits and Blocked of the ruleset in effect then (`applyingRuleSet`).
+    public func current(at date: Date, calendar: Calendar = .current) -> Policy {
+        let reverted = temporary.contains(where: { $0.until <= date }) ? reverts(through: date).last!.after : self
+        return reverted.applyingRuleSet(at: date, calendar: calendar)
     }
 
     /// Each temporary change that ends by `date`, in the order they change back: earliest end first, and of those
@@ -69,20 +71,15 @@ extension Policy {
         let (old, new) = (change.before, change.after)
         var policy = self
         revertValue(&policy, \.enabled, old, new)
-        policy.downtime = revertElements(downtime, old.downtime, new.downtime) { window, old, new in
-            revertValue(&window, \.name, old, new)
-            revertValue(&window, \.startMinute, old, new)
-            revertValue(&window, \.endMinute, old, new)
-            revertValue(&window, \.weekdays, old, new)
-            revertSet(&window.items, old.items, new.items)
-        }
-        policy.limits = revertElements(limits, old.limits, new.limits) { limit, old, new in
-            revertValue(&limit, \.name, old, new)
-            revertValue(&limit, \.allApps, old, new)
-            revertValue(&limit, \.minutes, old, new)
-            revertValue(&limit, \.weekdayMinutes, old, new)
-            revertValue(&limit, \.enabled, old, new)
-            revertSet(&limit.items, old.items, new.items)
+        policy.downtime = revertElements(downtime, old.downtime, new.downtime, fields: revertWindow)
+        policy.limits = revertElements(limits, old.limits, new.limits, fields: revertLimit)
+        revertSet(&policy.blocked, old.blocked, new.blocked)
+        policy.ruleSets = revertElements(ruleSets, old.ruleSets, new.ruleSets) { set, old, new in
+            revertValue(&set, \.name, old, new)
+            revertValue(&set, \.weekdays, old, new)
+            set.downtime = revertElements(set.downtime, old.downtime, new.downtime, fields: revertWindow)
+            set.limits = revertElements(set.limits, old.limits, new.limits, fields: revertLimit)
+            revertSet(&set.blocked, old.blocked, new.blocked)
         }
         policy.groups = revertElements(groups, old.groups, new.groups) { group, old, new in
             revertValue(&group, \.name, old, new)
@@ -93,7 +90,6 @@ extension Policy {
         // What Always Allowed no longer holds can't come back as Uncounted.
         revertSet(&policy.uncounted, old.uncounted, new.uncounted)
         policy.uncounted.formIntersection(policy.alwaysAllowed)
-        revertSet(&policy.blocked, old.blocked, new.blocked)
         revertValue(&policy, \.breaks, old, new)
         for field in Restrictions.fields { field(&policy.restrictions, old.restrictions, new.restrictions) }
         return policy
@@ -116,6 +112,23 @@ extension Restrictions {
             field(\.denySafariAutoFill),
         ]
     }
+}
+
+private func revertWindow(_ window: inout DowntimeWindow, _ old: DowntimeWindow, _ new: DowntimeWindow) {
+    revertValue(&window, \.name, old, new)
+    revertValue(&window, \.startMinute, old, new)
+    revertValue(&window, \.endMinute, old, new)
+    revertValue(&window, \.weekdays, old, new)
+    revertSet(&window.items, old.items, new.items)
+}
+
+private func revertLimit(_ limit: inout AppLimit, _ old: AppLimit, _ new: AppLimit) {
+    revertValue(&limit, \.name, old, new)
+    revertValue(&limit, \.allApps, old, new)
+    revertValue(&limit, \.minutes, old, new)
+    revertValue(&limit, \.weekdayMinutes, old, new)
+    revertValue(&limit, \.enabled, old, new)
+    revertSet(&limit.items, old.items, new.items)
 }
 
 private func revertValue<T, V: Equatable>(_ value: inout T, _ keyPath: WritableKeyPath<T, V>, _ old: T, _ new: T) {

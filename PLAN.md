@@ -155,7 +155,7 @@ Apple's Screen Time.
 | `PickupReport` | `kidID`, `day`, `updatedAt`, per hour: pickups without an app, first pickup, and each app's pickups and notifications; one per kid per day, overwritten (§13) |
 | `Alert` | `kidID`, `ruleID?`, `itemID?`, `at`, `title`, `body` |
 | `Rule`, `RuleSet` | a rule's `condition` (§4.6) and `enabled`; `RuleSet.<kid>` holds all of a kid's rules |
-| `Policy` | one per kid: Downtime, limits, Always Allowed, Uncounted, Blocked, restrictions, groups, temporary changes (§15.1) |
+| `Policy` | one per kid: rulesets (Downtime, limits, Blocked) and the one chosen, Always Allowed, Uncounted, restrictions, groups, temporary changes (§15.1, §15.15) |
 | `PolicyChange` | the kid, time, parent's name, the policy before and after, `until?` (§15.7, §15.10) |
 | `TimeRequest`, `TimeGrant` | a request for more time or to always allow (item, reason, minutes, note) and its answer (`TimeGrant.<request id>`) |
 | `ExtraMinuteUse` | one more minute taken on the kid's phone (§15.5) |
@@ -209,19 +209,15 @@ test rule of each kind with the `-addTestRules <kid name>` launch argument (CLAU
 
 ### 4.8 Parent UI (tabs: Kids, Alerts, Places, Settings)
 
-- **Kids:** a card per kid with live status ("In use · probably YouTube", or "Idle · last active 8:42pm"), today's
-  total, top apps, a health dot, battery, and counts of new apps to match and apps not in the scan.
+- **Kids:** a card per kid with live status ("In use · probably YouTube", or "Idle · last active 8:42pm"), the
+  ruleset in effect (§15.15), today's total, top apps, a health dot, battery, and counts of new apps to match and apps
+  not in the scan.
 - **A kid's day:** the timeline (the in-use strip, then one lane per app or website, with pinch to zoom and long blank
-<<<<<<< HEAD
-  stretches cut) or the same day as a calendar with concurrent apps side by side; apps and websites with their
-  minutes; Where (§19); Time by category; pickups and notifications (by app and by hour); a usage heatmap; links to
-  the change history and matching with the camera.
-=======
   stretches cut) or the same day as a calendar with concurrent apps side by side, and the day's events marked at their
   moment (`DayEvents`: limits used up, which the kid's phone notes as `LimitReached` records when its plan newly
   shields one; one more minute; requests for more time, their answers and early ends; alerts); apps and websites with their
-  minutes; Where (§19); Time by category; a usage heatmap; links to the change history and matching with the camera.
->>>>>>> origin/main
+  minutes; Where (§19); Time by category; pickups and notifications (by app and by hour); a usage heatmap; links to
+  the change history and matching with the camera.
 - **An app's details** (§15.9).
 - **Alerts:** every alert, with requests for more time answered in place.
 - **Places:** §19.
@@ -286,7 +282,7 @@ entitlements, one bundle ID family, simpler provisioning. The layout is in CLAUD
 **Built and working on the family's phones:** capture with data access and the one-minute wake alarm; reconstruction,
 timeline, calendar, categories and heatmaps; CloudKit family sharing and the parents' mirror; alerts with visible
 pushes on the owner's phone; heartbeats, pings and health alerts; enforcement (Downtime, limits, Always Allowed,
-Blocked, restrictions, groups, temporary changes, change history); the app scan and token pairing by screenshot and
+Blocked, restrictions, groups, temporary changes, rulesets, change history); the app scan and token pairing by screenshot and
 camera; ask for more time and ask to always allow; app details; the nearby link over Wi-Fi and Bluetooth; bug reports
 with "fixed" pushes; family places and use by location; energy and battery reports; single-phone test mode, the
 replay tool and the screen map.
@@ -303,6 +299,8 @@ replay tool and the screen map.
 - Places (§19): whether a child account can grant Always location, iOS's "keep allowing Always?" prompts, and
   `locationd`'s battery cost (Settings › Battery).
 - Website matching in token pairing when a page's embedded frames count toward other domains.
+- Rulesets (§15.15): the kid's phone changing ruleset at midnight with no use (the midnight restart), and a switch
+  reaching it at its next wake.
 - Self-approval and End now (§15.11, §15.12): the alert's push, the kid's phone picking up an end at its next wake,
   and an ended limit grant shielding again.
 
@@ -445,6 +443,7 @@ the data back (§16). So ScreenThyme rebuilds the limits. Nothing usage-based st
 | App limits | name, items (apps, websites, categories, groups) or **all apps**, minutes per day, optional per-weekday minutes |
 | Blocked | items never allowed |
 | Groups | the parents' own categories (§15.8) |
+| Rulesets | Downtime windows, App limits and Blocked come in rulesets, one in effect each day (§15.15) |
 | Restrictions | App Store (install, delete, in-app purchases, password, max rating), media (explicit, movie/TV ratings, books, Apple Music), web filter (unrestricted / limit adult with allow and block lists / allowed sites only), Siri, Game Center (multiplayer, friends), account and passcode locks, cellular locks, automatic date and time |
 | Temporary changes | §15.10 |
 
@@ -743,6 +742,42 @@ A parent can make the kid take breaks (`Policy.breaks`, a `BreakRule`; the polic
   an app gets none: the wakes end it from our own count, up to a minute late (`EnforcementPlanner.eventMiscounts`).
 - A kid's phone on an older build sees the groups as plain groups of Apple's categories: what it enforced before,
   without the moves.
+
+### 15.15 Rulesets
+
+Downtime, limits and Blocked differ by day (school days, weekends, a trip); the rest doesn't. So a kid's policy holds
+rulesets (`Policy.ruleSets`, `PolicyRuleSet`): a name, weekdays, and its own Downtime windows, limits and Blocked.
+Groups, custom categories, Always Allowed, Uncounted, breaks and Content & Privacy are the policy's, the same in every
+ruleset.
+- **Which is in effect:** exactly one each day (`Policy.ruleSet(on:)`): the one a parent chose for that day
+  (`ruleSetChoice`), else the one whose weekdays hold it, else the first. A weekday is in one ruleset at most (saving
+  one's days takes them from the others); one with no days is in effect only when chosen.
+- **Defaults:** Weekday (Monday to Friday), Weekend (Saturday, Sunday) and Travel (only when chosen), each a copy of
+  the Downtime, limits and Blocked the policy had, so nothing changes until a parent edits one
+  (`Policy.withDefaultRuleSets`). Weekday keeps the windows' and limits' ids; the others' copies get stable ids of
+  their own. Ruleset ids are stable (kid + name), so parents' phones agree; a parent's phone sets them up at launch for
+  kids with a policy, and a kid's first policy starts with them. Pending temporary changes get them too.
+- **Choosing one:** Screen Time › Switch ruleset… picks one for today only or 1–30 days counting today, or goes back
+  to each day's own; it saves at once (a `RuleSetChoice`: the ruleset, the midnights it starts and ends, who), with a
+  change history entry. The kid's phone goes back by itself at the end, offline too. It's disabled while the screen
+  has unsaved edits, which would undo it.
+- **Enforcing:** `Policy.current(at:)` (the kid's `AppGroup.loadPolicy`, parents' `FamilyData.policy(for:)`) sets the
+  policy's own Downtime, limits and Blocked to the ruleset in effect's, so the planner, Enforcer, block page, details
+  and screens are unchanged. Limits and Blocked are today's ruleset's. A Downtime window that started yesterday is
+  yesterday's ruleset's (Friday's bedtime runs into Saturday morning by Weekday's), one that starts today today's: on a
+  day the ruleset changes, each window is kept to the one weekday it starts. The midnight restart reconciles, as for
+  temporary changes. A choice is kept a day past its end, for the Downtime that began on its last day.
+- **Older builds:** saves (`Policy.saving(at:)`) keep the ruleset in effect's rules, as they are, in the policy's own
+  fields, so a kid's phone on a build from before rulesets enforces the ruleset in effect at the last save, every day.
+- **Editing:** Screen Time shows the ruleset in effect prominently (and the kid's card on Home, and the kid's Screen
+  Time section); Rules of switches which ruleset's Downtime, App Limits and Blocked the screen shows; Rulesets edits
+  names and weekdays, adds one (empty or a copy, with new ids) and deletes one (not the last). These are draft edits,
+  saved with Save, permanent or temporary like any other.
+- **History:** a ruleset's edits are named with it ("Weekend: Changed Blocked"); setting up, adding, removing,
+  renaming, its days and choices have entries of their own. With rulesets, the policy's own Downtime, limits and
+  Blocked are only the ruleset in effect's and aren't compared. Temporary changes change rulesets back field by field.
+- Grants and limit fires go by window and limit id, so a ruleset change mid-day starts the new ruleset's limits from
+  its own budgets (the use still counts) and a grant for the old ruleset's window doesn't carry over.
 
 ## 16. Losing data access, and iOS's count restarting
 
