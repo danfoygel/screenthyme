@@ -279,6 +279,7 @@ struct TokenPairingTests {
         #expect(BuiltInApps.isSystemProcess("com.apple.printcenter"))
         #expect(BuiltInApps.isSystemProcess("com.apple.ServicesPaymentAngel"))
         #expect(BuiltInApps.isSystemProcess("com.apple.CoreServicesUIAgent"))
+        #expect(BuiltInApps.isSystemProcess("com.apple.SOSBuddy"))
         #expect(BuiltInApps.isSystemProcess("com.apple.ContactsUI.LimitedAccessPromptView"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.findmy"))
         #expect(!BuiltInApps.isSystemProcess("com.apple.Preview"))

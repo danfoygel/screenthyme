@@ -49,13 +49,13 @@ public enum BuiltInApps {
 
     /// iOS's own processes that turn up in Apple's usage data, such as the screenshot editor
     /// (com.apple.ScreenshotServicesService), the call screen, the Face ID prompt, the print dialog
-    /// (com.apple.printcenter), Apple Pay's sheet (com.apple.ServicesPaymentAngel) and permission prompts
-    /// (com.apple.ContactsUI.LimitedAccessPromptView): no app scan lists them.
+    /// (com.apple.printcenter), Apple Pay's sheet (com.apple.ServicesPaymentAngel), Emergency SOS
+    /// (com.apple.SOSBuddy) and permission prompts (com.apple.ContactsUI.LimitedAccessPromptView): no app scan lists them.
     public static func isSystemProcess(_ bundleID: String) -> Bool {
         guard bundleID.hasPrefix("com.apple."), names[bundleID] == nil else { return false }
         let parts = bundleID.dropFirst("com.apple.".count).split(separator: ".").map { $0.lowercased() }
         guard let name = parts.last else { return false }
         return ["springboard", "printcenter"].contains(name)
-            || parts.contains { part in ["service", "services", "ui", "agent", "angel"].contains { part.hasSuffix($0) } }
+            || parts.contains { part in ["service", "services", "ui", "agent", "angel", "buddy"].contains { part.hasSuffix($0) } }
     }
 }

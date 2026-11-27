@@ -100,7 +100,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - **Data access** (`AuthorizationStatus.approvedWithDataAccess`, iOS 26.4) needs the
   `com.apple.developer.family-controls.app-and-website-usage` entitlement on the app *and* the monitor extension.
   `DeviceActivityData.activitySegments` is declared in the SwiftUI overlay, so import SwiftUI.
-  `FamilyActivityData.installedApplications` hangs.
+  `FamilyActivityData` can stop answering, for every caller, for 20+ minutes (`visitedWebDomains` most often, which
+  takes ~10 s even when well; apps too): never wait on it without a timeout, and never in launch (`InventoryRefresh`).
 - `AuthorizationCenter.shared.authorizationStatus` is unreliable in the extension: don't gate on it there.
 - Any new authorization grant stops all monitoring; `requestAuthorization` re-registers. It can also restart iOS's
   count of today's use lower: `LadderCalibration` finds the offset, and journaled fires are in our minutes.
@@ -125,11 +126,13 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   `intervalEnd`/`intervalStart` pair. The reconstruction treats the replays as one burst; avoid needless
   re-registration (`ensureMonitoring` is throttled).
 - After a kid's phone grants `.child` authorization, restart it, or no Screen Time data reaches apps.
-- **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses the app scan's items
-  (`AppScan`, `TrackedItem.isScanned`, PLAN.md §15.3). A shield list with more than 50 tokens shields nothing, and
+- **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses scanned items
+  (`TrackedItem.isScanned`, PLAN.md §15.3). The kid app makes and matches them from Apple's lists at launch and in
+  the background (`InventoryRefresh`, `FamilyInventory`: `FamilyActivityData` gives each app, website and category
+  its name and the picker's own token); the app scan (`AppScan`) and token pairing are the way back. A shield list with more than 50 tokens shields nothing, and
   50 apps (and 50 websites) one by one is the cap for all stores together: overflow stores don't add room
   (`ShieldBudget`).
-- Scanned tokens are matched to Apple's bundle IDs by a parent's camera or by screenshot (`TokenPairing`, PLAN.md §15.6): the report
+- Without Apple's lists, scanned tokens are matched to Apple's bundle IDs by a parent's camera or by screenshot (`TokenPairing`, PLAN.md §15.6): the report
   extension's tokens use another key than the scan's and never compare equal, but a report filtered by scanned tokens
   honors them, so one filtered report per bit of each item's number draws a QR code (our own `QRCode`: Core Image
   draws nothing in that extension) that the kid app reads back. Categories pair in reports of their own, by name.

@@ -117,9 +117,10 @@ struct TokenPairingView: View {
         var importedAt: Date
     }
 
-    static var stateURL: URL { AppGroup.container.appending(path: "token-pairing.json") }
+    /// Also written by `InventoryRefresh`, off the main actor.
+    nonisolated static var stateURL: URL { AppGroup.container.appending(path: "token-pairing.json") }
 
-    static func lastImport() -> Date? {
+    nonisolated static func lastImport() -> Date? {
         AppGroup.load(State.self, from: stateURL)?.importedAt
     }
 
