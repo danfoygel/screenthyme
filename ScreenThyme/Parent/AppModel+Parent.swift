@@ -214,17 +214,17 @@ extension AppModel {
         do { try await publishRuleSet(for: rule.kidID) } catch { show(error) }
     }
 
-    /// Apps used on the kid's phone lately that no scanned app is matched to (`TokenPairing.unmatched`), newest first: those
-    /// a match round may match, and those the app scan doesn't list. None before the phone's first match (its
-    /// latest heartbeat says when), which the kid's phone starts.
-    func unmatchedApps(for kid: Kid) -> TokenPairing.Unmatched {
-        guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return TokenPairing.Unmatched() }
+    /// Apps used on the kid's phone lately that no scanned app is matched to (`TokenMatching.unmatched`), newest first:
+    /// those the next import of Apple's lists may match, and those not installed. None before the phone's first import
+    /// (its latest heartbeat says when).
+    func unmatchedApps(for kid: Kid) -> TokenMatching.Unmatched {
+        guard let last = data.heartbeats[kid.id]?.lastTokenPairing else { return TokenMatching.Unmatched() }
         let today = DayKey(Date())
         let items = data.items(for: kid.id)
         // Not those whose use is Safari's on their website: they aren't installed, so no scan lists them.
-        let used = Set((0..<TokenPairing.days).flatMap { data.samples(kid: kid.id, day: today.adding(days: -$0)) }.map(\.itemID))
+        let used = Set((0..<TokenMatching.days).flatMap { data.samples(kid: kid.id, day: today.adding(days: -$0)) }.map(\.itemID))
             .subtracting(data.webMirrored(kid: kid.id, items: items, today: today))
-        var unmatched = TokenPairing.unmatched(Array(items.values), lastImport: last, used: used)
+        var unmatched = TokenMatching.unmatched(Array(items.values), lastImport: last, used: used)
         unmatched.toMatch.sort { $0.firstSeen > $1.firstSeen }
         unmatched.toScan.sort { $0.firstSeen > $1.firstSeen }
         return unmatched

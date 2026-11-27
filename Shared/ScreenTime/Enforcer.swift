@@ -372,7 +372,7 @@ enum Enforcer {
 
         /// Categories replaced by their known apps and websites (for "all except" lists, which take apps only). Apple's
         /// data has no tokens, so those come from the scanned items matched to them; a scanned category finds its apps
-        /// through its own match (`TokenPairing`). Unmatched apps can't be let through.
+        /// through its own match (`TokenMatching`). Unmatched apps can't be let through.
         func expandingCategories(_ ids: Set<UUID>) -> Set<UUID> {
             let categories = EnforcementPlanner.categoryNames(ids, items: items)
             guard !categories.isEmpty else { return ids }

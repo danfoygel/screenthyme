@@ -66,8 +66,6 @@ enum AppGroup {
     static var rulesURL: URL { container.appending(path: "rules.json") }
     /// What ScreenThyme enforces on this kid phone (`Policy`), written by the app and `KidSync`.
     static var policyURL: URL { container.appending(path: "policy.json") }
-    /// How the pairing reports draw their codes (`TokenPairing.Display`), written by the app before it shows them.
-    static var pairingDisplayURL: URL { container.appending(path: "token-pairing-display.json") }
     /// Today's limit fires and applied grants (`EnforcementDayState`), written by the `Enforcer`.
     static var enforcementStateURL: URL { container.appending(path: "enforcement-state.json") }
     /// The plan last applied (`AppliedPlan`), read by the block page to say why something is blocked.
@@ -84,9 +82,6 @@ enum AppGroup {
     static var webMirrorURL: URL { container.appending(path: "web-mirror.json") }
     /// Pickup reports waiting to go up (`PickupOutbox`), under the "pickups" lock.
     static var pickupsURL: URL { container.appending(path: "pickups.json") }
-    /// Which scanned items screenshot matching pairs (`TokenPairing.Mode`): the app sets it, the report extension draws by it.
-    static var tokenPairingModeURL: URL { container.appending(path: "token-pairing-mode.json") }
-    static func tokenPairingMode() -> TokenPairing.Mode { load(TokenPairing.Mode.self, from: tokenPairingModeURL) ?? .unmatched }
     /// The places the location test marked on this phone (`[Place]`), and what iOS said about where the phone is
     /// (PLAN.md §19): crossings of every fence and visits, uploaded for parents.
     static var placesURL: URL { container.appending(path: "Places/places.json") }

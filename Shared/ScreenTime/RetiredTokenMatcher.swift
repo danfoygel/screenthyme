@@ -16,6 +16,9 @@ enum RetiredTokenMatcher {
             center.stopMonitoring([activity])
             try? AppGroup.journal.append(.note("token match: retired, stopped tm"))
         }
-        try? FileManager.default.removeItem(at: AppGroup.container.appending(path: "token-match.json"))
+        // Matching by screenshot and by a parent's camera, retired too: Apple's lists match every app (`InventoryRefresh`).
+        for name in ["token-match.json", "token-pairing.json", "token-pairing-display.json", "token-pairing-mode.json"] {
+            try? FileManager.default.removeItem(at: AppGroup.container.appending(path: name))
+        }
     }
 }

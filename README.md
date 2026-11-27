@@ -99,8 +99,8 @@ all of history.
   the answers to requests. The `Enforcer` applies it to `ManagedSettings` stores (restrictions, Downtime, limits) and
   registers a `DeviceActivity` activity for each Downtime window and limit; every wake also reconciles.
 - **Shields need tokens, and Apple's usage data has only bundle IDs.** So a parent scans every installed app once
-  (`FamilyActivityPicker`), and the scanned tokens are matched to bundle IDs by screenshots or a parent's camera:
-  the report extension draws a QR code for each token, which the kid app reads back.
+  (`FamilyActivityPicker`), or Apple's lists of installed apps give them (iOS 26.4 data access), each with the
+  bundle ID it's matched to.
 - Shield extensions draw the block page and handle its buttons: "One more minute" runs the Enforcer itself, and "Ask
   for more time" opens ScreenThyme.
 
@@ -118,7 +118,7 @@ and alert when something's wrong.
 | `Shared/` | Compiled into the app and the monitor extension: App Group files, CloudKit records, the uploader, the wake alarm and the Enforcer. |
 | `ScreenThyme/` | The app: the kid and parent screens, sync, the nearby link, debug tools. |
 | `ThymeMonitor/` | `DeviceActivityMonitor` extension: the capture loop above. |
-| `ThymeReport/` | `DeviceActivityReport` extension: Apple's own numbers on the kid's phone, and the token-pairing QR codes. |
+| `ThymeReport/` | `DeviceActivityReport` extension: Apple's own numbers on the kid's phone. |
 | `ThymeShield/`, `ThymeShieldAction/` | The block page and its buttons. |
 | `ScreenTour/` | UI test that takes the screen map's screenshots in a Simulator. |
 | `Tools/ScreenMap/` | The [screen map](https://danfoygel.github.io/screenthyme/). |

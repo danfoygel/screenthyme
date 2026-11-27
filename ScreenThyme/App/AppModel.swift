@@ -17,13 +17,6 @@ final class AppModel {
     /// This phone's reports of problems, until filed on GitHub (PLAN.md §18).
     let bugReports = BugReportQueue()
     @ObservationIgnored var nearbyTicker: Task<Void, Never>?
-    /// Matching by a parent's camera (PLAN.md §15.6, `AppModel+Nearby`). Kid: what the pairing screen shows, and the
-    /// codes parents' phones read. Parent: each kid's pairing screen.
-    @ObservationIgnored var pairingShown: LinkPairing?
-    var pairingCodes: Set<String> = []
-    var pairingPeers: [UUID: PairingPeer] = [:]
-    /// Kid: a parent's phone nearby opened its camera to match apps, so the kid's home opens its side.
-    var cameraPairingRequested = false
     /// Parent controls (`AppModel+Nearby`). Kid: unlocked by a parent's phone nearby, in memory only, so they lock
     /// when the app leaves the foreground. Parent: each kid phone's, unlocked until then, as it last said.
     var parentUnlock: ParentUnlock?

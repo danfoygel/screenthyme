@@ -68,7 +68,7 @@ struct FamilyInventoryTests {
         #expect(outcome.tokens == 1)
     }
 
-    /// Sites and apps Apple's usage data hasn't shown on this phone get a bare item, as token pairing makes.
+    /// Sites and apps Apple's usage data hasn't shown on this phone get a bare item, as matching makes.
     @Test func unseenItemsAreCreated() {
         var items: [TrackedItem] = []
         let outcome = FamilyInventory.apply([entry("example.com", .domain, token: 2)], to: &items, kid: kid)

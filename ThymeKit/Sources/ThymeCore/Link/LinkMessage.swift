@@ -48,18 +48,13 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     public var ruleSets: [RuleSet] = []
     public var policies: [Policy] = []
     public var grants: [TimeGrant] = []
-    /// Matching by a parent's camera (PLAN.md §15.6), sent at once rather than every 15 s, and never filtered. Optional,
-    /// so a bundle from a build without it still opens.
-    public var pairing: [LinkPairing]?
     /// Optional, so a bundle from a build without it still opens.
     public var extraMinutes: [ExtraMinuteUse]?
     /// Optional, so a bundle from a build without it still opens.
     public var limitsReached: [LimitReached]?
-    /// Parent controls (`ParentUnlock`), like `pairing`. Optional, so a bundle from a build without it still opens.
+    /// Parent controls (`ParentUnlock`), sent at once rather than every 15 s, and never filtered. Optional, so a bundle
+    /// from a build without it still opens.
     public var unlock: [LinkUnlock]?
-    /// Screens to open on the kid's phone, like `pairing`. A field of its own, not a new `LinkPairing` case: a build
-    /// that can't decode a bundle closes the connection, and one without this field ignores it.
-    public var open: [LinkOpen]?
 
     public init() {}
 
@@ -67,8 +62,8 @@ public struct LinkBundle: Codable, Sendable, Hashable {
 
     public var count: Int {
         kids.count + items.count + epochs.count + fires.count + samples.count + heartbeats.count + alerts.count
-            + requests.count + ruleSets.count + policies.count + grants.count + (pairing?.count ?? 0)
-            + (extraMinutes?.count ?? 0) + (limitsReached?.count ?? 0) + (unlock?.count ?? 0) + (open?.count ?? 0)
+            + requests.count + ruleSets.count + policies.count + grants.count
+            + (extraMinutes?.count ?? 0) + (limitsReached?.count ?? 0) + (unlock?.count ?? 0)
     }
 
     /// Keeps only the records about one kid: a phone accepts nothing about other kids from a peer.
@@ -91,25 +86,6 @@ public struct LinkBundle: Codable, Sendable, Hashable {
     }
 }
 
-/// Matching scanned apps with a parent's camera (PLAN.md §15.6): the kid's phone shows one pairing report at a time,
-/// the parent's camera reads its codes, and the parent's phone sends them back, which moves the kid's phone on to the
-/// next report. The kid's phone pairs, as it does from screenshots.
-public enum LinkPairing: Codable, Sendable, Hashable {
-    /// Kid → parent: the pairing screen is open (or closed: `showing` nil) and shows that report, `done` of `total`
-    /// read.
-    case progress(showing: String?, done: Int, total: Int)
-    /// Parent → kid: the codes of every report the camera has read all of, as their texts.
-    case codes([String])
-    /// Kid → parent: what pairing found, for the parent's screen.
-    case result(String)
-}
-
-/// Parent → kid: open the kid phone's side of what the parent just started on theirs.
-public enum LinkOpen: Codable, Sendable, Hashable {
-    /// The parent opened the camera to match apps (PLAN.md §15.6): show the pairing reports.
-    case cameraPairing
-}
-
 /// What a connection already carried, so later bundles hold only new or changed records.
 public struct LinkSentFilter: Sendable {
     private var sent: [String: Int] = [:]
@@ -130,9 +106,7 @@ public struct LinkSentFilter: Sendable {
         out.ruleSets = filter(bundle.ruleSets, "RuleSet", id: \.kidID, content: { Set($0.rules) })
         out.policies = filter(bundle.policies, "Policy", id: \.kidID)
         out.grants = filter(bundle.grants, "TimeGrant", id: \.requestID)
-        out.pairing = bundle.pairing
         out.unlock = bundle.unlock
-        out.open = bundle.open
         out.extraMinutes = bundle.extraMinutes.map { filter($0, "ExtraMinuteUse", id: \.id) }
         out.limitsReached = bundle.limitsReached.map { filter($0, "LimitReached", id: \.id) }
         return out

@@ -70,7 +70,6 @@ extension AppModel {
         bundle.extraMinutes = AppGroup.extraMinuteUses.readAll().filter { recent($0.at) }
         bundle.limitsReached = AppGroup.limitsReached.readAll().filter { recent($0.at) }
         bundle.grants = AppGroup.selfGrants.readAll().filter { recent($0.at) }
-        bundle.pairing = pairingShown.map { [$0] }  // so a parent's phone that connects later knows
         bundle.unlock = [unlockState]
         return bundle
     }
@@ -87,13 +86,9 @@ extension AppModel {
     }
 
     private func receivedNearby(_ bundle: LinkBundle, from peer: LinkHello) {
-        for message in bundle.pairing ?? [] { receivedPairing(message, from: peer) }
         for message in bundle.unlock ?? [] { receivedUnlock(message, from: peer) }
-        for screen in bundle.open ?? [] { receivedOpen(screen, from: peer) }
         var bundle = bundle
-        bundle.pairing = nil
         bundle.unlock = nil
-        bundle.open = nil
         guard !bundle.isEmpty else { return }
         switch (config.role, peer.role) {
         case (.parent, .kid):
@@ -127,59 +122,9 @@ extension AppModel {
         }
     }
 
-    // MARK: - Matching by a parent's camera (PLAN.md §15.6)
-
-    /// Kid: what the pairing screen shows now (nil: it closed), to every parent's phone nearby.
-    func showPairing(_ progress: LinkPairing?) {
-        pairingShown = progress
-        nearby.send([progress ?? .progress(showing: nil, done: 0, total: 0)]) { $0.role == .parent }
-    }
-
-    /// Kid: what pairing found, to every parent's phone nearby.
-    func sendPairingResult(_ text: String) {
-        nearby.send([.result(text)]) { $0.role == .parent }
-    }
-
-    /// Parent: the camera is open for this kid, so their phone opens its side (if it's open already, nothing changes).
-    func startCameraPairing(on kid: UUID) {
-        nearby.send([LinkOpen.cameraPairing]) { $0.role == .kid && $0.kidID == kid }
-    }
-
-    /// Parent: the codes read so far, to that kid's phone.
-    func sendPairingCodes(_ texts: [String], to kid: UUID) {
-        nearby.send([.codes(texts)]) { $0.role == .kid && $0.kidID == kid }
-    }
-
-    private func receivedOpen(_ screen: LinkOpen, from peer: LinkHello) {
-        guard isKid, peer.role == .parent else { return }
-        switch screen {
-        case .cameraPairing:
-            // Showing already (`pairingShown`), or no data access: there are no reports to draw.
-            guard hasDataAccess, pairingShown == nil else { return }
-            cameraPairingRequested = true
-        }
-    }
-
-    private func receivedPairing(_ message: LinkPairing, from peer: LinkHello) {
-        switch (config.role, peer.role, message) {
-        case let (.kid, .parent, .codes(texts)):
-            pairingCodes.formUnion(texts)
-        case let (.parent, .kid, .progress(showing, done, total)):
-            guard let kid = peer.kidID else { return }
-            pairingPeers[kid, default: PairingPeer()].showing = showing
-            pairingPeers[kid, default: PairingPeer()].done = done
-            pairingPeers[kid, default: PairingPeer()].total = total
-        case let (.parent, .kid, .result(text)):
-            guard let kid = peer.kidID else { return }
-            pairingPeers[kid, default: PairingPeer()].result = text
-        default:
-            break
-        }
-    }
-
     // MARK: - Parent controls (`ParentUnlock`)
 
-    /// Kid: whether the scan, matching by screenshot, choosing ScreenThyme, starting monitoring and Debug are open now.
+    /// Kid: whether the scan, choosing ScreenThyme, starting monitoring and Debug are open now.
     var parentControlsOpen: Bool {
         ParentControls.areOpen(hasLinkKey: data.linkKey != nil, testMode: config.testMode, unlock: parentUnlock,
                                now: Date())
@@ -249,13 +194,4 @@ extension AppModel {
     private func publishedRuleSet(kid: UUID) -> RuleSet? {
         UserDefaults.standard.data(forKey: "publishedRuleSet.\(kid)").flatMap { try? JSONDecoder.thyme.decode(RuleSet.self, from: $0) }
     }
-}
-
-/// A kid's pairing screen, as a parent's phone hears of it.
-struct PairingPeer: Equatable {
-    /// The report it shows; nil once it has shown them all, or closed (`total` 0).
-    var showing: String?
-    var done = 0
-    var total = 0
-    var result: String?
 }

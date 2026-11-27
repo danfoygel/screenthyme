@@ -124,25 +124,11 @@ struct LinkTests {
         #expect(filter.unsent(bundle).count == 2)
     }
 
-    @Test func pairingMessagesGoThroughAndAreNeverFiltered() throws {
-        var (kid, parent) = try connect()
-        var bundle = LinkBundle()
-        bundle.pairing = [.progress(showing: "b3", done: 4, total: 11)]
-        #expect(!bundle.isEmpty)
-        #expect(try parent.receive(kid.send(bundle)) == [.bundle(bundle)])
-
-        var filter = LinkSentFilter()
-        bundle.pairing = [.codes(["STPAIR2 ffffffff p 1/1"]), .result("3 found")]
-        #expect(filter.unsent(bundle) == bundle)
-        #expect(filter.unsent(bundle) == bundle)
-        #expect(bundle.only(kid: testKid.id).pairing == bundle.pairing)
-    }
-
-    /// A bundle from a build without pairing still decodes.
-    @Test func bundlesWithoutPairingDecode() throws {
+    /// A bundle from an older build, with camera matching's fields, still decodes: they're ignored.
+    @Test func bundlesWithCameraMatchingDecode() throws {
         var json = try JSONSerialization.jsonObject(with: JSONEncoder.thyme.encode(grantBundle)) as! [String: Any]
-        #expect(json["pairing"] == nil)
-        json.removeValue(forKey: "pairing")
+        json["pairing"] = [["result": ["_0": "3 found"]]]
+        json["open"] = [["cameraPairing": [String: String]()]]
         let decoded = try JSONDecoder.thyme.decode(LinkBundle.self, from: JSONSerialization.data(withJSONObject: json))
         #expect(decoded == grantBundle)
     }
@@ -156,17 +142,5 @@ struct LinkTests {
         #expect(only.kids == [testKid])
         #expect(only.requests.isEmpty)
         #expect(only.grants == grantBundle.grants)
-    }
-
-    /// Opening the kid's camera matching travels on its own, every time it's sent, through a real session.
-    @Test func openingAScreenTravels() throws {
-        var (kid, parent) = try connect()
-        var bundle = LinkBundle()
-        bundle.open = [.cameraPairing]
-        #expect(!bundle.isEmpty)
-        var filter = LinkSentFilter()
-        #expect(filter.unsent(bundle).open == [.cameraPairing])
-        #expect(filter.unsent(bundle).open == [.cameraPairing])
-        #expect(try kid.receive(parent.send(bundle)) == [.bundle(bundle)])
     }
 }

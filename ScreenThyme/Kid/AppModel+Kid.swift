@@ -175,7 +175,7 @@ extension AppModel {
                          iCloud: DevicePermissions.iCloud,
                          location: DevicePermissions.location,
                          lowPowerMode: DevicePermissions.lowPowerMode,
-                         lastTokenPairing: TokenPairingView.lastImport(),
+                         lastTokenPairing: InventoryRefresh.load().appsAt,
                          lastParentUnlock: lastParentUnlock)
     }
 

@@ -69,7 +69,6 @@ extension ScreenHelp {
                 "More",
                 "**Day timeline**, **Time by category** and **Pickups and notifications** show the day other ways. "
                     + "**Change history** lists every change to this kid's Screen Time.",
-                "**Match new apps with camera** (orange) shows when your kid used apps that limits don't count yet.",
                 "**Not installed** lists apps Apple counted time for that aren't on the phone, usually because the "
                     + "time was on their website. Limit or block the website instead.",
                 "**Rules and health** opens this kid's Screen Time, phone health and alert rules."
@@ -160,8 +159,8 @@ extension ScreenHelp {
                     + "reported. **Ping now** asks it to check in at once, though the request may not get through.",
                 "Below that: the phone's battery, Screen Time access, the settings your kid could turn off, and "
                     + "the app version.",
-                "**Apps seen**, **Raw usage** and **Raw location** show what the phone sent in detail. **Match apps "
-                    + "with camera** and the matches lists show which apps limits can count."
+                "**Apps seen**, **Raw usage** and **Raw location** show what the phone sent in detail. The matches "
+                    + "lists show which apps limits can count."
             ),
             topic(
                 "Parent controls on your kid's phone",
@@ -261,13 +260,13 @@ extension ScreenHelp {
                 "What you see",
                 "**Matched**: each row shows what your kid's phone calls it, and below, the one in Apple's usage "
                     + "data it was matched to. A wrong match stands out this way.",
-                "**Not matched yet**: found on the phone but not matched, usually because it hasn't been used yet."
+                "**Not matched yet**: found on the phone but not matched yet."
             ),
             topic(
-                "Matching more",
-                "An app is matched once it has been used. In Settings, open the kid and tap **Match apps with "
-                    + "camera**, with your kid's phone on **Apps for Screen Time**, **Match with a parent's camera**.",
-                "Your kid's phone can also match by screenshot, from the same place."
+                "How matching works",
+                "Your kid's phone matches apps, websites and categories by itself, from Apple's list of what's "
+                    + "installed, when ScreenThyme opens there and in the background.",
+                "One that stays unmatched isn't on that list, usually because it was deleted."
             ),
         ]
     )
@@ -326,29 +325,6 @@ extension ScreenHelp {
                     + "**While moving**.",
                 "Visits come from iOS a few minutes after the phone arrives or leaves, sometimes later.",
                 "Your kid's phone needs to allow ScreenThyme location Always, with Precise Location."
-            ),
-        ]
-    )
-
-    static let matchAppsWithCamera = ScreenHelp(
-        "Match apps with camera",
-        summary: "Match the new apps your kid has used, so limits can count them, by reading codes off your kid's "
-            + "phone with this phone's camera.",
-        [
-            topic(
-                "How to match",
-                "Open ScreenThyme on your kid's phone, near this one, with Wi-Fi or Bluetooth on on both phones. "
-                    + "Matching then opens on your kid's phone by itself.",
-                "Hold this phone's camera over your kid's screen. It shows several screens of codes in turn "
-                    + "(**report 1 of** …); keep the camera on it until it's done.",
-                "This phone buzzes each time it has read a whole screen's codes, and your kid's phone moves on to "
-                    + "the next. The result shows here at the end."
-            ),
-            topic(
-                "Good to know",
-                "Under the status, **codes read** shows how far along the current screen is.",
-                "Keep ScreenThyme open on both phones the whole time.",
-                "If the camera doesn't show, allow ScreenThyme to use it in the iPhone's Settings app."
             ),
         ]
     )

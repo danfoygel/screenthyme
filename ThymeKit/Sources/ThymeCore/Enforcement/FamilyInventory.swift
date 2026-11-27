@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// The app scan and token pairing at once, with no picker and no screenshots (PLAN.md §15.3). Under data access,
+/// The app scan and token matching at once, with no picker (PLAN.md §15.3). Under data access,
 /// Apple lists every installed app, visited website and category with both its name and its token. Its tokens are
 /// byte for byte the picker's, so each becomes the scanned item a scan would make (the same id), matched to the item
 /// for its bundle ID, domain or category name.
@@ -24,7 +24,7 @@ public enum FamilyInventory {
     public struct Outcome: Sendable {
         /// Scanned items made, or given their token back (a scan had dropped it).
         public var tokens = 0
-        public var pairing = TokenPairing.Outcome()
+        public var pairing = TokenMatching.Outcome()
         /// Every item made or changed, to save and upload.
         public var changed: [TrackedItem] = []
 
@@ -38,7 +38,7 @@ public enum FamilyInventory {
         var outcome = Outcome()
         var indices = Dictionary(items.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { a, _ in a })
         var changed: Set<UUID> = []
-        var pairs: [TokenPairing.Pair] = []
+        var pairs: [TokenMatching.Pair] = []
         for entry in Set(entries) where !entry.identifier.isEmpty {
             let identifier = TrackedItem.scannedIdentifier(tokenData: entry.tokenData)
             let id = TrackedItem.id(kid: kid, kind: entry.kind, identifier: identifier)
@@ -55,9 +55,9 @@ public enum FamilyInventory {
                 changed.insert(id)
                 outcome.tokens += 1
             }
-            pairs.append(TokenPairing.Pair(scanned: id, kind: entry.kind, identifier: entry.identifier))
+            pairs.append(TokenMatching.Pair(scanned: id, kind: entry.kind, identifier: entry.identifier))
         }
-        outcome.pairing = TokenPairing.apply(pairs, to: &items, kid: kid, now: now)
+        outcome.pairing = TokenMatching.apply(pairs, to: &items, kid: kid, now: now)
         changed.formUnion(outcome.pairing.changed.map(\.id))
         outcome.changed = items.filter { changed.contains($0.id) }
         return outcome

@@ -150,13 +150,6 @@ struct KidSettingsView: View {
                 if model.tracksLocation(kid.id) {
                     NavigationLink("Raw location") { RawLocationView(kid: kid, day: DayKey(Date())) }
                 }
-                if model.data.items(for: kid.id).values.contains(where: \.isScanned) {
-                    NavigationLink { PairingScannerView(kid: kid) } label: {
-                        let count = model.unmatchedApps(for: kid).toMatch.count
-                        LabeledContent("Match apps with camera", value: count == 0 ? "" : "\(count) new")
-                            .foregroundStyle(count == 0 ? Color.primary : .orange)
-                    }
-                }
                 ForEach([ItemKind.app, .domain, .category], id: \.self) { kind in
                     let scanned = TokenMatchesView.scanned(kind, in: model.data.items(for: kid.id))
                     if !scanned.isEmpty {
@@ -182,7 +175,7 @@ struct KidSettingsView: View {
             } header: {
                 Text("Parent controls on \(kid.displayName)'s phone")
             } footer: {
-                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring and Debug. They lock again when ScreenThyme leaves the screen there.")
+                Text("Scanning apps, choosing ScreenThyme, starting monitoring and Debug. They lock again when ScreenThyme leaves the screen there.")
             }
             let energy = model.data.energyReports(for: kid.id)
             Section {

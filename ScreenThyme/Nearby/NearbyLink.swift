@@ -115,24 +115,10 @@ final class NearbyLink {
         bluetooth?.retry()
     }
 
-    /// Sends pairing messages now, on the connection that carries updates, to each phone `to` accepts.
-    func send(_ pairing: [LinkPairing], to accepts: (LinkHello) -> Bool) {
-        var bundle = LinkBundle()
-        bundle.pairing = pairing
-        send(bundle, to: accepts)
-    }
-
-    /// Sends parent-control messages now, like pairing ones.
+    /// Sends parent-control messages now, on the connection that carries updates, to each phone `to` accepts.
     func send(_ unlock: [LinkUnlock], to accepts: (LinkHello) -> Bool) {
         var bundle = LinkBundle()
         bundle.unlock = unlock
-        send(bundle, to: accepts)
-    }
-
-    /// Asks phones to open a screen, like pairing messages.
-    func send(_ open: [LinkOpen], to accepts: (LinkHello) -> Bool) {
-        var bundle = LinkBundle()
-        bundle.open = open
         send(bundle, to: accepts)
     }
 

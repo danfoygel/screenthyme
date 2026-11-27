@@ -41,12 +41,12 @@ Apple's limits.
 |---|---|
 | **Data access** (iOS 26.4: `approvedWithDataAccess`, `DeviceActivityData.activityData(...)`) gives exact per-app and per-website seconds by **bundle ID and domain**, hourly at finest, fresh to the second. Officially EU-only for customer installs, but it works with development builds on our US accounts, under `.child` too (§13). | This is the capture. Apple's data has no display names and no tokens. |
 | Only one app or service holds a phone's usage data. Granting ScreenThyme data access turns Apple's App & Website Activity off; configuring Screen Time for the kid in Settings takes it back (§15, §16). | ScreenThyme replaces Apple's limits; parents must not set Screen Time for the kid in Settings. |
-| The **DeviceActivityReport** extension is sandboxed: no network, no App Group writes, no export. It can read the App Group. | Used for on-phone display only: Apple's own numbers, and the QR codes that pair tokens (§15.6). |
+| The **DeviceActivityReport** extension is sandboxed: no network, no App Group writes, no export. It can read the App Group. | Used for on-phone display only: Apple's own numbers. |
 | The **DeviceActivityMonitor** extension gets threshold and interval callbacks, can write the App Group, make network requests if it blocks briefly, and has a ~6 MB memory limit and a few seconds per callback. | Our wake-up and capture loop (§4.1). It stays small: JSON files, no SwiftData. |
 | At most **20 monitored activities** per app. **Thousands of registered events crash Apple's `UsageTrackingAgent`** on smaller phones (§12). | One wake-alarm activity with 20 events; the rest of the budget is enforcement's. |
 | Every registration **replays today's already-passed thresholds**, counted from midnight, in random order, sometimes ~2/s, for up to ~8 minutes. A new authorization grant can restart iOS's count of today's use lower (§16). | The reconstruction treats replays as one burst; the wake alarm calibrates against iOS's count. |
 | Threshold delivery is unreliable on iOS 26+ (early, immediate or missed fires). | Fires are only wake-ups and "in use" hints; the minutes come from Apple's data. |
-| **Shields need tokens** (`ApplicationToken`, `WebDomainToken`, `ActivityCategoryToken`); tokens are opaque, can't be decoded, and Apple's usage data never includes them. A shield list with more than 50 tokens shields nothing, and 50 apps (and 50 websites) one by one is the cap for all of an app's stores together. | An app scan gives tokens, which are paired to bundle IDs (§15.3, §15.6); `ShieldBudget` keeps within 50. |
+| **Shields need tokens** (`ApplicationToken`, `WebDomainToken`, `ActivityCategoryToken`); tokens are opaque, can't be decoded, and Apple's usage data never includes them. A shield list with more than 50 tokens shields nothing, and 50 apps (and 50 websites) one by one is the cap for all of an app's stores together. | Apple's lists (or an app scan) give tokens, matched to bundle IDs (§15.3, §15.6); `ShieldBudget` keeps within 50. |
 | `Label(token)` renders a kid's tokens as names and icons on a parent's phone in the same family (in lists; menu-style `Picker`s draw them blank). | Scanned items show by `Label` until matched. |
 | Categories are **Apple's fixed list** (Social, Games, Entertainment, …); each app is in one. | Category limits and totals use them as-is; groups (§15.8) are the parents' own. |
 | **`.child` authorization** needs a parent's approval on the kid's phone; the kid then can't delete the app. No callback when it's revoked. After granting it, the phone needs a restart before any Screen Time data reaches apps. | Heartbeats detect tampering (§4.7). |
@@ -201,7 +201,7 @@ test rule of each kind with the `-addTestRules <kid name>` launch argument (CLAU
   **pings**: a parent's `Ping` reaches the kid app by silent push, and it answers with a heartbeat ("Ping now" under
   a kid's Health).
 - **Each heartbeat reports** authorization status, registered and expected activities, the upload backlog, app version,
-  last fire, battery, the last token pairing, and the Settings switches the kid can turn off and no app can lock:
+  last fire, battery, the last import of Apple's apps list, and the Settings switches the kid can turn off and no app can lock:
   Background App Refresh, cellular data, Local Network (as the nearby link last found it: no API says), Bluetooth,
   iCloud (signed in, on for ScreenThyme), Location (Always and precise, only while places are watched, §19) and Low
   Power Mode (`DevicePermission`, read by `DevicePermissions`). Debug → Permissions lists every permission with this
@@ -223,7 +223,7 @@ test rule of each kind with the `-addTestRules <kid name>` launch argument (CLAU
   moment (`DayEvents`: limits used up, which the kid's phone notes as `LimitReached` records when its plan newly
   shields one; one more minute; requests for more time, their answers and early ends; alerts); apps and websites with their
   minutes; Where (§19); Time by category; pickups and notifications (by app and by hour); a usage heatmap; links to
-  the change history and matching with the camera.
+  the change history.
 - **An app's details** (§15.9).
 - **Alerts:** every alert, with requests for more time answered in place.
 - **Places:** §19.
@@ -238,9 +238,9 @@ the kid sets (it lets one app through for a few minutes, once a day, so it isn't
 links to the kid's Apps (used in the last 30 days, each to its details), the day's timeline and Time by category
 (built from this phone's App Group as parents see it), the Screen Time section (limits, Always Allowed and Blocked,
 ask to always allow), and Report a problem. Setup is for a parent: Screen Time permission, joining the family, the
-app scan, and matching by screenshot or camera.
+and the app scan.
 
-**Parent controls** are locked once the phone has the family's link key (§17): the app scan, matching by screenshot,
+**Parent controls** are locked once the phone has the family's link key (§17): the app scan,
 choosing ScreenThyme, starting monitoring and Debug. Each of them let a kid get around enforcement: a "ScreenThyme"
 pick of other apps let them through every shield, Debug's Stop monitoring stopped every activity with no alert, a scan that left an app out unshielded it. A parent unlocks them from their own phone, nearby
 (Settings › Kids › the kid › Unlock), for 15 minutes (`ParentUnlock`, `LinkUnlock`); only a parent's phone sends it,
@@ -272,7 +272,7 @@ draws far more, so the alarm now wakes every minute of use.
 entitlements, one bundle ID family, simpler provisioning. The layout is in CLAUDE.md.
 
 - **Targets:** the app; `ThymeMonitor` (DeviceActivityMonitor: capture, rules, enforcement, upload); `ThymeReport`
-  (DeviceActivityReport, ExtensionKit: Apple's numbers and the pairing codes); `ThymeShield` (ShieldConfiguration:
+  (DeviceActivityReport, ExtensionKit: Apple's numbers); `ThymeShield` (ShieldConfiguration:
   the block page); `ThymeShieldAction` (ShieldAction: its buttons).
 - **ThymeKit** (`ThymeCore`) holds the logic with Swift Testing tests and no Screen Time or CloudKit imports; `Shared/`
   is compiled into the app and the monitor extension; the app targets are thin.
@@ -288,8 +288,8 @@ entitlements, one bundle ID family, simpler provisioning. The layout is in CLAUD
 **Built and working on the family's phones:** capture with data access and the one-minute wake alarm; reconstruction,
 timeline, calendar, categories and heatmaps; CloudKit family sharing and the parents' mirror; alerts with visible
 pushes on the owner's phone; heartbeats, pings and health alerts; enforcement (Downtime, limits, Always Allowed,
-Blocked, restrictions, groups, temporary changes, rulesets, change history); the app scan and token pairing by screenshot and
-camera; ask for more time and ask to always allow; app details; the nearby link over Wi-Fi and Bluetooth; bug reports
+Blocked, restrictions, groups, temporary changes, rulesets, change history); the app scan and matching from Apple's lists;
+ask for more time and ask to always allow; app details; the nearby link over Wi-Fi and Bluetooth; bug reports
 with "fixed" pushes; family places and use by location; energy and battery reports; single-phone test mode, the
 replay tool and the screen map.
 
@@ -304,7 +304,6 @@ replay tool and the screen map.
 - Nearby (§17): peer-to-peer Wi-Fi with no network joined, and an offline request → approval → the app unblocking.
 - Places (§19): whether a child account can grant Always location, iOS's "keep allowing Always?" prompts, and
   `locationd`'s battery cost (Settings › Battery).
-- Website matching in token pairing when a page's embedded frames count toward other domains.
 - Rulesets (§15.15): the kid's phone changing ruleset at midnight with no use (the midnight restart), and a switch
   reaching it at its next wake.
 - Self-approval and End now (§15.11, §15.12): the alert's push, the kid's phone picking up an end at its next wake,
@@ -325,7 +324,7 @@ replay tool and the screen map.
 ## 7. Testing
 
 - **Unit tests** (ThymeKit, `swift test` on the Mac): journal and outbox, ladder and calibration, reconstruction and
-  check-ins, rules, enforcement planning, shield budget, token pairing and QR codes, policy changes and temporary
+  check-ins, rules, enforcement planning, shield budget, token matching, policy changes and temporary
   changes, app details, the link protocol, places, bug reports, energy, replay and the rest of ThymeCore.
 - **Ground truth:** the kid phone's Debug screen shows Apple's report extension next to our numbers.
 - **Device tests:** the real kid phones are the only true test environment. The Simulator gets no DeviceActivity
@@ -512,13 +511,13 @@ approves the amount asked or changes it, saved as `TimeGrant.<request id>`.
 - **Apple's lists** (`InventoryRefresh`, logic in ThymeCore's `FamilyInventory`): under data access,
   `FamilyActivityData` lists every installed app, recently visited website and category with its name and its
   token, byte for byte the picker's (§13). At every launch and background refresh the kid's phone makes each one's
-  scanned item, the one a scan would make (the same id), and matches it (`TokenPairing.apply`), so new apps and
-  websites need no scan and no screenshots. It never drops a token. Apple's service behind the lists can stop
+  scanned item, the one a scan would make (the same id), and matches it (`TokenMatching.apply`), so new apps and
+  websites need no scan. It never drops a token. Apple's service behind the lists can stop
   answering for every caller for 20+ minutes (websites most often, apps too), and a call can't be cancelled: launch
   never waits on a refresh, each list is waited for 20 s (websites 60 s), and a list still waiting keeps another call
   to it from starting. Websites take about 10 s even when well, so they're listed at most hourly. It also saves ScreenThyme's own token when no scan picked
-  one, and counts as token pairing's last import. The journal notes each list ("inventory: …"); Debug shows when they
-  last ran. The scan below and token pairing (§15.6) stay as the way back.
+  one, and its apps list is the last import heartbeats report (§15.6). The journal notes each list ("inventory: …");
+  Debug shows when they last ran. The scan below stays as the way back.
 - On the kid's phone a parent selects All Apps & Categories once: a token for every installed app, website and
   category, each a `TrackedItem` with identifier `token:<hash>` and no name (`TrackedItem.isScanned`). A second pick
   of ScreenThyme alone gives its own token, which Downtime and limits always let through (`exempt-tokens.json`).
@@ -575,46 +574,22 @@ used, the button asks straight away. Never for Blocked apps.
 - No alert to parents. Each use is journaled and kept as an `ExtraMinuteUse` (App Group `Outbox/extra-minutes.jsonl`),
   uploaded and sent nearby, so an app's details show it on parents' phones.
 
-### 15.6 Matching scanned tokens to Apple's data (`TokenPairing`)
+### 15.6 Matching scanned tokens to Apple's data (`TokenMatching`)
 
-Apple's lists (§15.3) now match every scanned item by themselves; this is the way back without them.
-
-Tokens can't be decoded, and only the report and shield extensions see a token beside its bundle ID, without being
-able to export it. On a `.child` phone with data access the report extension's tokens are encrypted under another key
-than the scan's and never compare equal. But a report **filtered by the scan's tokens** shows exactly those apps, and
-several reports run on one screen, so iOS does the comparison:
-- Each scanned app and website gets a number (its place in `TokenPairing.order`, from 1). The app shows one report per
-  bit, filtered to the items with that bit set, plus a parity report (the extension declares `pair.p`, `pair.b0`…
-  `pair.b8`). Each draws QR codes of 6-hex hashes of the identifiers it saw over the last 7 days (one `.weekly`
-  segment; the window's end is fixed while the screen is open), named by a fingerprint of the order. An identifier's
-  number is the sum of its reports' bits. A names report (`pair.n`, filtered to every scanned item) spells out the
-  identifiers, so matches to apps the phone hasn't seen in Apple's data create a bare item; a failed parity check
-  (two scanned tokens for one app) is skipped.
-- **Categories** pair in reports of their own (`pair.cp`, `pair.c0`…`pair.c4`), since a report filtered by a
-  category shows every app in it; they spell out category names (`localizedDisplayName`). The scan's
-  "AllAppsAndCategories" token never matches and stays listed as unmatched.
-- **QR codes:** our own encoder (`QRCode`) and a `Canvas`, since Core Image draws nothing in the report extension.
-  Vision scales a whole screenshot down, so modules are 5 whole pixels (`TokenPairing.pixelsPerModule`) and a code holds
-  up to 1150 bytes (version 28). The app sizes each report from the scan (`TokenPairing.estimatedCodes`,
-  `estimatedLines`); the extension lays codes out in the grid that draws them largest.
-- **By screenshot** (kid's phone): the kid takes screenshots; the app reads them from the photo library with Vision.
-- **By a parent's camera** (`CameraPairingView` on the kid's phone, `PairingScannerView` on the parent's, under
-  Settings → the kid): the kid's phone shows one report at a time (`TokenPairing.Display`; at most 600 bytes a code,
-  cycling every 0.7 s), the parent's reads them with VisionKit's live scanner and sends each complete report's codes
-  over the nearby link (`LinkBundle.pairing`); the kid's phone moves to the next, tells parents its progress, and
-  sends the result. Needs both apps open and the link up. Opening the camera on the parent's phone opens the kid's
-  side too (`LinkBundle.open`, also sent when the kid's phone connects while the camera is open), unless it's showing
-  already; a field of its own, since a bundle an older build can't decode closes the connection.
-- **Modes** (`TokenPairing.Mode`, the default `unmatched`): numbers go only to scanned items with no match and the
-  reports leave out what's matched, so new apps take one screenshot; `all` checks every match again. The mode and
-  display are saved in the App Group (`token-pairing-mode.json`, `token-pairing-display.json`) before the reports
-  draw, since the extension can't be told any other way.
-- Only scanned items with a token count as matched (`TokenPairing.matchedIDs`); a tokenless item's match means its app
-  needs a match round (`TokenPairing.unmatched`). Apps nothing blocks (`BuiltInApps.unblockable`: Phone, Settings,
-  Compass, the Screen Time unlock screen) and apps that are websites (`WebMirror`) are left out of the unmatched list.
-- Kid heartbeats carry the last match's time (`Heartbeat.lastTokenPairing`), so parents' phones count the apps used
-  since that no scanned item matches (`TokenPairing.toMatch`, as the kid's home screen does) and link to the camera.
-- The retired minute-of-use matcher's `tm` activity is stopped at launch (`RetiredTokenMatcher`).
+Apple's lists (§15.3) give each installed app, visited website and category its token and its identifier at once, so
+each scanned item is matched to the item for its bundle ID, domain or category name (`TokenMatching.apply`). A scanned
+item matched elsewhere before loses that match.
+- Only scanned items with a token count as matched (`TokenMatching.matchedIDs`): a scan can re-issue every token, and
+  a tokenless item's match only says its app needs matching again, to the new token.
+- Kid heartbeats carry the last import of Apple's apps list (`Heartbeat.lastTokenPairing`, named for the matching it
+  replaced). Parents' phones list the apps used lately that no scanned item matches and that an import since didn't
+  match (`TokenMatching.unmatched`) as **Not installed**: Apple files a website's time under its App Store app too.
+  Apps nothing blocks (`BuiltInApps.unblockable`: Phone, Settings, Compass, the Screen Time unlock screen) and apps
+  that are websites (`WebMirror`) are left out.
+- Before Apple's lists, a kid's phone matched tokens itself: one report per bit of each scanned item's number,
+  filtered by the scan's tokens, drew QR codes of what it saw, read back from screenshots or by a parent's camera
+  over the nearby link. Apple's lists made that unneeded and it was removed, with the minute-of-use matcher before it
+  (`tm`, stopped at launch with the old files by `RetiredTokenMatcher`); both are in the git history.
 
 ### 15.7 Change history
 
@@ -847,11 +822,11 @@ phone.
 
 **Who talks:** kid phones listen; parent phones browse and dial (`ScreenThyme/Nearby/NearbyLink.swift`).
 - Kid → parent: kid, items, epoch, today's and yesterday's fires and samples, a fresh heartbeat (`source: .nearby`),
-  alerts, requests, extra-minute uses and pairing progress. Every 15 s the kid sends what changed (`LinkSentFilter`)
+  alerts, requests and extra-minute uses. Every 15 s the kid sends what changed (`LinkSentFilter`)
   and samples Apple's data every 60 s. The parent ingests it into its mirror and shows a banner for alerts under an
   hour old.
 - Parent → kid: the kid's policy (newer `updatedAt` wins), the last rule set this phone published (an older set from a
-  parent nearby can't replace a newer one from CloudKit), answers from the last two days, and pairing codes (§15.6).
+  parent nearby can't replace a newer one from CloudKit), and answers from the last two days.
 - Parent controls (§4.9): a parent's phone sends `.unlock` or `.lock` to one kid's phone at once; the kid's phone
   says whether they're unlocked (`.state`) in every bundle and whenever that changes.
 

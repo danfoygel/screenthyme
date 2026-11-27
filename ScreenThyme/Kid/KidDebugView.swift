@@ -72,7 +72,6 @@ struct KidDebugView: View {
                 NavigationLink("Data access test") { DataAccessView() }
                 NavigationLink("Family data spike") { FamilyDataSpikeView() }
                 NavigationLink("Apple's report for \(day.description)") { AppleReportView(day: day) }
-                NavigationLink("Match scanned apps by screenshot") { TokenPairingView() }
                 NavigationLink("Raw usage (\(input.samples.count) samples)") {
                     RawUsageView(items: items, samples: { day in AppGroup.samples.readAll().filter { $0.day == day } }, day: day)
                 }

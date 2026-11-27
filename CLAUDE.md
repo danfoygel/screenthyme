@@ -22,8 +22,8 @@ ThymeKit/            local Swift package, product ThymeCore: pure logic, no Appl
 Shared/              compiled into the app AND the monitor extension: App Group files, SharedConfig, CloudKit records, Uploader
 ScreenThyme/         app target: App/ (model, delegates), Sync/ (zone, share, fetch, local mirror), Nearby/ (local link), Kid/, Parent/, Components/, Debug/
 ThymeMonitor/        DeviceActivityMonitor extension: journal → sample (≤3 s) → rules → roll → ≤3 s upload. Keep it small (~6 MB limit)
-ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only; also the
-                     token-pairing QR codes (reads the App Group, can't write it)
+ThymeReport/         DeviceActivityReport extension (ExtensionKit): Apple's own numbers, kid phone only (reads the App
+                     Group, can't write it)
 ThymeShield/         ShieldConfiguration extension: the block page (reads the App Group; can't write it)
 ThymeShieldAction/   ShieldAction extension: "Ask for more time" notes what was blocked and opens ScreenThyme;
                      "One more minute" runs the Enforcer itself (PLAN.md §15.5)
@@ -129,21 +129,15 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - **Shields need tokens; Apple's usage data has only bundle IDs.** Enforcement uses scanned items
   (`TrackedItem.isScanned`, PLAN.md §15.3). The kid app makes and matches them from Apple's lists at launch and in
   the background (`InventoryRefresh`, `FamilyInventory`: `FamilyActivityData` gives each app, website and category
-  its name and the picker's own token); the app scan (`AppScan`) and token pairing are the way back. A shield list with more than 50 tokens shields nothing, and
+  its name and the picker's own token; `TokenMatching` matches them); the app scan (`AppScan`) is the way back. A shield list with more than 50 tokens shields nothing, and
   50 apps (and 50 websites) one by one is the cap for all stores together: overflow stores don't add room
   (`ShieldBudget`).
-- Without Apple's lists, scanned tokens are matched to Apple's bundle IDs by a parent's camera or by screenshot (`TokenPairing`, PLAN.md §15.6): the report
-  extension's tokens use another key than the scan's and never compare equal, but a report filtered by scanned tokens
-  honors them, so one filtered report per bit of each item's number draws a QR code (our own `QRCode`: Core Image
-  draws nothing in that extension) that the kid app reads back. Categories pair in reports of their own, by name.
-  With a camera, the kid's phone shows one report at a time and a parent's phone sends the codes it read back over
-  the nearby link (`LinkPairing`); the reports learn which way to draw from App Group `token-pairing-display.json`.
-  The kid's home screen counts new apps to match. By default only unmatched tokens are numbered and only unmatched
-  apps drawn (`TokenPairing.Mode`, saved in the App Group for the extension), so new apps take one screenshot. The
-  minute-of-use matcher (`tm`) is retired: launch stops it (`RetiredTokenMatcher`).
+- Matching by screenshot and by a parent's camera (QR codes from filtered reports) and the minute-of-use matcher
+  (`tm`) are retired: Apple's lists match every app (PLAN.md §15.6). Launch stops `tm` and deletes their App Group
+  files (`RetiredTokenMatcher`). `Heartbeat.lastTokenPairing` keeps its name: it's the last apps-list import.
 - A press on a category shield (Downtime) names only the category, so the kid picks the app in ScreenThyme's
   `AskForTimeView` (PLAN.md §15.4).
-- **Parent controls on a kid's phone** (scan, match by screenshot, choose ScreenThyme, start monitoring, one more
+- **Parent controls on a kid's phone** (scan, choose ScreenThyme, start monitoring, one more
   minute's length, Debug) are locked once it has the family's link key; a parent's phone nearby unlocks them for 15
   minutes (Settings › Kids › the kid), and they lock when the app leaves the foreground (`ParentUnlock`, PLAN.md
   §4.9). A new kid-side setup or debugging control belongs behind `parentControlsOpen`.

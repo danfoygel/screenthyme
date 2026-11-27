@@ -12,24 +12,6 @@ struct ThymeReport: @preconcurrency DeviceActivityReportExtension {
         AppTotalsReport { report in
             AppTotalsView(report: report)
         }
-        // One scene per pairing report (PLAN.md §15.6); the app shows those its scan needs.
-        PairingReport(.names)
-        PairingReport(.parity)
-        PairingReport(.bit(0))
-        PairingReport(.bit(1))
-        PairingReport(.bit(2))
-        PairingReport(.bit(3))
-        PairingReport(.bit(4))
-        PairingReport(.bit(5))
-        PairingReport(.bit(6))
-        PairingReport(.bit(7))
-        PairingReport(.bit(8))
-        PairingReport(.categoryParity)
-        PairingReport(.categoryBit(0))
-        PairingReport(.categoryBit(1))
-        PairingReport(.categoryBit(2))
-        PairingReport(.categoryBit(3))
-        PairingReport(.categoryBit(4))
     }
 }
 

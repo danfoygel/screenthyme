@@ -141,13 +141,6 @@ struct KidCard: View {
                     .font(.caption.bold())
                     .foregroundStyle(.orange)
             }
-            let unmatched = model.unmatchedApps(for: kid)
-            if !unmatched.toMatch.isEmpty {
-                let count = unmatched.toMatch.count
-                Label("\(count) new \(count == 1 ? "app" : "apps") to match", systemImage: "qrcode.viewfinder")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
             ForEach(Array(top), id: \.key) { id, usage in
                 HStack {
                     ItemName(item: items[id])
@@ -195,19 +188,6 @@ struct KidDayView: View {
                 }
             }
             let unmatched = model.unmatchedApps(for: kid)
-            if !unmatched.toMatch.isEmpty {
-                let toMatch = unmatched.toMatch
-                Section {
-                    NavigationLink { PairingScannerView(kid: kid) } label: {
-                        Label("Match \(toMatch.count) new \(toMatch.count == 1 ? "app" : "apps") with camera",
-                              systemImage: "qrcode.viewfinder")
-                            .foregroundStyle(.orange)
-                    }
-                    UnmatchedNames(items: toMatch)
-                } footer: {
-                    Text("Used on \(kid.displayName)'s phone since its last match, so limits don't count them yet.")
-                }
-            }
             if !unmatched.toScan.isEmpty {
                 Section {
                     UnmatchedNames(items: unmatched.toScan)

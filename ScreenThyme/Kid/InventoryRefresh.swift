@@ -4,7 +4,7 @@ import Synchronization
 import ThymeCore
 
 /// Keeps the scanned items current from Apple's own lists (`FamilyInventory`, PLAN.md §15.3): new apps and websites
-/// get tokens and matches with no scan and no screenshots. Apple's service behind them can stop answering, for every
+/// get tokens and matches with no scan. Apple's service behind them can stop answering, for every
 /// caller, for 20 minutes or more (websites most often, but apps too), and a call can't be cancelled. So nothing waits
 /// on a list longer than its timeout, a list still waiting keeps another call to it from starting, and the app never
 /// waits on a refresh (`AppModel.refreshInventory`). Websites take about 10 s even when well, so they're listed at
@@ -32,9 +32,8 @@ enum InventoryRefresh {
         guard let apps = await entries(.apps), let categories = await entries(.categories) else { return false }
         saveExemptToken(from: apps)
         let changed = save(apps + categories, kid: kid, now: now, listed: "\(apps.count) apps, \(categories.count) categories")
+        // The last import (heartbeats' `lastTokenPairing`): apps still unmatched now aren't installed.
         update { $0.appsAt = now }
-        // Token pairing's last import: apps still unmatched now aren't installed, so they aren't counted as to match.
-        AppGroup.save(TokenPairingView.State(importedAt: now), to: TokenPairingView.stateURL)
         return changed
     }
 

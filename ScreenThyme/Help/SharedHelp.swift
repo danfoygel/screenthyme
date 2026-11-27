@@ -348,7 +348,7 @@ extension ScreenHelp {
     static let familyDataSpike = ScreenHelp(
         "Family data spike",
         summary: "Checks whether Apple's FamilyActivityData lists (websites, apps and categories, each with a name "
-            + "and token) agree with the app scan and token pairing. Nothing here feeds enforcement.",
+            + "and token) agree with the app scan and its matches. Nothing here feeds enforcement.",
         [
             topic(
                 "What you can do",
