@@ -44,9 +44,9 @@ final class BugReportQueue {
         reports = (try? Data(contentsOf: listURL)).flatMap { try? JSONDecoder.thyme.decode([BugReport].self, from: $0) } ?? []
     }
 
-    func add(text: String, screenshots: [Data], reporter: String, kidID: UUID?, details: [BugReport.Detail],
-             log: [String]) throws {
-        var report = BugReport(kidID: kidID, reporter: reporter, at: Date(), text: text, details: details, log: log,
+    func add(kind: BugReport.Kind, text: String, screenshots: [Data], reporter: String, kidID: UUID?,
+             details: [BugReport.Detail], log: [String]) throws {
+        var report = BugReport(kind: kind, kidID: kidID, reporter: reporter, at: Date(), text: text, details: details, log: log,
                                phoneID: Self.phoneID)
         let folder = folder(of: report)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -69,7 +69,7 @@ final class BugReportQueue {
 
     func status(of report: BugReport) -> String {
         switch report.resolution {
-        case .fixed: return "Fixed"
+        case .fixed: return (report.kind ?? .bug).doneStatus
         case .closed: return "Closed"
         case nil: break
         }

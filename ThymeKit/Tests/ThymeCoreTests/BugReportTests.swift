@@ -107,8 +107,26 @@ struct BugReportTests {
         let request = try #require(github.requests.first)
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/repos/family/screenthyme-bugs/issues")
-        let sent = try JSONDecoder().decode([String: String].self, from: try #require(request.httpBody))
-        #expect(sent["title"] == GitHubIssues.title(of: report) && sent["body"] == GitHubIssues.body(of: report))
+        let sent = try JSONDecoder().decode(SentIssue.self, from: try #require(request.httpBody))
+        #expect(sent.title == GitHubIssues.title(of: report) && sent.body == GitHubIssues.body(of: report))
+        #expect(sent.labels == [])
+    }
+
+    struct SentIssue: Decodable {
+        let title: String
+        let body: String
+        let labels: [String]
+    }
+
+    @Test func openIssueLabelsItsKind() async throws {
+        for (kind, label) in [(BugReport.Kind.bug, "bug"), (.feature, "enhancement"), (.question, "question")] {
+            var kinded = report
+            kinded.kind = kind
+            let github = FakeGitHub([(201, #"{"number": 4, "html_url": "https://github.com/f/b/issues/4"}"#)])
+            _ = try await GitHubIssues(tracker: tracker, transport: github.transport).openIssue(for: kinded)
+            let sent = try JSONDecoder().decode(SentIssue.self, from: try #require(github.requests.first?.httpBody))
+            #expect(sent.labels == [label])
+        }
     }
 
     @Test func resolutionAsksTheIssuesOwnRepository() async throws {
@@ -190,5 +208,30 @@ struct BugReportTests {
         pictures.resolution = .fixed
         pictures.phoneID = UUID()
         #expect(try JSONDecoder().decode(BugReport.self, from: JSONEncoder().encode(pictures)) == pictures)
+    }
+
+    @Test func ideasAndQuestionsAreToldTheirOwnWay() throws {
+        var idea = report
+        idea.kind = .feature
+        #expect(idea.closedNotification(fixed: true) == ("An idea you sent is done",
+                                                         "You suggested: “The timer | says zero” Thanks for the idea!"))
+        #expect(idea.closedNotification(fixed: false).body.hasSuffix(" was closed without being done."))
+        var question = report
+        question.kind = .question
+        #expect(question.closedNotification(fixed: true) == ("Your question was answered",
+                                                             "You asked: “The timer | says zero”"))
+        question.text = ""
+        question.screenshots = []
+        #expect(question.summary == "Question")
+        #expect(question.closedNotification(fixed: false).title == "A question you asked was closed")
+        #expect(BugReport.Kind.question.doneStatus == "Answered")
+        #expect(try JSONDecoder().decode(BugReport.self, from: JSONEncoder().encode(question)).kind == .question)
+    }
+
+    @Test func reportsQueuedBeforeKindsDecodeWithout() throws {
+        var json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any])
+        json["kind"] = nil
+        let decoded = try JSONDecoder().decode(BugReport.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(decoded.kind == nil && decoded.text == report.text)
     }
 }

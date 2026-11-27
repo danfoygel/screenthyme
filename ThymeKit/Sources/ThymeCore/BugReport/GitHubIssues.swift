@@ -62,10 +62,11 @@ public struct GitHubIssues: Sendable {
         }
     }
 
-    /// Opens the issue, with every screenshot in `report.uploaded`. Returns the issue's page.
+    /// Opens the issue, with every screenshot in `report.uploaded` and its kind's label. Returns the issue's page.
     public func openIssue(for report: BugReport) async throws -> URL {
         var post = request("POST", "issues")
-        post.httpBody = try JSONEncoder().encode(["title": Self.title(of: report), "body": Self.body(of: report)])
+        post.httpBody = try JSONEncoder().encode(NewIssue(title: Self.title(of: report), body: Self.body(of: report),
+                                                          labels: report.kind.map { [$0.label] } ?? []))
         let (body, response) = try await transport(post)
         guard response.statusCode == 201 else { throw Self.failure(response.statusCode, body) }
         return try JSONDecoder().decode(ContentsItem.self, from: body).htmlURL
@@ -179,6 +180,12 @@ public struct GitHubIssues: Sendable {
     private static func failure(_ status: Int, _ body: Data) -> Failure {
         let message = (try? JSONDecoder().decode(Message.self, from: body))?.message
         return .http(status: status, message: message ?? HTTPURLResponse.localizedString(forStatusCode: status))
+    }
+
+    private struct NewIssue: Encodable {
+        let title: String
+        let body: String
+        let labels: [String]
     }
 
     private struct ContentsItem: Decodable {
