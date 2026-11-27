@@ -57,7 +57,7 @@ struct PermissionsView: View {
             }
         }
         .navigationTitle("Permissions")
-        .bugButton()
+        .bugButton(help: .permissions)
         .refreshable { await load() }
         // Again on returning from Settings.
         .task(id: scenePhase) { if scenePhase == .active { await load() } }

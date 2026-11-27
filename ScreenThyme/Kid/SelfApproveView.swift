@@ -45,7 +45,7 @@ struct SelfApproveView: View {
                 }
             }
             .navigationTitle("Approve it yourself")
-            .bugButton()
+            .bugButton(help: .selfApprove)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

@@ -202,7 +202,7 @@ struct PolicyView: View {
         // A draft started from a mirror being re-fetched would replace the kid's policy when saved.
         .disabled(model.editsBlocked)
         .navigationTitle("Screen Time")
-        .bugButton()
+        .bugButton(help: .policy)
         .toolbar {
             if let draft, draft != stored {
                 ToolbarItem(placement: .confirmationAction) {
@@ -337,7 +337,7 @@ struct SavePolicySheet: View {
             }
             .navigationTitle("Save changes")
             .navigationBarTitleDisplayMode(.inline)
-            .bugButton()
+            .bugButton(help: .savePolicy)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -406,7 +406,7 @@ struct DowntimeEditor: View {
                 }
             }
             .navigationTitle("Downtime")
-            .bugButton()
+            .bugButton(help: .downtimeEditor)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -468,7 +468,7 @@ struct LimitEditor: View {
                 }
             }
             .navigationTitle("App Limit")
-            .bugButton()
+            .bugButton(help: .limitEditor)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -542,7 +542,7 @@ struct GroupEditor: View {
                 }
             }
             .navigationTitle("Group")
-            .bugButton()
+            .bugButton(help: .groupEditor)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -631,7 +631,7 @@ struct ItemSelectionView: View {
         }
         .searchable(text: $search)
         .navigationTitle(title)
-        .bugButton()
+        .bugButton(help: .itemSelection(title))
     }
 
     private func row(_ item: TrackedItem) -> some View {
@@ -719,7 +719,7 @@ struct RestrictionsView: View {
             }
         }
         .navigationTitle("Content & Privacy")
-        .bugButton()
+        .bugButton(help: .contentPrivacy)
     }
 
     enum WebMode: CaseIterable {
@@ -782,7 +782,7 @@ struct DomainListView: View {
             }
         }
         .navigationTitle(title)
-        .bugButton()
+        .bugButton(help: .websiteList(title))
     }
 }
 

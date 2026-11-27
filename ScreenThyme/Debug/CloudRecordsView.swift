@@ -65,7 +65,7 @@ struct CloudRecordsView: View {
             }
         }
         .navigationTitle("CloudKit records")
-        .bugButton()
+        .bugButton(help: .cloudRecords)
     }
 
     private func row(_ title: String, _ tally: RecordTally) -> some View {

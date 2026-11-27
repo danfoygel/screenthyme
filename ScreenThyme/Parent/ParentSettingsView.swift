@@ -72,7 +72,7 @@ struct ParentSettingsView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
-            .bugButton()
+            .bugButton(help: .parentSettings)
             .sheet(item: Binding(get: { share.map(IdentifiedShare.init) }, set: { share = $0?.share })) { item in
                 CloudSharingView(share: item.share)
             }
@@ -240,7 +240,7 @@ struct KidSettingsView: View {
             }
         }
         .navigationTitle(kid.displayName)
-        .bugButton()
+        .bugButton(help: .kidSettings)
         .sheet(item: $editing) { rule in
             RuleEditor(rule: rule, items: model.data.items(for: kid.id)) { saved in
                 Task { await model.save(saved) }
@@ -317,7 +317,7 @@ struct RuleEditor: View {
                 }
             }
             .navigationTitle(rule.condition.summary)
-            .bugButton()
+            .bugButton(help: .ruleEditor)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -366,7 +366,7 @@ struct TrackedItemsView: View {
             }
         }
         .navigationTitle("\(kid.displayName)'s apps")
-        .bugButton()
+        .bugButton(help: .appsSeen)
     }
 }
 

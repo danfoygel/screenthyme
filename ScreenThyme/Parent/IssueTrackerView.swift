@@ -37,7 +37,7 @@ struct IssueTrackerView: View {
             }
         }
         .navigationTitle("Bug reports")
-        .bugButton()
+        .bugButton(help: .bugReports)
         .task { await load() }
     }
 

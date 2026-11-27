@@ -40,7 +40,7 @@ struct PairingScannerView: View {
         }
         .padding()
         .navigationTitle("Match \(kid.displayName)'s apps")
-        .bugButton()
+        .bugButton(help: .matchAppsWithCamera)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.success, trigger: sent.count)
         .onAppear {

@@ -37,7 +37,7 @@ struct DataAccessView: View {
             }
         }
         .navigationTitle("Data access (S4)")
-        .bugButton()
+        .bugButton(help: .dataAccess)
     }
 
     private func run(_ work: @escaping () async throws -> Void) {

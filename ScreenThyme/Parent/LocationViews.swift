@@ -82,7 +82,7 @@ struct LocationDayView: View {
             }
         }
         .navigationTitle(model.name(of: whereabouts))
-        .bugButton()
+        .bugButton(help: .locationDay)
         .refreshable { await model.refresh() }
     }
 }
@@ -202,7 +202,7 @@ struct RawLocationView: View {
             }
         }
         .navigationTitle("Raw location")
-        .bugButton()
+        .bugButton(help: .rawLocation)
         .refreshable { await model.refresh() }
     }
 }

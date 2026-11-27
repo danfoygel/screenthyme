@@ -58,7 +58,7 @@ struct RawUsageView: View {
             }
         }
         .navigationTitle("Raw usage")
-        .bugButton()
+        .bugButton(help: .rawUsage)
     }
 
     /// "45 s", "2 min 10 s", "1 h 5 min".

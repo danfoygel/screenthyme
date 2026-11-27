@@ -56,7 +56,7 @@ struct AppDetailsView: View {
         }
         .navigationTitle(AppCatalog.shared.name(of: shown, in: data.items) ?? item.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .bugButton()
+        .bugButton(help: .appDetails(forParent: model.isParent))
         .task { if model.isKid { kidData = .kid() } }
         .refreshable {
             if model.isKid { kidData = .kid() } else { await model.refresh() }

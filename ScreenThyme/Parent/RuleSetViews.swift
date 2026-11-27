@@ -93,7 +93,7 @@ struct ChooseRuleSetSheet: View {
             }
             .navigationTitle("Switch ruleset")
             .navigationBarTitleDisplayMode(.inline)
-            .bugButton()
+            .bugButton(help: .switchRuleSet)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -145,7 +145,7 @@ struct RuleSetsView: View {
             }
         }
         .navigationTitle("Rulesets")
-        .bugButton()
+        .bugButton(help: .ruleSets)
         .sheet(item: $editing) { set in
             RuleSetEditor(ruleSet: set, isNew: false, policy: policy) { policy.save($0) }
         }
@@ -210,7 +210,7 @@ struct RuleSetEditor: View {
             }
             .navigationTitle(isNew ? "New ruleset" : ruleSet.name)
             .navigationBarTitleDisplayMode(.inline)
-            .bugButton()
+            .bugButton(help: .ruleSetEditor(isNew: isNew))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

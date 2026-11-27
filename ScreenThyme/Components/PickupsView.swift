@@ -68,7 +68,7 @@ struct PickupsView: View {
             }
         }
         .navigationTitle("Pickups")
-        .bugButton()
+        .bugButton(help: .pickups)
     }
 }
 

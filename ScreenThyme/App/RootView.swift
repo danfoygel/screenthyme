@@ -61,7 +61,7 @@ struct RoleSelectionView: View {
                 }
             }
             .navigationTitle("Welcome")
-            .bugButton()
+            .bugButton(help: .welcome)
         }
     }
 }
