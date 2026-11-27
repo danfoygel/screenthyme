@@ -131,6 +131,29 @@ struct CheckInsTests {
         #expect(blocks.first { $0.itemID == chrome }?.site == game)
     }
 
+    @Test func aBrowsersTimeOnSitesIsTheSites() {
+        // Chrome for 10 min, 8 of them on one site; Safari for 3, all on another; an app for 5.
+        let chrome = UUID(), safari = UUID(), game = UUID(), news = UUID(), app = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(chrome, at(17, 0), at(18, 0), 600, reported: at(18, 30)),
+            sample(game, at(17, 0), at(18, 0), 480, reported: at(18, 30)),
+            sample(safari, at(18, 0), at(18, 30), 180, reported: at(18, 30)),
+            sample(news, at(18, 0), at(18, 30), 180, reported: at(18, 30)),
+            sample(app, at(17, 0), at(18, 0), 300, reported: at(18, 30)),
+        ])
+        input.websites = [game, news]
+        input.browsers = [chrome, safari]
+        let timeline = Reconstructor.build(input)
+        #expect(timeline.attributed.mapValues(\.seconds) == [chrome: 120, game: 480, news: 180, app: 300])
+        // Apple's numbers stay as they were.
+        #expect(timeline.items[chrome]?.seconds == 600)
+        #expect(timeline.items[safari]?.seconds == 180)
+        // Places count blocks the same way.
+        let seconds = Dictionary(timeline.blocks.map { ($0.itemID, $0.ownSeconds) }, uniquingKeysWith: +)
+        #expect(seconds[chrome] == 120)
+        #expect(seconds[safari] == 0)
+    }
+
     @Test func browsersAreKnownByBundleID() {
         #expect(BuiltInApps.showsWebsites("com.google.chrome.ios"))
         #expect(BuiltInApps.showsWebsites("com.apple.mobilesafari"))

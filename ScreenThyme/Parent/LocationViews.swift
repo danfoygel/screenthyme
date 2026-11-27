@@ -58,21 +58,13 @@ struct LocationDayView: View {
         List {
             Section {
                 LabeledContent("Day", value: day.start().formatted(date: .complete, time: .omitted))
-                LabeledContent("Apps (Apple's count)",
-                               value: Format.minutes(Int((apps.filter { items[$0.key]?.kind != .domain }
-                                   .reduce(0) { $0 + $1.value } / 60).rounded())))
+                LabeledContent("Use (Apple's count)",
+                               value: Format.minutes(Int((apps.reduce(0) { $0 + $1.value } / 60).rounded())))
             }
-            Section("Apps") {
-                ForEach(apps.filter { items[$0.key]?.kind != .domain }, id: \.key) { id, seconds in
+            // A browser's time on a website is the site's (`UsageBlock.ownSeconds`).
+            Section("Apps and websites") {
+                ForEach(apps, id: \.key) { id, seconds in
                     ItemDetailsLink(item: items[id]) {
-                        LabeledContent { Text(RawUsageView.duration(seconds)).monospacedDigit() } label: { ItemName(item: items[id]) }
-                    }
-                }
-            }
-            let sites = apps.filter { items[$0.key]?.kind == .domain }
-            if !sites.isEmpty {
-                Section("Websites") {
-                    ForEach(sites, id: \.key) { id, seconds in
                         LabeledContent { Text(RawUsageView.duration(seconds)).monospacedDigit() } label: { ItemName(item: items[id]) }
                     }
                 }

@@ -69,9 +69,11 @@ struct KidAppsView: View {
         let samples = AppGroup.samples.readAll()
         let byDay = Dictionary(grouping: samples, by: \.day)
         let websites = Set(items.filter { $0.kind == .domain }.map(\.id))
+        let browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
         heatmap = UsageHeatmap.build(today: today, now: Date(), samples: { byDay[$0] ?? [] },
                                      counts: { !websites.contains($0.itemID) })
-        for sample in samples where sample.day >= since {
+        // A browser's time on a website is the site's.
+        for sample in BrowserSites.attributed(samples, websites: websites, browsers: browsers) where sample.day >= since {
             monthSeconds[sample.itemID, default: 0] += sample.seconds
             if sample.day == today { todaySeconds[sample.itemID, default: 0] += sample.seconds }
         }

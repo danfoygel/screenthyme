@@ -125,7 +125,7 @@ enum CheckIns {
             let placedStart = stretch.end.addingTimeInterval(-stretch.placed)
             var guessEnds: [DateInterval: Date] = [:]
             let ordered = stretch.samples.sorted { ($0.seconds, $0.itemID.uuidString) > ($1.seconds, $1.itemID.uuidString) }
-            let siteUses = sites(in: stretch, websites: websites, browsers: browsers)
+            let siteUses = BrowserSites.shares(stretch.samples, websites: websites, browsers: browsers)
             for sample in ordered {
                 let siteUse = siteUses[sample.id] ?? [:]
                 let onPlaced = sample.seconds * share
@@ -145,30 +145,5 @@ enum CheckIns {
             }
         }
         return pieces
-    }
-
-    /// Each browser sample's share of the websites' use in its fetch (the same window), up to its own seconds. A
-    /// site's seconds go out once, busiest browser first, so Safari and Chrome in one fetch don't both take a site.
-    static func sites(in stretch: Stretch, websites: Set<UUID>, browsers: Set<UUID>) -> [UUID: [UUID: Double]] {
-        let sites = stretch.samples.filter { websites.contains($0.itemID) }
-        var left = Dictionary(uniqueKeysWithValues: sites.map { ($0.id, $0.seconds) })
-        var shares: [UUID: [UUID: Double]] = [:]
-        let ordered = stretch.samples.filter { browsers.contains($0.itemID) }
-            .sorted { ($0.seconds, $0.itemID.uuidString) > ($1.seconds, $1.itemID.uuidString) }
-        for sample in ordered {
-            var own = sample.seconds
-            let same = sites.filter {
-                abs($0.start.timeIntervalSince(sample.start)) < 1 && abs($0.end.timeIntervalSince(sample.end)) < 1
-            }
-            // The best match first: the site with the most use left.
-            for site in same.sorted(by: { (left[$0.id] ?? 0, $0.itemID.uuidString) > (left[$1.id] ?? 0, $1.itemID.uuidString) }) {
-                let taken = min(own, left[site.id] ?? 0)
-                guard taken > 0 else { continue }
-                shares[sample.id, default: [:]][site.itemID, default: 0] += taken
-                left[site.id]? -= taken
-                own -= taken
-            }
-        }
-        return shares
     }
 }

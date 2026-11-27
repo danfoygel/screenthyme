@@ -121,10 +121,11 @@ public enum PlaceStays {
         }
     }
 
-    /// Each app's seconds by where the phone was, a block's seconds shared out by how much of it each stay covers.
+    /// Each app's seconds by where the phone was, a block's seconds shared out by how much of it each stay covers. A
+    /// browser's time on websites is theirs (`UsageBlock.ownSeconds`).
     public static func usage(_ blocks: [UsageBlock], stays: [PlaceStay]) -> [Whereabouts: [UUID: Double]] {
         var result: [Whereabouts: [UUID: Double]] = [:]
-        for block in blocks where block.seconds > 0 {
+        for block in blocks where block.ownSeconds > 0 {
             let length = block.end.timeIntervalSince(block.start)
             var placed = 0.0
             for stay in stays {
@@ -135,11 +136,11 @@ public enum PlaceStays {
                     share = stay.start <= block.start && block.start < stay.end ? 1 : 0
                 }
                 guard share > 0 else { continue }
-                result[stay.whereabouts, default: [:]][block.itemID, default: 0] += block.seconds * share
+                result[stay.whereabouts, default: [:]][block.itemID, default: 0] += block.ownSeconds * share
                 placed += share
             }
             if placed < 0.999 {
-                result[.unknown, default: [:]][block.itemID, default: 0] += block.seconds * (1 - placed)
+                result[.unknown, default: [:]][block.itemID, default: 0] += block.ownSeconds * (1 - placed)
             }
         }
         return result
