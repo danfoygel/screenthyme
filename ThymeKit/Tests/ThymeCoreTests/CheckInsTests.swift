@@ -196,6 +196,21 @@ struct CheckInsTests {
         #expect(timeline.blocks.first { $0.itemID == webApp }?.site == site)
     }
 
+    @Test func iOSSheetsOverAnAppAreGone() {
+        // Photos for 100 s with the Face ID prompt over it for 3 of them; Apple counts the prompt on top.
+        let photos = UUID(), prompt = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(photos, at(17, 0), at(18, 0), 100, reported: at(18, 30)),
+            sample(prompt, at(17, 0), at(18, 0), 3, reported: at(18, 30)),
+        ])
+        input.overlays = [prompt]
+        let timeline = Reconstructor.build(input)
+        #expect(timeline.attributed.mapValues(\.seconds) == [photos: 100])
+        #expect(timeline.blocks.allSatisfy { $0.itemID == photos })
+        // Apple's numbers stay as they were.
+        #expect(timeline.items[prompt]?.seconds == 3)
+    }
+
     @Test func aSiteSeenOnlyInsideAppsIsGone() {
         // An ad's site in a game, with no browser used at all.
         let game = UUID(), ad = UUID()

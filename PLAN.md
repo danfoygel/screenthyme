@@ -104,7 +104,9 @@ exactly), and tracking starts (minute-0 fires uploaded at each registration).
   Apple also counts a web view inside any other app under its site: ads (googleads.g.doubleclick.net,
   imasdk.googleapis.com) and in-app browsers, beside the app's own time, which already holds it. A banner ad gets as
   much time as the game it sits in. A site's time that no browser in its fetch can account for is the app's: lists,
-  blocks and places leave it out. Limits and shields still go by Apple's numbers.
+  blocks and places leave it out. iOS's own sheets over an app (the Face ID prompt, the screenshot editor, Wallet's pay
+  sheet: `BuiltInApps.isOverlay`) are counted on top of the app beneath too, so they get no blocks and lists leave them
+  out; the call screen is use of its own. Limits and shields still go by Apple's numbers.
 - **Live status** (`LiveStatus`): "in use" when the latest wake is under 2 minutes old; "probably X" is the app with
   the most use in the latest fetch.
 - **Categories** (`CategoryUsage`) and **heatmaps** (`UsageHeatmap`, hour by weekday) come from the same samples.

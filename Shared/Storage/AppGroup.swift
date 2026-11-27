@@ -227,6 +227,7 @@ struct SharedConfig: Codable, Sendable {
         let items = AppGroup.loadItems()
         input.websites = Set(items.filter { $0.kind == .domain }.map(\.id))
         input.browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
+        input.overlays = Set(items.filter(\.isOverlay).map(\.id))
         return input
     }
 }

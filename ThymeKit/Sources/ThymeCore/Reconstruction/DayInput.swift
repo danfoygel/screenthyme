@@ -24,6 +24,9 @@ public struct DayInput: Sendable {
     public var websites: Set<UUID> = []
     /// Browsers and Home Screen web apps (`BuiltInApps.showsWebsites`), whose blocks are matched to a website's use.
     public var browsers: Set<UUID> = []
+    /// iOS's sheets over another app (`TrackedItem.isOverlay`), whose time that app's already holds: no blocks, and left
+    /// out of lists and of how much use a stretch held.
+    public var overlays: Set<UUID> = []
 
     public init(dayStart: Date, total: [FirePoint], samples: [UsageSample] = [], trackingStarts: [Date] = []) {
         self.dayStart = dayStart
