@@ -228,16 +228,16 @@ test rule of each kind with the `-addTestRules <kid name>` launch argument (CLAU
 
 ### 4.9 Kid UI
 
-A plain status screen: Screen Time access, monitoring, last upload, and how long one more minute lasts (§15.5). It
+A plain status screen: Screen Time access, monitoring, last upload, and how long one more minute lasts (§15.5), which
+the kid sets (it lets one app through for a few minutes, once a day, so it isn't a parent control). It
 links to the kid's Apps (used in the last 30 days, each to its details), the day's timeline and Time by category
 (built from this phone's App Group as parents see it), the Screen Time section (limits, Always Allowed and Blocked,
 ask to always allow), and Report a problem. Setup is for a parent: Screen Time permission, joining the family, the
 app scan, and matching by screenshot or camera.
 
 **Parent controls** are locked once the phone has the family's link key (§17): the app scan, matching by screenshot,
-choosing ScreenThyme, starting monitoring, one more minute's length and Debug. Each of them let a kid get around
-enforcement: a "ScreenThyme" pick of other apps let them through every shield, Debug's Stop monitoring stopped every
-activity with no alert, a scan that left an app out unshielded it. A parent unlocks them from their own phone, nearby
+choosing ScreenThyme, starting monitoring and Debug. Each of them let a kid get around enforcement: a "ScreenThyme"
+pick of other apps let them through every shield, Debug's Stop monitoring stopped every activity with no alert, a scan that left an app out unshielded it. A parent unlocks them from their own phone, nearby
 (Settings › Kids › the kid › Unlock), for 15 minutes (`ParentUnlock`, `LinkUnlock`); only a parent's phone sends it,
 so there's no request to approve by mistake. The kid's phone keeps the unlock in memory and times it by its own clock
 from when it arrived, so it locks when ScreenThyme leaves the foreground, and setting the clock only ends it sooner.

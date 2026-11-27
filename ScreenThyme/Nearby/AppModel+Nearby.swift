@@ -179,8 +179,7 @@ extension AppModel {
 
     // MARK: - Parent controls (`ParentUnlock`)
 
-    /// Kid: whether the scan, matching by screenshot, choosing ScreenThyme, starting monitoring, one more minute's
-    /// length and Debug are open now.
+    /// Kid: whether the scan, matching by screenshot, choosing ScreenThyme, starting monitoring and Debug are open now.
     var parentControlsOpen: Bool {
         ParentControls.areOpen(hasLinkKey: data.linkKey != nil, testMode: config.testMode, unlock: parentUnlock,
                                now: Date())
