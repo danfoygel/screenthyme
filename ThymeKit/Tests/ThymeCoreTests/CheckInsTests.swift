@@ -154,6 +154,42 @@ struct CheckInsTests {
         #expect(seconds[safari] == 0)
     }
 
+    @Test func aSitesTimeInsideAnotherAppIsTheApps() {
+        // A game for 50 min with an ad's site on screen for 48 of them; Safari for 5 on a news site plus 1 on the
+        // ad's site, in the same fetch. Safari takes its 6 minutes of sites; the ad's other 47 were inside the game.
+        let game = UUID(), ad = UUID(), safari = UUID(), news = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(game, at(17, 0), at(18, 0), 3000, reported: at(18, 30)),
+            sample(ad, at(17, 0), at(18, 0), 2880, reported: at(18, 30)),
+            sample(safari, at(17, 0), at(18, 0), 360, reported: at(18, 30)),
+            sample(news, at(17, 0), at(18, 0), 300, reported: at(18, 30)),
+        ])
+        input.websites = [ad, news]
+        input.browsers = [safari]
+        let timeline = Reconstructor.build(input)
+        #expect(timeline.attributed.mapValues(\.seconds) == [game: 3000, ad: 60, news: 300])
+        // Apple's numbers stay as they were.
+        #expect(timeline.items[ad]?.seconds == 2880)
+        // Blocks (and so places) count the same way.
+        let seconds = Dictionary(timeline.blocks.map { ($0.itemID, $0.ownSeconds) }, uniquingKeysWith: +)
+        #expect(seconds[game] == 3000)
+        #expect(seconds[ad] == 60)
+        #expect(seconds[news] == 300)
+    }
+
+    @Test func aSiteSeenOnlyInsideAppsIsGone() {
+        // An ad's site in a game, with no browser used at all.
+        let game = UUID(), ad = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(game, at(17, 0), at(18, 0), 600, reported: at(18, 30)),
+            sample(ad, at(17, 0), at(18, 0), 590, reported: at(18, 30)),
+        ])
+        input.websites = [ad]
+        let timeline = Reconstructor.build(input)
+        #expect(timeline.attributed.mapValues(\.seconds) == [game: 600])
+        #expect(timeline.blocks.allSatisfy { $0.itemID == game })
+    }
+
     @Test func browsersAreKnownByBundleID() {
         #expect(BuiltInApps.showsWebsites("com.google.chrome.ios"))
         #expect(BuiltInApps.showsWebsites("com.apple.mobilesafari"))

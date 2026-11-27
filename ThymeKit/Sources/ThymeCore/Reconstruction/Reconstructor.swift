@@ -52,8 +52,8 @@ public struct DayTimeline: Sendable {
     public var blocks: [UsageBlock]
     /// Apple's numbers, each app's and website's.
     public var items: [UUID: ItemUsage]
-    /// Each app's and website's use as lists show it: a browser's time on a website is the site's
-    /// (`BrowserSites`), and a browser left with under a second is gone.
+    /// Each app's and website's use as lists show it: a browser's time on a website is the site's, a website's time
+    /// inside another app (an ad) is the app's (`BrowserSites`), and anything left with under a second is gone.
     public var attributed: [UUID: ItemUsage] = [:]
     /// From the total ladder.
     public var totalMinutes: Int
