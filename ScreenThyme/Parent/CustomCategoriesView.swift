@@ -2,8 +2,8 @@ import SwiftUI
 import ThymeCore
 
 /// A kid's custom categories (PLAN.md §15.14): each of Apple's categories with its last 7 days' use, opening to its
-/// apps and websites, most used first. Tapping one moves it to another category, saved at once and noted in the
-/// change history; moved ones are marked.
+/// apps and websites, most used first. Tapping one moves it to another category for every kid (`FamilyCategoryMoves`),
+/// saved at once and noted in each kid's change history; moved ones are marked.
 struct CustomCategoriesView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
@@ -54,7 +54,7 @@ struct CustomCategoriesView: View {
                 } header: {
                     Text("Last 7 days")
                 } footer: {
-                    Text("Tap an app or website to move it to another category. Downtime, limits, Always Allowed and Blocked then treat it as that category's, and the move is in the change history. \(Image(systemName: "arrow.uturn.right")) marks one moved. A browser's time on a website is the website's.")
+                    Text("Tap an app or website to move it to another category, for every kid. Downtime, limits, Always Allowed and Blocked then treat it as that category's, and the move is in each kid's change history. \(Image(systemName: "arrow.uturn.right")) marks one moved. A browser's time on a website is the website's.")
                 }
             }
         }

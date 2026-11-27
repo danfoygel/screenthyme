@@ -736,6 +736,12 @@ A parent can make the kid take breaks (`Policy.breaks`, a `BreakRule`; the polic
 - Screen Time › Categories lists each with its last 7 days' use (a browser's time on websites is the sites'), opening
   to its apps and websites, most used first; a tap moves one to another category, saved at once. Moves are in the
   change history (`PolicyEdit.categoryMove`). Pickers offer the custom categories, not Apple's.
+- Moves are the family's, not one kid's (`FamilyCategoryMoves`): an app or website, by bundle ID or domain, is in the
+  same custom category for every kid. Each kid's policy keeps its own copy (what its phone enforces, so kid phones
+  are unchanged): a move saves every kid's policy that has the app (`Policy.withFamilyMoves`, adding the category
+  where that kid's phone hasn't seen it), and set-up gives a kid the family's moves for apps it starts using later.
+  The family's moves are read back from the policies: where they disagree (moves made before they were shared), a
+  move beats none and the newest policy's wins.
 - Enforcement never goes by Apple's categories alone. A moved app counts with its new category (`categorizing`),
   is shielded by its token with it (`Policy.resolved(items:)` adds the moved-in apps and the scanned items holding
   their tokens wherever their category is named), and is let through its Apple category's shields (`movedOut`, as

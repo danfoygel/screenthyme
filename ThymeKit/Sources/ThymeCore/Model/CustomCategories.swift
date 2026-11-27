@@ -127,3 +127,79 @@ extension Policy {
         if groups[index].category != apple { groups[index].moved.insert(itemID) }
     }
 }
+
+/// The family's moves (PLAN.md §15.14): which custom category an app or website is in, by bundle ID or domain, the same
+/// for every kid. Each kid's policy holds its own copy (`ItemGroup.moved`, what its phone enforces); a parent's move
+/// goes to every kid's policy (`Policy.withFamilyMoves`), and kids who see the app later get it at set-up.
+public struct FamilyCategoryMoves: Sendable, Hashable {
+    public struct Key: Sendable, Hashable {
+        public var kind: ItemKind
+        public var identifier: String
+
+        public init(_ item: TrackedItem) {
+            kind = item.kind
+            identifier = item.identifier
+        }
+    }
+
+    /// Each moved app and website → the name of Apple's category its custom category starts from.
+    public private(set) var categories: [Key: String]
+
+    /// Apps and websites (Apple's items) that move: not categories, and not scanned items, whose identifiers differ
+    /// between kids.
+    public static func moves(_ item: TrackedItem) -> Bool {
+        item.kind != .category && !item.isScanned
+    }
+
+    /// The moves in the kids' policies. Where they disagree (moves made before they were shared), a move beats none and
+    /// the newest policy's beats the rest.
+    public init(policies: [Policy], items: [UUID: TrackedItem]) {
+        var categories: [Key: String] = [:]
+        for policy in policies.sorted(by: { ($0.updatedAt, $0.kidID.uuidString) > ($1.updatedAt, $1.kidID.uuidString) }) {
+            for group in policy.groups {
+                guard let category = group.category else { continue }
+                for id in group.moved {
+                    guard let item = items[id], Self.moves(item) else { continue }
+                    let key = Key(item)
+                    if categories[key] == nil, item.category != category { categories[key] = category }
+                }
+            }
+        }
+        self.categories = categories
+    }
+
+    /// The custom category `item` is moved to, by Apple's category name; nil when it's in Apple's own.
+    public func category(of item: TrackedItem) -> String? {
+        guard Self.moves(item), let category = categories[Key(item)], category != item.category else { return nil }
+        return category
+    }
+
+    /// Moves `item` (any kid's) to the custom category for Apple's `category`; nil, or Apple's own, moves it back.
+    public mutating func move(_ item: TrackedItem, to category: String?) {
+        guard Self.moves(item) else { return }
+        categories[Key(item)] = category == item.category ? nil : category
+    }
+}
+
+extension Policy {
+    /// The policy with each of the kid's apps and websites in the custom category the family's moves give it, adding
+    /// that category when the kid's phone hasn't seen it (its items join at set-up). `items` are the kid's; moves of
+    /// items it doesn't have are kept.
+    public func withFamilyMoves(_ moves: FamilyCategoryMoves, items: [UUID: TrackedItem]) -> Policy {
+        var policy = self
+        let own = items.values.filter { $0.kidID == kidID && FamilyCategoryMoves.moves($0) }
+        for index in policy.groups.indices where policy.groups[index].isCategory {
+            policy.groups[index].moved.subtract(own.map(\.id))
+        }
+        for item in own.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            guard let category = moves.category(of: item) else { continue }
+            let id = Self.categoryGroupID(kid: kidID, category: category)
+            if let index = policy.groups.firstIndex(where: { $0.id == id }) {
+                policy.groups[index].moved.insert(item.id)
+            } else {
+                policy.groups.append(ItemGroup(id: id, name: category, category: category, moved: [item.id]))
+            }
+        }
+        return policy
+    }
+}
