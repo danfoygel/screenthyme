@@ -93,6 +93,7 @@ final class AppModel {
             PlaceWatcher.shared.reloadFamilyPlaces()
         case .parent:
             await refresh()
+            for kid in data.sortedKids { await setUpCustomCategories(for: kid, onlyStored: true) }
             await handleTestRuleArguments()
             await PushDiagnostics.write(family: config.family, kids: data.sortedKids)
         case .unset:

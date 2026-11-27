@@ -72,6 +72,25 @@ extension AppModel {
         }
     }
 
+    /// Gives a kid's policy a custom category for each of Apple's categories the kid's phone has seen, and moves every
+    /// use of an Apple category to its custom category (`Policy.withCustomCategories`, PLAN.md §15.14). Saves, with a
+    /// change history entry, only when that changes something. With `onlyStored`, kids with no policy yet are left as
+    /// they are.
+    func setUpCustomCategories(for kid: Kid, onlyStored: Bool = false) async {
+        guard !editsBlocked, !onlyStored || data.storedPolicy(for: kid.id) != nil else { return }
+        let policy = data.policy(for: kid.id)
+        let updated = policy.withCustomCategories(items: data.items(for: kid.id))
+        if updated != policy { await save(updated) }
+    }
+
+    /// Moves an app or website to custom category `groupID` (nil: back to Apple's category), and saves it.
+    func move(_ itemID: UUID, to groupID: UUID?, kid: Kid) async {
+        guard !refuseWhileRebuilding() else { return }
+        var policy = data.policy(for: kid.id)
+        policy.move(itemID, to: groupID, items: data.items(for: kid.id))
+        await save(policy)
+    }
+
     /// Answers a kid's request for more time; the kid's phone fetches the grant by name or gets it nearby. Offline,
     /// the grant waits in `PendingSaves`. Approving a request to always allow an app saves the policy with it allowed
     /// first.

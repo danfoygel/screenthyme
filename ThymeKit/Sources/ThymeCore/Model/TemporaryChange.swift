@@ -87,6 +87,7 @@ extension Policy {
         policy.groups = revertElements(groups, old.groups, new.groups) { group, old, new in
             revertValue(&group, \.name, old, new)
             revertSet(&group.items, old.items, new.items)
+            revertSet(&group.moved, old.moved, new.moved)
         }
         revertSet(&policy.alwaysAllowed, old.alwaysAllowed, new.alwaysAllowed)
         // What Always Allowed no longer holds can't come back as Uncounted.

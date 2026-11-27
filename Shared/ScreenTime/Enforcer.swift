@@ -177,7 +177,13 @@ enum Enforcer {
     /// Returns the apps and websites due a shield that iOS's cap left out.
     private static func apply(_ plan: EnforcementPlan, policy: Policy, items: [UUID: TrackedItem],
                               use: [UUID: ShieldBudget.Use]) -> Set<UUID> {
-        let tokens = Tokens(items: items)
+        // Custom categories (PLAN.md §15.14): an app moved to another one is let through its Apple category's shields
+        // and shielded by its token with its new category (the plan names it), and Always Allowed follows it there.
+        let custom = CustomCategories(policy: policy, items: items)
+        let tokens = Tokens(items: custom.categorizing(items))
+        func movedOut(of ids: Set<UUID>) -> Tokens.Split {
+            tokens.split(custom.movedOut(of: EnforcementPlanner.categoryNames(ids, items: items), items: items))
+        }
         let exempt = exemptItems(items)
         // ScreenThyme's own token, from the app scan. One app or none: more would let others through every shield.
         let picked = AppGroup.load([Data].self, from: AppGroup.exemptTokensURL) ?? []
@@ -202,9 +208,11 @@ enum Enforcer {
         var blocked = tokens.split(fitted.lists[0])
         blocked.apps.subtract(exemptApps)
         shieldOneByOne(blocked, in: restrictions)
+        let blockedMoved = movedOut(of: plan.blockedItems)
         restrictions.shield.applicationCategories = blocked.categories.isEmpty ? nil
-            : .specific(Tokens.capped(blocked.categories), except: Tokens.capped(exemptApps))
-        restrictions.shield.webDomainCategories = blocked.categories.isEmpty ? nil : .specific(Tokens.capped(blocked.categories))
+            : .specific(Tokens.capped(blocked.categories), except: Tokens.capped(exemptApps.union(blockedMoved.apps)))
+        restrictions.shield.webDomainCategories = blocked.categories.isEmpty ? nil
+            : .specific(Tokens.capped(blocked.categories), except: Tokens.capped(blockedMoved.domains))
 
         // Every category but what's allowed: no list of apps, so no cap on how many it blocks.
         let downtime = ManagedSettingsStore(named: .init("downtime"))
@@ -239,6 +247,9 @@ enum Enforcer {
         var someExceptions = tokens.split(tokens.expandingCategories(Set(plan.scopedDowntime.flatMap(\.exceptions))))
         someExceptions.apps.formUnion(allowed.apps)
         someExceptions.domains.formUnion(allowed.domains)
+        let someMoved = movedOut(of: Set(plan.scopedDowntime.flatMap(\.items)))
+        someExceptions.apps.formUnion(someMoved.apps)
+        someExceptions.domains.formUnion(someMoved.domains)
         someDowntime.shield.applicationCategories = some.categories.isEmpty ? nil
             : .specific(Tokens.capped(some.categories), except: Tokens.capped(someExceptions.apps))
         someDowntime.shield.webDomainCategories = some.categories.isEmpty ? nil
@@ -259,6 +270,9 @@ enum Enforcer {
             limits.shield.applicationCategories = .all(except: Tokens.capped(limitExceptions.apps))
             limits.shield.webDomainCategories = .all(except: Tokens.capped(limitExceptions.domains))
         } else {
+            let limitedMoved = movedOut(of: plan.limitedItems)
+            limitExceptions.apps.formUnion(limitedMoved.apps)
+            limitExceptions.domains.formUnion(limitedMoved.domains)
             limits.shield.applicationCategories = limited.categories.isEmpty ? nil
                 : .specific(Tokens.capped(limited.categories), except: Tokens.capped(limitExceptions.apps))
             limits.shield.webDomainCategories = limited.categories.isEmpty ? nil
@@ -387,9 +401,10 @@ enum Enforcer {
             let tokens = Tokens(items: items)
             // An all-apps limit has no event: one over all activity would count Always Allowed and exempt apps too.
             // The wake alarm's wakes (every minute of use) reconcile it instead.
-            // So has one whose categories hold an Always Allowed app, which its event would count.
+            // So has one whose categories hold an Always Allowed app, or one moved to another custom category, which
+            // its event would count.
             for limit in policy.limits where limit.enabled && !limit.allApps
-                && !EnforcementPlanner.eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: policy.alwaysAllowed) {
+                && !EnforcementPlanner.eventMiscounts(limit, policy: policy, items: items) {
                 // A 0-minute limit is used up from the plan alone.
                 guard let budget = plan.budgets[limit.id], budget > 0 else { continue }
                 let name = limitPrefix + short(limit.id)

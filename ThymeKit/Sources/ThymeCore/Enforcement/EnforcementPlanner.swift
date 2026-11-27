@@ -179,6 +179,9 @@ public enum EnforcementPlanner {
         var plan = EnforcementPlan()
         guard policy.enabled else { return plan }
         let policy = policy.resolved(items: items)
+        // Apps moved to another custom category count with that one (PLAN.md §15.14).
+        let apple = items
+        let items = CustomCategories(policy: policy, items: items).categorizing(items)
         let today = DayKey(now, calendar: calendar)
         let grants = state.day == today ? state.grants.filter(\.grant.approved) : []
         let limitFires = state.day == today ? state.limitFires : [:]
@@ -242,9 +245,8 @@ public enum EnforcementPlanner {
             guard let budget = Self.budget(for: limit.id, minutes: limit.minutes(on: weekday), grants: grants)
             else { continue }  // the rest of today
             plan.budgets[limit.id] = budget
-            // iOS's event counts a category's Always Allowed apps too; then only our own count ends the limit.
-            let fired = limitFires[limit.id] == budget
-                && !eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: policy.alwaysAllowed)
+            // iOS's event counts a category's Always Allowed and moved-out apps too; then only our own count ends the limit.
+            let fired = limitFires[limit.id] == budget && !eventMiscounts(limit, policy: policy, items: apple)
             if used >= budget || fired {
                 plan.exhaustedLimits.insert(limit.id)
                 let passes = Set(grants.filter { $0.grant.reason == .limit(limit.id) && isLeft($0, usage: usage, now: now) }
@@ -313,6 +315,7 @@ public enum EnforcementPlanner {
                                    state: inout EnforcementDayState, now: Date, exempt: Set<UUID> = []) -> Bool {
         let rule = policy.enabled ? policy.breaks : nil
         let policy = policy.resolved(items: items)
+        let items = CustomCategories(policy: policy, items: items).categorizing(items)
         let counted = totalSeconds(items: items, usage: usage, excluding: policy.alwaysAllowed.union(exempt))
         return state.breaks.observe(counted: counted, at: now, rule: rule)
     }
@@ -326,6 +329,16 @@ public enum EnforcementPlanner {
         let categories = categoryNames(limit.items, items: items)
         let own = ids.compactMap { items[$0] }.compactMap { $0.kind == .category ? $0.identifier : $0.category }
         return own.contains(where: categories.contains)
+    }
+
+    /// Whether iOS's threshold event for `limit` would count what the limit doesn't: an Always Allowed app in one of its
+    /// categories (`eventCountsAlwaysAllowed`), or one Apple puts there that was moved to another custom category. Such a
+    /// limit gets no event, and the wakes end it from our own count. `policy` resolved; `items` as Apple has them.
+    public static func eventMiscounts(_ limit: AppLimit, policy: Policy, items: [UUID: TrackedItem]) -> Bool {
+        guard !limit.allApps else { return false }
+        return eventCountsAlwaysAllowed(limit, items: items, alwaysAllowed: policy.alwaysAllowed)
+            || !CustomCategories(policy: policy, items: items).movedOut(of: categoryNames(limit.items, items: items), items: items)
+                .isEmpty
     }
 
     /// Whether iOS's threshold event for `limit` would count an Always Allowed app or website: one (or its match) in a
@@ -397,6 +410,7 @@ public enum EnforcementPlanner {
         if let item = grant.itemID { return usage[item] ?? 0 }
         guard case let .limit(limitID) = grant.reason else { return 0 }
         let policy = policy.resolved(items: items)
+        let items = CustomCategories(policy: policy, items: items).categorizing(items)
         guard let limit = policy.limits.first(where: { $0.id == limitID }) else { return 0 }
         return usedSeconds(limit, items: items, usage: usage, alwaysAllowed: policy.alwaysAllowed, exempt: exempt)
     }

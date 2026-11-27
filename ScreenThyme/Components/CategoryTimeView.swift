@@ -55,7 +55,7 @@ struct CategoryTimeView: View {
                         }
                     }
                 } footer: {
-                    Text("Apple puts each app in one category, mostly by its App Store category. Websites aren't counted here: their time is also Safari's.")
+                    Text("Apple puts each app and website in one category, mostly by its App Store category; parents can move one to another in Screen Time › Categories. A browser's time on a website is the website's.")
                 }
             }
         }
@@ -75,16 +75,24 @@ struct CategoryTimeView: View {
             let items = model.data.items(for: kid.id)
             let timeline = model.timeline(kid: kid.id, day: day).timeline
             let mirrored = model.data.webMirrored(kid: kid.id, items: items, today: day)
-            let total = DayTotal(timeline, items: items, policy: model.data.policy(on: day, kid: kid.id), mirrored: mirrored)
-            return (CategoryUsage.build(timeline.items, items: items, excluding: mirrored), items, total)
+            let policy = model.data.policy(on: day, kid: kid.id)
+            let total = DayTotal(timeline, items: items, policy: policy, mirrored: mirrored)
+            return (Self.categories(timeline, items: items, policy: policy, mirrored: mirrored), items, total)
         case .thisPhone:
             let items = Dictionary(AppGroup.loadItems().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             let timeline = Reconstructor.build(model.config.dayInput(day))
             let mirrored = Enforcer.webMirrored(items)
             let policy = AppGroup.loadPolicy() ?? Policy(kidID: model.config.kid?.id ?? UUID())
-            return (CategoryUsage.build(timeline.items, items: items, excluding: mirrored), items,
+            return (Self.categories(timeline, items: items, policy: policy, mirrored: mirrored), items,
                     DayTotal(timeline, items: items, policy: policy, mirrored: mirrored))
         }
+    }
+
+    /// By custom category, a browser's time on websites the sites'.
+    private static func categories(_ timeline: DayTimeline, items: [UUID: TrackedItem], policy: Policy,
+                                   mirrored: Set<UUID>) -> [CategoryUsage] {
+        let categorized = CustomCategories(policy: policy, items: items).categorizing(items)
+        return CategoryUsage.build(timeline.attributed.mapValues(\.seconds), items: categorized, excluding: mirrored)
     }
 
     private var tint: Color {

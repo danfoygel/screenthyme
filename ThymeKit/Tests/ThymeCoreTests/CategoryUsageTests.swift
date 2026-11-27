@@ -10,11 +10,9 @@ struct CategoryUsageTests {
         TrackedItem(kidID: kid, kind: kind, identifier: identifier, category: category, firstSeen: start)
     }
 
-    func use(_ seconds: Double) -> ItemUsage {
-        ItemUsage(seconds: seconds, firstAt: start, lastAt: start.addingTimeInterval(seconds))
-    }
+    func use(_ seconds: Double) -> Double { seconds }
 
-    /// Apps add up under their category, most used first; websites and apps that were Safari's on their website don't.
+    /// Apps and websites add up under their category, most used first; apps that were Safari's on their website don't.
     @Test func appsAddUpByCategory() {
         let roblox = item(.app, "com.roblox.robloxmobile", category: "Games")
         let chess = item(.app, "com.chess.iphone", category: "Games")
@@ -28,11 +26,11 @@ struct CategoryUsageTests {
 
         let categories = CategoryUsage.build(usage, items: items, excluding: [depop.id])
 
-        #expect(categories.map(\.name) == ["Games", "Social", nil])
-        #expect(categories.map(\.minutes) == [40, 25, 2])
+        #expect(categories.map(\.name) == ["Games", "Social", "Entertainment", nil])
+        #expect(categories.map(\.minutes) == [40, 25, 15, 2])
         #expect(categories[0].apps.map(\.id) == [roblox.id, chess.id])
         let total: Double = categories.reduce(0) { $0 + $1.seconds }
-        #expect(total == 4020)
+        #expect(total == 4920)
     }
 
     /// Equal totals keep a steady order, by name; an app with no item (not yet synced) counts as uncategorized.
