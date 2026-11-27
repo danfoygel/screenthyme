@@ -44,6 +44,11 @@ public enum BuiltInApps {
         "com.apple.mobilephone", "com.apple.Preferences", "com.apple.compass", "com.apple.ScreenTimeUnlock",
     ]
 
+    public static let phone = "com.apple.mobilephone"
+    /// iOS's call screen: phone and FaceTime calls, and other apps' calls (CallKit), with the screen on. Lists show its
+    /// use as Phone's (`ItemAliases`), and like Phone it's never blocked.
+    public static let callScreen = "com.apple.InCallService"
+
     /// Every Home Screen web app, under one bundle ID: no scan lists it as an app, and its site is a website item.
     public static let webApp = "com.apple.webapp"
 
@@ -75,9 +80,9 @@ public enum BuiltInApps {
 
     /// iOS's own sheets over another app, such as the Face ID prompt, the screenshot editor or Wallet's pay sheet:
     /// Apple counts their time on top of the app beneath (they never had a fetch to themselves on a kid's phone, and
-    /// often took its apps past the fetch's length), so lists and blocks leave them out. The call screen and the Home
-    /// Screen are use of their own.
+    /// often took its apps past the fetch's length), so lists and blocks leave them out. The call screen (shown as
+    /// Phone's) and the Home Screen are use of their own.
     public static func isOverlay(_ bundleID: String) -> Bool {
-        isSystemProcess(bundleID) && !["com.apple.InCallService", "com.apple.springboard"].contains(bundleID)
+        isSystemProcess(bundleID) && ![callScreen, "com.apple.springboard"].contains(bundleID)
     }
 }

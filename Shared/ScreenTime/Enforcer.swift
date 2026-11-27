@@ -162,8 +162,8 @@ enum Enforcer {
     // MARK: - Stores
 
     /// Never blocked by Downtime or category limits, as with Apple's Screen Time: ScreenThyme itself (to ask for more
-    /// time and see the answer) and Phone.
-    static let exemptBundleIDs: Set<String> = ["com.danfoygel.screenthyme", "com.apple.mobilephone"]
+    /// time and see the answer), Phone and the call screen (shown as Phone's, `ItemAliases`).
+    static let exemptBundleIDs: Set<String> = ["com.danfoygel.screenthyme", BuiltInApps.phone, BuiltInApps.callScreen]
 
     /// Apps whose use is Safari's on their website (`WebMirror`): all-apps limits count that time as Safari's.
     static func webMirrored(_ items: [UUID: TrackedItem], now: Date = Date()) -> Set<UUID> {

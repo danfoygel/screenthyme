@@ -99,9 +99,10 @@ struct CustomCategoriesView: View {
         let today = DayKey(Date())
         let websites = Set(items.values.filter { $0.kind == .domain }.map(\.id))
         let browsers = Set(items.values.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
+        let aliases = ItemAliases.build(items.values)
         var seconds: [UUID: Double] = [:]
         for offset in 0..<7 {
-            let samples = model.data.samples(kid: kid.id, day: today.adding(days: -offset))
+            let samples = ItemAliases.apply(aliases, to: model.data.samples(kid: kid.id, day: today.adding(days: -offset)))
             for sample in BrowserSites.attributed(samples, websites: websites, browsers: browsers)
             where items[sample.itemID]?.isOverlay != true {
                 seconds[sample.itemID, default: 0] += sample.seconds

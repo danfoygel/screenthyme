@@ -13,7 +13,32 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
         }
     }
 
+    /// What the reporter is sending: a problem, an idea or a question. The issue gets its label.
+    public enum Kind: String, Codable, Sendable, Hashable, CaseIterable {
+        case bug, feature, question
+
+        /// The bug repository's label: GitHub's own defaults, so "feature" is "enhancement".
+        public var label: String {
+            switch self {
+            case .bug: "bug"
+            case .feature: "enhancement"
+            case .question: "question"
+            }
+        }
+
+        /// What the list says once its issue is closed as completed.
+        public var doneStatus: String {
+            switch self {
+            case .bug: "Fixed"
+            case .feature: "Done"
+            case .question: "Answered"
+            }
+        }
+    }
+
     public var id: UUID
+    /// Nil in reports queued before the reporter chose one; they're filed as problems without a label.
+    public var kind: Kind?
     /// The kid, when sent from a kid's phone.
     public var kidID: UUID?
     /// Who sent it: the kid's name, or the parent's.
@@ -45,13 +70,14 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
 
     // Reports queued before parents could send them named the reporter `kidName`.
     enum CodingKeys: String, CodingKey {
-        case id, kidID, reporter = "kidName", at, text, screenshots, details, log, uploaded, issueURL, lastError,
+        case id, kind, kidID, reporter = "kidName", at, text, screenshots, details, log, uploaded, issueURL, lastError,
              resolution, phoneID
     }
 
-    public init(id: UUID = UUID(), kidID: UUID?, reporter: String, at: Date, text: String, screenshots: [String] = [],
+    public init(id: UUID = UUID(), kind: Kind? = nil, kidID: UUID?, reporter: String, at: Date, text: String, screenshots: [String] = [],
                 details: [Detail] = [], log: [String] = [], phoneID: UUID? = nil) {
         self.id = id
+        self.kind = kind
         self.phoneID = phoneID
         self.kidID = kidID
         self.reporter = reporter
@@ -67,24 +93,48 @@ public struct BugReport: Codable, Sendable, Hashable, Identifiable {
     /// Filed, and not fixed yet as far as this phone knows. A closed issue can still be reopened and fixed.
     public var awaitsFix: Bool { isFiled && resolution != .fixed }
 
-    /// The push that tells the reporter its issue was closed, fixed or not, sent by the repository's workflow
-    /// (`Tools/BugPush`).
+    /// The push that tells the reporter its issue was closed, fixed (done, answered) or not, sent by the repository's
+    /// workflow (`Tools/BugPush`).
     public func closedNotification(fixed: Bool) -> (title: String, body: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let day = at.formatted(.dateTime.month(.abbreviated).day())
-        if fixed {
-            let what = text.isEmpty ? "The problem you reported on \(day) is fixed." : "You reported: “\(summary)”"
-            return ("A problem you reported is fixed", what + " Thanks for telling us!")
+        switch kind ?? .bug {
+        case .bug:
+            if fixed {
+                let what = text.isEmpty ? "The problem you reported on \(day) is fixed." : "You reported: “\(summary)”"
+                return ("A problem you reported is fixed", what + " Thanks for telling us!")
+            }
+            let what = text.isEmpty ? "The problem you reported on \(day)" : "You reported: “\(summary)”. It"
+            return ("A problem you reported was closed", what + " was closed without a fix.")
+        case .feature:
+            if fixed {
+                let what = text.isEmpty ? "The idea you sent on \(day) is done." : "You suggested: “\(summary)”"
+                return ("An idea you sent is done", what + " Thanks for the idea!")
+            }
+            let what = text.isEmpty ? "The idea you sent on \(day)" : "You suggested: “\(summary)”. It"
+            return ("An idea you sent was closed", what + " was closed without being done.")
+        case .question:
+            if fixed {
+                let what = text.isEmpty ? "The question you asked on \(day) was answered." : "You asked: “\(summary)”"
+                return ("Your question was answered", what)
+            }
+            let what = text.isEmpty ? "The question you asked on \(day)" : "You asked: “\(summary)”. It"
+            return ("A question you asked was closed", what + " was closed without an answer.")
         }
-        let what = text.isEmpty ? "The problem you reported on \(day)" : "You reported: “\(summary)”. It"
-        return ("A problem you reported was closed", what + " was closed without a fix.")
     }
 
     /// The first line of the reporter's words, shortened.
     public var summary: String {
         let line = text.split(whereSeparator: \.isNewline).first.map(String.init)?
             .trimmingCharacters(in: .whitespaces) ?? ""
-        guard !line.isEmpty else { return screenshots.isEmpty ? "Problem report" : "Screenshots" }
+        guard !line.isEmpty else {
+            if !screenshots.isEmpty { return "Screenshots" }
+            switch kind ?? .bug {
+            case .bug: return "Problem report"
+            case .feature: return "Idea"
+            case .question: return "Question"
+            }
+        }
         return line.count > 72 ? line.prefix(71).trimmingCharacters(in: .whitespaces) + "…" : line
     }
 }

@@ -66,7 +66,7 @@ struct KidAppsView: View {
         let since = today.adding(days: -(AppDetails.usageDays - 1))
         var todaySeconds: [UUID: Double] = [:]
         var monthSeconds: [UUID: Double] = [:]
-        let samples = AppGroup.samples.readAll()
+        let samples = ItemAliases.apply(ItemAliases.build(items), to: AppGroup.samples.readAll())
         let byDay = Dictionary(grouping: samples, by: \.day)
         let websites = Set(items.filter { $0.kind == .domain }.map(\.id))
         let browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
