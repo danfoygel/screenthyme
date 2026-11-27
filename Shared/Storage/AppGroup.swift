@@ -224,7 +224,9 @@ struct SharedConfig: Codable, Sendable {
     func dayInput(_ day: DayKey) -> DayInput {
         var input = DayInput(entries: AppGroup.journal.entries(on: day),
                              samples: AppGroup.samples.readAll().filter { $0.day == day }, dayStart: day.start())
-        input.websites = Set(AppGroup.loadItems().filter { $0.kind == .domain }.map(\.id))
+        let items = AppGroup.loadItems()
+        input.websites = Set(items.filter { $0.kind == .domain }.map(\.id))
+        input.browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
         return input
     }
 }

@@ -223,7 +223,7 @@ extension AppModel {
                              dayStart: day.start())
         let items = data.items(for: kid).values
         input.websites = Set(items.filter { $0.kind == .domain }.map(\.id))
-        input.webApps = Set(items.filter { $0.kind == .app && $0.identifier == "com.apple.webapp" }.map(\.id))
+        input.browsers = Set(items.filter { $0.kind == .app && BuiltInApps.showsWebsites($0.identifier) }.map(\.id))
         return (input, Reconstructor.build(input))
     }
 }

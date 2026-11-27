@@ -266,7 +266,7 @@ struct UsageCalendar: View {
         let column = width / CGFloat(piece.columns)
         // A point of space below each block, as between events in a calendar.
         let height = max(minHeight, axis.y(block.end) - axis.y(block.start) - 1)
-        // A web app's block goes by the website it showed.
+        // A browser's or web app's block goes by the website it showed.
         let color = Self.color(for: block.site ?? block.itemID)
         let shape = RoundedRectangle(cornerRadius: 4)
         return ZStack(alignment: .topLeading) {
@@ -283,7 +283,8 @@ struct UsageCalendar: View {
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     if height >= 32 {
-                        Text("\(Format.time(block.start)) · \(duration(block))")
+                        Text(([Format.time(block.start), duration(block)] + [browser(block)].compactMap(\.self))
+                                .joined(separator: " · "))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -304,6 +305,12 @@ struct UsageCalendar: View {
         .offset(x: gutter + 4 + column * CGFloat(piece.column), y: axis.y(block.start) + inset)
     }
 
+    /// The browser a block named after its site was in; nil for a web app's, which is only ever the site.
+    private func browser(_ block: UsageBlock) -> String? {
+        guard block.site != nil, let app = items[block.itemID], app.identifier != BuiltInApps.webApp else { return nil }
+        return app.nickname ?? AppCatalog.shared.entries[app.identifier]?.name ?? app.displayName
+    }
+
     private func duration(_ block: UsageBlock) -> String {
         block.seconds < 60 ? "\(Int(block.seconds.rounded())) s" : Format.minutes(Int((block.seconds / 60).rounded()))
     }
@@ -312,7 +319,12 @@ struct UsageCalendar: View {
         VStack(alignment: .leading, spacing: 6) {
             ItemName(item: items[block.site ?? block.itemID]).font(.headline)
             Text("\(Format.time(block.start))–\(Format.time(block.end))").monospacedDigit()
-            if block.site != nil {
+            if let browser = browser(block) {
+                Text("In \(browser). This site's time matches the browser's.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if block.site != nil {
                 Text("Used in a Home Screen web app. Apple doesn't say which site a web app shows, but this site's time matches it.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)

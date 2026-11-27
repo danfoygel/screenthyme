@@ -95,7 +95,7 @@ struct CheckInsTests {
             sample(browser, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
         ])
         input.websites = [site, other]
-        input.webApps = [webApp]
+        input.browsers = [webApp]
         let blocks = Reconstructor.build(input).blocks
         #expect(blocks.first { $0.itemID == webApp }?.site == site)
         #expect(blocks.allSatisfy { $0.itemID == webApp || $0.site == nil })
@@ -110,7 +110,31 @@ struct CheckInsTests {
             sample(later, at(18, 0), at(18, 30), 600, reported: at(18, 30)),
         ])
         input.websites = [site, later]
-        input.webApps = [webApp]
+        input.browsers = [webApp]
         #expect(Reconstructor.build(input).blocks.first { $0.itemID == webApp }?.site == nil)
+    }
+
+    @Test func browsersInOneFetchShareItsSites() {
+        // Safari for 5 min on one site, Chrome for 2 on another, in the same fetch: each takes its own, though Chrome's
+        // 2 minutes would fit inside Safari's site too.
+        let safari = UUID(), chrome = UUID(), news = UUID(), game = UUID()
+        var input = DayInput(dayStart: dayStart, total: [], samples: [
+            sample(safari, at(17, 0), at(18, 0), 300, reported: at(18, 30)),
+            sample(news, at(17, 0), at(18, 0), 300, reported: at(18, 30)),
+            sample(chrome, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
+            sample(game, at(17, 0), at(18, 0), 120, reported: at(18, 30)),
+        ])
+        input.websites = [news, game]
+        input.browsers = [safari, chrome]
+        let blocks = Reconstructor.build(input).blocks
+        #expect(blocks.first { $0.itemID == safari }?.site == news)
+        #expect(blocks.first { $0.itemID == chrome }?.site == game)
+    }
+
+    @Test func browsersAreKnownByBundleID() {
+        #expect(BuiltInApps.showsWebsites("com.google.chrome.ios"))
+        #expect(BuiltInApps.showsWebsites("com.apple.mobilesafari"))
+        #expect(BuiltInApps.showsWebsites(BuiltInApps.webApp))
+        #expect(!BuiltInApps.showsWebsites("com.amazon.Amazon"))
     }
 }
