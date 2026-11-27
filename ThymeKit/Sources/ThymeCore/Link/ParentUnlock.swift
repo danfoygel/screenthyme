@@ -1,10 +1,9 @@
 import Foundation
 
 /// A parent's phone nearby unlocked a kid phone's parent controls (PLAN.md §17): the app scan, matching by
-/// screenshot, choosing ScreenThyme, starting monitoring, one more minute's length and Debug. Only a parent's phone
-/// starts it, over the nearby link, so a parent is with the phone. The kid's phone keeps it in memory, so it ends when
-/// ScreenThyme leaves the foreground, and times it by its own clock from when it arrived: setting the clock either way
-/// only ends it sooner.
+/// screenshot, choosing ScreenThyme, starting monitoring and Debug. Only a parent's phone starts it, over the nearby
+/// link, so a parent is with the phone. The kid's phone keeps it in memory, so it ends when ScreenThyme leaves the
+/// foreground, and times it by its own clock from when it arrived: setting the clock either way only ends it sooner.
 public struct ParentUnlock: Codable, Sendable, Hashable {
     /// How long an unlock lasts.
     public static let minutes = 15

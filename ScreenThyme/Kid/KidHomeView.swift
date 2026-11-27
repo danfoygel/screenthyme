@@ -53,11 +53,7 @@ struct KidHomeView: View {
                     }
                 }
                 Section {
-                    if open {
-                        Stepper(value: extraMinutes, in: ExtraMinute.allowedMinutes) {
-                            LabeledContent("One more minute", value: "\(model.config.extraMinuteLength) min")
-                        }
-                    } else {
+                    Stepper(value: extraMinutes, in: ExtraMinute.allowedMinutes) {
                         LabeledContent("One more minute", value: "\(model.config.extraMinuteLength) min")
                     }
                 } header: {
@@ -207,7 +203,7 @@ private struct ParentControlsSection: View {
             Text("Parent controls")
         } footer: {
             if !model.parentControlsOpen {
-                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring, the length of one more minute and Debug. A parent unlocks them from their phone, near this one: Settings › Kids › \(model.config.kid?.displayName ?? "this kid") › Unlock.")
+                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring and Debug. A parent unlocks them from their phone, near this one: Settings › Kids › \(model.config.kid?.displayName ?? "this kid") › Unlock.")
             }
         }
     }

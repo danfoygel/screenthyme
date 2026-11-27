@@ -182,7 +182,7 @@ struct KidSettingsView: View {
             } header: {
                 Text("Parent controls on \(kid.displayName)'s phone")
             } footer: {
-                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring, the length of one more minute and Debug. They lock again when ScreenThyme leaves the screen there.")
+                Text("Scanning apps, matching by screenshot, choosing ScreenThyme, starting monitoring and Debug. They lock again when ScreenThyme leaves the screen there.")
             }
             let energy = model.data.energyReports(for: kid.id)
             Section {
