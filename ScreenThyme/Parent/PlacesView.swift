@@ -106,7 +106,7 @@ struct PlacesView: View {
                 }
             }
             .navigationTitle("Places")
-            .bugButton()
+            .bugButton(help: .places)
             .refreshable { await model.refresh() }
             .sheet(item: $editing) { subject in
                 PlaceEditor(subject: subject)

@@ -38,7 +38,7 @@ struct KidTimelineView: View {
                           policy: policy, showWebsites: showWebsites, hideShort: hideShort, scale: $scale)
         }
         .navigationTitle("Timeline")
-        .bugButton()
+        .bugButton(help: .timeline)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup {

@@ -60,7 +60,7 @@ struct CategoryTimeView: View {
             }
         }
         .navigationTitle("Categories")
-        .bugButton()
+        .bugButton(help: .categoryTime)
         .refreshable {
             switch source {
             case .family: await model.refresh()

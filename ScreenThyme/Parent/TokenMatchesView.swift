@@ -45,7 +45,7 @@ struct TokenMatchesView: View {
             }
         }
         .navigationTitle(Self.title(kind))
-        .bugButton()
+        .bugButton(help: .matches)
     }
 
     static func title(_ kind: ItemKind) -> String {

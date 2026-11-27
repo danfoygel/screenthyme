@@ -60,7 +60,7 @@ struct CustomCategoriesView: View {
         }
         .disabled(model.editsBlocked)
         .navigationTitle("Categories")
-        .bugButton()
+        .bugButton(help: .categories)
         .task { await model.setUpCustomCategories(for: kid) }
         .refreshable { await model.refresh() }
     }

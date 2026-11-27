@@ -111,7 +111,7 @@ struct PlacesTestView: View {
             }
         }
         .navigationTitle("Places")
-        .bugButton()
+        .bugButton(help: .placesTest)
     }
 
     private func label(_ whereabouts: Whereabouts) -> String {

@@ -88,7 +88,7 @@ struct TokenPairingView: View {
             .padding(.horizontal)
         }
         .navigationTitle("Match by screenshot")
-        .bugButton()
+        .bugButton(help: .tokenPairing)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             AppGroup.save(TokenPairing.Display.screenshots, to: AppGroup.pairingDisplayURL)

@@ -872,11 +872,13 @@ later uploads an alert.
 
 ## 18. Bug reports from family phones
 
-Every screen has a bug at the top right (`.bugButton()` beside each `navigationTitle`), and the kid's home screen
+Every screen has a bug at the top right (`.bugButton(help:)` beside each `navigationTitle`), and the kid's home screen
 links to it. It opens **Report a problem** with a picture of the screen already attached (removable) and that
 screen's source file and line. The reporter must choose Bug, Feature or Question, writes what happened (or the idea,
 or the question) and adds up to five pictures from Photos (`PhotosPicker`, no photo-library permission). Tapping a
 picture opens it to draw on with a red pen (Undo, Cancel, Done); the marks are drawn into the picture that's sent. The phone files a GitHub issue itself; nobody needs a GitHub account.
+Beside the bug, a question mark opens that screen's help: what it shows and what can be done there (`ScreenHelp`,
+in `ScreenThyme/Help/`).
 This repository is public, so issues go to a **private** repository: a kid's words and screenshots must not be
 published.
 

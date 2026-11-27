@@ -63,7 +63,7 @@ struct FamilyDataSpikeView: View {
             }
         }
         .navigationTitle("Family data spike")
-        .bugButton()
+        .bugButton(help: .familyDataSpike)
     }
 
     private var shieldable: [Entry] {

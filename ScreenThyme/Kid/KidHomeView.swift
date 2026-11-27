@@ -147,7 +147,7 @@ struct KidHomeView: View {
                 }
             }
             .navigationTitle("ScreenThyme")
-            .bugButton()
+            .bugButton(help: .kidHome)
             // A parent's phone nearby opened its camera to match apps.
             .navigationDestination(isPresented: Binding { model.cameraPairingRequested } set: { model.cameraPairingRequested = $0 }) {
                 CameraPairingView()

@@ -51,7 +51,7 @@ struct KidAppsView: View {
             }
         }
         .navigationTitle("Apps")
-        .bugButton()
+        .bugButton(help: .kidApps)
         .task {
             load()
             // Apps and websites new since launch; the rows redraw as their names and icons arrive.

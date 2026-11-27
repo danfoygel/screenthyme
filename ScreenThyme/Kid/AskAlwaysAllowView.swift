@@ -59,7 +59,7 @@ struct AskAlwaysAllowView: View {
                 }
             }
             .navigationTitle("Ask to always allow")
-            .bugButton()
+            .bugButton(help: .askAlwaysAllow)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }

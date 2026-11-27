@@ -1,16 +1,25 @@
 import SwiftUI
 import UIKit
 
-/// The bug at the top right of every screen, kid and parent (PLAN.md §18): opens Report a problem with a picture of the
-/// screen it was pressed on, and the source file and line of that screen for the developer.
+/// The question mark and the bug at the top right of every screen, kid and parent. The question mark opens the screen's
+/// help; the bug (PLAN.md §18) opens Report a problem with a picture of the screen it was pressed on, and the source file
+/// and line of that screen for the developer.
 private struct BugButton: ViewModifier {
     let screen: String
+    let help: ScreenHelp
     @State private var report: BugReportSheet?
+    @State private var showingHelp = false
 
     func body(content: Content) -> some View {
         content
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showingHelp = true
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                    }
+                    .accessibilityLabel("Help")
                     Button {
                         report = BugReportSheet(capture: Self.captureScreen())
                     } label: {
@@ -18,6 +27,12 @@ private struct BugButton: ViewModifier {
                     }
                     .accessibilityLabel("Report a problem")
                 }
+            }
+            .sheet(isPresented: $showingHelp) {
+                NavigationStack {
+                    ScreenHelpView(help: help)
+                }
+                .presentationDetents([.medium, .large])
             }
             .sheet(item: $report) { sheet in
                 NavigationStack {
@@ -45,8 +60,8 @@ private struct BugReportSheet: Identifiable {
 }
 
 extension View {
-    /// Adds the bug button. Put it next to a screen's `navigationTitle`, so the report names that screen's source.
-    func bugButton(file: String = #fileID, line: Int = #line) -> some View {
-        modifier(BugButton(screen: "\(file.split(separator: "/").last ?? Substring(file)):\(line)"))
+    /// Adds the help and bug buttons. Put it next to a screen's `navigationTitle`, so the report names that screen's source.
+    func bugButton(help: ScreenHelp, file: String = #fileID, line: Int = #line) -> some View {
+        modifier(BugButton(screen: "\(file.split(separator: "/").last ?? Substring(file)):\(line)", help: help))
     }
 }

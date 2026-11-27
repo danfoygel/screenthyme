@@ -164,7 +164,8 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
 - **Bug reports go to a private GitHub repo, never this public one** (PLAN.md §18). Each phone files its own with the
   token in the family zone's `IssueTracker` record (Settings › Bug reports on a parent's phone); screenshots are
   committed under `reports/` in that repo, since GitHub's API can't attach images to issues. A new screen gets
-  `.bugButton()` beside its `navigationTitle`.
+  `.bugButton(help:)` beside its `navigationTitle`, with its help (a `ScreenHelp` static in `ScreenThyme/Help/`) for
+  the question mark beside the bug; a change to a screen's controls changes its help too.
 - A parent's mirror (`FamilyData`) carries a snapshot version: bump it when stored types change. Phones then decode
   again the records they kept as fetched (`RawRecordLog`), and fetch the whole zone only when that log isn't whole.
 - Record names are `<Type>.<uuid>`, saved with `.allKeys`, so every upload is idempotent.

@@ -50,7 +50,7 @@ struct KidDebugView: View {
                 NavigationLink("Day timeline") {
                     UsageCalendar(timeline: timeline, items: items, dayStart: day.start(), scale: $timelineScale)
                         .navigationTitle(day.description)
-                        .bugButton()
+                        .bugButton(help: .debugDayTimeline)
                 }
                 ForEach(timeline.items.sorted { $0.value.seconds > $1.value.seconds }, id: \.key) { id, usage in
                     LabeledContent { Text(Format.minutes(usage.minutes)).monospacedDigit() } label: { ItemName(item: items[id]) }
@@ -112,7 +112,7 @@ struct KidDebugView: View {
             }
         }
         .navigationTitle("Debug")
-        .bugButton()
+        .bugButton(help: .kidDebug)
     }
 
     private func label(_ entry: JournalEntry) -> String {
@@ -133,7 +133,7 @@ struct AppleReportView: View {
                              filter: DeviceActivityFilter(segment: .daily(during: DateInterval(start: day.start(),
                                                                                                 end: min(day.end(), Date())))))
             .navigationTitle("Apple's numbers")
-            .bugButton()
+            .bugButton(help: .appleNumbers)
             .navigationBarTitleDisplayMode(.inline)
     }
 }

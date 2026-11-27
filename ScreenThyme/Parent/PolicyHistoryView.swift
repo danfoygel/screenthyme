@@ -24,7 +24,7 @@ struct PolicyHistoryView: View {
             .onAppear { if let last = entries.last { proxy.scrollTo(last.id, anchor: .bottom) } }
         }
         .navigationTitle("Change history")
-        .bugButton()
+        .bugButton(help: .changeHistory)
         .refreshable { await model.refresh() }
         .overlay {
             if entries.isEmpty {
