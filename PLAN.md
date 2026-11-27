@@ -105,6 +105,10 @@ exactly), and tracking starts (minute-0 fires uploaded at each registration).
   imasdk.googleapis.com) and in-app browsers, beside the app's own time, which already holds it. A banner ad gets as
   much time as the game it sits in. A site's time that no browser in its fetch can account for is the app's: lists,
   blocks and places leave it out. Limits and shields still go by Apple's numbers.
+- **The call screen** (`ItemAliases`): Apple's data has iOS's call screen (`com.apple.InCallService`) apart from Phone.
+  Phone's own time is dialing, recents and voicemail; the call screen's is a call with the screen on (phone, FaceTime
+  and other apps' calls, which Apple doesn't tell apart). Their seconds never matched, so lists and timelines show the
+  call screen's use as Phone's, and like Phone it's never blocked and all-apps limits don't count it.
 - **Live status** (`LiveStatus`): "in use" when the latest wake is under 2 minutes old; "probably X" is the app with
   the most use in the latest fetch.
 - **Categories** (`CategoryUsage`) and **heatmaps** (`UsageHeatmap`, hour by weekday) come from the same samples.

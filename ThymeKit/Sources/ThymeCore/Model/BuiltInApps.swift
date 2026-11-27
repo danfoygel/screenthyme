@@ -44,6 +44,11 @@ public enum BuiltInApps {
         "com.apple.mobilephone", "com.apple.Preferences", "com.apple.compass", "com.apple.ScreenTimeUnlock",
     ]
 
+    public static let phone = "com.apple.mobilephone"
+    /// iOS's call screen: phone and FaceTime calls, and other apps' calls (CallKit), with the screen on. Lists show its
+    /// use as Phone's (`ItemAliases`), and like Phone it's never blocked.
+    public static let callScreen = "com.apple.InCallService"
+
     /// Every Home Screen web app, under one bundle ID: no scan lists it as an app, and its site is a website item.
     public static let webApp = "com.apple.webapp"
 
