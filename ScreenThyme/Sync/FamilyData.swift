@@ -197,6 +197,11 @@ final class FamilyData {
         snapshot.policies[kid]?.current(at: now).followingNewTokens(items: snapshot.items) ?? Policy(kidID: kid)
     }
 
+    /// The family's custom category moves, from every kid's policy in force now (PLAN.md §15.14).
+    var categoryMoves: FamilyCategoryMoves {
+        FamilyCategoryMoves(policies: snapshot.policies.keys.map { policy(for: $0) }, items: snapshot.items)
+    }
+
     /// As saved: with temporary changes that ended, until the next save drops them.
     func storedPolicy(for kid: UUID) -> Policy? {
         snapshot.policies[kid]
