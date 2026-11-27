@@ -874,8 +874,9 @@ later uploads an alert.
 
 Every screen has a bug at the top right (`.bugButton()` beside each `navigationTitle`), and the kid's home screen
 links to it. It opens **Report a problem** with a picture of the screen already attached (removable) and that
-screen's source file and line. The reporter writes what happened and adds up to five pictures from Photos
-(`PhotosPicker`, no photo-library permission). The phone files a GitHub issue itself; nobody needs a GitHub account.
+screen's source file and line. The reporter must choose Bug, Feature or Question, writes what happened (or the idea,
+or the question) and adds up to five pictures from Photos (`PhotosPicker`, no photo-library permission). Tapping a
+picture opens it to draw on with a red pen (Undo, Cancel, Done); the marks are drawn into the picture that's sent. The phone files a GitHub issue itself; nobody needs a GitHub account.
 This repository is public, so issues go to a **private** repository: a kid's words and screenshots must not be
 published.
 
@@ -885,7 +886,8 @@ published.
 - **Screenshots:** GitHub's API can't attach images to issues. Each picture is shrunk to at most 2000 px as JPEG (which
   drops location metadata), committed under `reports/<day>-<id8>/` with the Contents API, and shown in the issue from
   its page (`…/blob/<branch>/<path>?raw=true`), which renders only for people with access.
-- **The issue:** title `<reporter>: <first line>`; body: their words, the pictures, a table (time, role, screen, app
+- **The issue:** labeled by its kind with GitHub's default labels (`bug`, `enhancement`, `question`; reports queued
+  before kinds have none); title `<reporter>: <first line>`; body: their words, the pictures, a table (time, role, screen, app
   version, build date, iOS, phone model, family; on a kid's phone Screen Time access, monitoring, last wake, backlog;
   on a parent's the number of kids and saves waiting for the internet; phones nearby) and yesterday's and today's
   journal notes, collapsed. Logic is in `ThymeCore/BugReport` (`GitHubIssues`, tested with a fake transport).
@@ -894,7 +896,8 @@ published.
   screenshots already committed. Filing stops at the first failure and says why ("Waiting for the internet",
   "Waiting for a parent to set up bug reports", GitHub's message). The last 20 filed reports stay listed.
 - **Closed:** when an issue is closed, the phone that filed it gets a push quoting the reporter's first line and
-  saying whether it was fixed (closed as completed) or closed without a fix (not planned, a duplicate). A workflow in the bug repository sends it to APNs (`Tools/BugPush`, with the family's APNs key as secrets):
+  saying whether it was fixed (closed as completed; for an idea "done", for a question "answered") or closed without
+  a fix (not planned, a duplicate). A workflow in the bug repository sends it to APNs (`Tools/BugPush`, with the family's APNs key as secrets):
   the issue ends with a hidden marker naming the phone, and each phone keeps its device token in `phones/<id>.json`
   there. The phone also looks its issues up (at most every 30 minutes, or on pull to refresh) to show "Fixed" or
   "Closed".
