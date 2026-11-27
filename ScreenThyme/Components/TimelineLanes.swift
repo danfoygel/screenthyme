@@ -50,9 +50,10 @@ struct TimelineLanes: View {
         }
     }
 
-    /// Items used that day, most first.
+    /// Items used that day with blocks, most first (a website seen only inside an app has none).
     private var lanes: [UUID] {
-        timeline.items.sorted { $0.value.seconds > $1.value.seconds }.map(\.key)
+        let drawn = Set(timeline.blocks.map(\.itemID))
+        return timeline.items.filter { drawn.contains($0.key) }.sorted { $0.value.seconds > $1.value.seconds }.map(\.key)
     }
 
     private var span: DateInterval {

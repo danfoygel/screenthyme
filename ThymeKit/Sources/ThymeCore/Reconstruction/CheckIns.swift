@@ -116,7 +116,8 @@ enum CheckIns {
     /// Use each stretch's on-time wake places goes on its last minutes, shared among the apps reported there. Use
     /// beyond that is dropped in a quiet stretch; in a blind or burst one it's drawn at a best guess: back to back,
     /// most-used app last, ending where its sample's window does (or where the placed minutes begin). A browser's
-    /// pieces carry the websites' use in the same fetch that its own time can account for.
+    /// pieces carry the websites' use in the same fetch that its own time can account for; a website's use inside
+    /// another app (an ad, `BrowserSites`) is that app's, and gets no piece.
     static func pieces(_ stretches: [Stretch], websites: Set<UUID>, browsers: Set<UUID> = []) -> [UsageBlock] {
         var pieces: [UsageBlock] = []
         for stretch in stretches {
@@ -125,15 +126,18 @@ enum CheckIns {
             let placedStart = stretch.end.addingTimeInterval(-stretch.placed)
             var guessEnds: [DateInterval: Date] = [:]
             let ordered = stretch.samples.sorted { ($0.seconds, $0.itemID.uuidString) > ($1.seconds, $1.itemID.uuidString) }
-            let siteUses = BrowserSites.shares(stretch.samples, websites: websites, browsers: browsers)
+            let split = BrowserSites.split(stretch.samples, websites: websites, browsers: browsers)
             for sample in ordered {
-                let siteUse = siteUses[sample.id] ?? [:]
-                let onPlaced = sample.seconds * share
+                let siteUse = split.shares[sample.id] ?? [:]
+                let inApps = split.inApps[sample.id] ?? 0
+                let seconds = sample.seconds - inApps
+                guard inApps == 0 || seconds >= 1 else { continue }
+                let onPlaced = seconds * share
                 if onPlaced > 0 {
                     pieces.append(UsageBlock(itemID: sample.itemID, start: placedStart, end: stretch.end,
                                              seconds: onPlaced, siteSeconds: siteUse.mapValues { $0 * share }))
                 }
-                let left = sample.seconds - onPlaced
+                let left = seconds - onPlaced
                 guard stretch.rest != .quiet, left >= 1 else { continue }
                 let window = DateInterval(start: min(sample.start, sample.end), end: sample.end)
                 let end = guessEnds[window] ?? max(window.start, min(window.end, placedStart))

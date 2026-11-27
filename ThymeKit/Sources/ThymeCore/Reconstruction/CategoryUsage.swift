@@ -2,8 +2,8 @@ import Foundation
 
 /// Use of one category ("Games"): its apps' and websites' totals, under the category Apple's data gives each, or the
 /// custom category it was moved to (pass items through `CustomCategories.categorizing`). Use should give a browser's
-/// time on websites to the sites (`DayTimeline.attributed`, `BrowserSites`), so nothing counts twice. Apps whose use was
-/// Safari's on their website (`WebMirror`) are left out.
+/// time on websites to the sites, and leave out a website's time inside other apps (`DayTimeline.attributed`,
+/// `BrowserSites`), so nothing counts twice. Apps whose use was Safari's on their website (`WebMirror`) are left out.
 public struct CategoryUsage: Sendable, Hashable, Identifiable {
     /// An app's or website's seconds in the category.
     public struct App: Sendable, Hashable {
