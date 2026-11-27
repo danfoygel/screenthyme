@@ -58,13 +58,15 @@ public struct AppDetails: Sendable {
         let match = item.isScanned ? item.match.flatMap { items[$0] } : item
         let scanned = match.map { match in items.values.filter { $0.liveMatch == match.id } } ?? []
         let ids = Set([item.id] + (match.map { [$0.id] } ?? []) + scanned.map(\.id))
-        let categoryName = match?.category ?? item.category
+        // Its custom category's (PLAN.md §15.14): one moved there counts as that category's.
+        let custom = CustomCategories(policy: policy, items: items)
+        let categoryName = match.flatMap(custom.categoryName(of:)) ?? custom.categoryName(of: item)
         let categoryIDs = categoryName.map { name in
             Set(items.values.filter { candidate in
                 candidate.kind == .category && (candidate.match.flatMap { items[$0] }?.identifier ?? candidate.identifier) == name
             }.map(\.id))
         } ?? []
-        let groups = policy.groups.filter { !$0.items.isDisjoint(with: ids.union(categoryIDs)) }
+        let groups = policy.groups.filter { !$0.members.isDisjoint(with: ids.union(categoryIDs)) }
         func via(_ targets: Set<UUID>) -> [Via] {
             var result: [Via] = []
             if !targets.isDisjoint(with: ids) { result.append(.item) }
@@ -103,7 +105,7 @@ public struct AppDetails: Sendable {
 
     /// How `group` reaches the app: holding it, its category, or both.
     public func via(_ group: ItemGroup) -> [Via] {
-        (group.items.isDisjoint(with: ids) ? [] : [Via.item])
+        (group.members.isDisjoint(with: ids) ? [] : [Via.item])
             + categoryIDs.filter(group.items.contains).sorted { $0.uuidString < $1.uuidString }.map(Via.category)
     }
 

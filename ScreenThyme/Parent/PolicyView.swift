@@ -103,7 +103,19 @@ struct PolicyView: View {
                 Text("After that much use with no rest as long as the break, everything but Always Allowed apps is blocked for the break. A shorter pause doesn't start the count over. Always Allowed apps, ScreenThyme and Phone don't count. \(kid.displayName) can ask for more time or take one more minute, as in Downtime.")
             }
             Section {
-                ForEach(policy.groups) { group in
+                let categories = policy.groups.filter(\.isCategory).count
+                NavigationLink { CustomCategoriesView(kid: kid) } label: {
+                    LabeledContent("Categories", value: categories > 0 ? "\(categories)" : "")
+                }
+                // The categories screen saves moves itself: a draft saved after them would undo them.
+                .disabled(draft != nil && draft != stored)
+            } header: {
+                Text("Categories")
+            } footer: {
+                Text("Apple's categories, as you sort them: move an app or website to another category, and Downtime, limits, Always Allowed and Blocked treat it as that category's." + (draft != nil && draft != stored ? " Save or revert your changes first." : ""))
+            }
+            Section {
+                ForEach(policy.groups.filter { !$0.isCategory }) { group in
                     Button { editingGroup = group } label: {
                         LabeledContent { Text("\(group.items.count)") } label: { GroupName(group: group) }
                     }
@@ -113,7 +125,7 @@ struct PolicyView: View {
             } header: {
                 Text("Groups")
             } footer: {
-                Text("Your own categories of apps, websites and Apple's categories, for Downtime, limits, Always Allowed, Uncounted and Blocked. A change to a group changes everything that uses it.")
+                Text("Your own collections of apps, websites and categories, for Downtime, limits, Always Allowed, Uncounted and Blocked. A change to a group changes everything that uses it.")
             }
             Section {
                 NavigationLink {
@@ -434,7 +446,7 @@ struct LimitEditor: View {
 
     /// Apps and websites the limit names, directly or through its groups: iOS shields them one by one.
     private var oneByOneCount: Int {
-        let ids = limit.items.union(groups.filter { limit.items.contains($0.id) }.flatMap(\.items))
+        let ids = limit.items.union(groups.filter { limit.items.contains($0.id) }.flatMap(\.members))
         return ids.filter { items[$0].map { $0.kind != .category } == true }.count
     }
 }
@@ -512,6 +524,8 @@ struct ItemSelectionView: View {
         let named = items.values.filter { $0.tokenData != nil && choices?.contains($0.id) != false }
             .map { ($0, catalog.name(of: $0, in: items)) }
         let groups = groups.filter { choices?.contains($0.id) != false }
+        // With custom categories set up, they stand in for Apple's (PLAN.md §15.14).
+        let hasCategories = groups.contains(where: \.isCategory)
         List {
             if choices?.isEmpty == true {
                 Text("Nothing is Always Allowed yet.").foregroundStyle(.secondary)
@@ -521,24 +535,27 @@ struct ItemSelectionView: View {
             }
             let shownGroups = groups.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            if !shownGroups.isEmpty {
-                Section("Groups") {
-                    ForEach(shownGroups) { group in
-                        Button {
-                            if selection.contains(group.id) { selection.remove(group.id) } else { selection.insert(group.id) }
-                        } label: {
-                            HStack {
-                                GroupName(group: group)
-                                Spacer()
-                                Text("\(group.items.count)").foregroundStyle(.secondary)
-                                if selection.contains(group.id) { Image(systemName: "checkmark").foregroundStyle(.tint) }
+            ForEach([true, false], id: \.self) { categories in
+                let section = shownGroups.filter { $0.isCategory == categories }
+                if !section.isEmpty {
+                    Section(categories ? "Categories" : "Groups") {
+                        ForEach(section) { group in
+                            Button {
+                                if selection.contains(group.id) { selection.remove(group.id) } else { selection.insert(group.id) }
+                            } label: {
+                                HStack {
+                                    GroupName(group: group)
+                                    Spacer()
+                                    if !group.isCategory { Text("\(group.items.count)").foregroundStyle(.secondary) }
+                                    if selection.contains(group.id) { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                                }
                             }
+                            .tint(.primary)
                         }
-                        .tint(.primary)
                     }
                 }
             }
-            ForEach([ItemKind.category, .app, .domain], id: \.self) { kind in
+            ForEach(hasCategories ? [ItemKind.app, .domain] : [ItemKind.category, .app, .domain], id: \.self) { kind in
                 let group = named.filter { $0.0.kind == kind && $0.1 != nil
                     && (search.isEmpty || $0.1!.localizedCaseInsensitiveContains(search)) }
                     .sorted { $0.1!.localizedCaseInsensitiveCompare($1.1!) == .orderedAscending }
@@ -549,7 +566,8 @@ struct ItemSelectionView: View {
                 }
             }
             // Never used since the scan (or a category): only Apple's label knows the name.
-            let unnamed = named.filter { $0.1 == nil }.map(\.0).sorted { $0.kind.rawValue < $1.kind.rawValue }
+            let unnamed = named.filter { $0.1 == nil && !(hasCategories && $0.0.kind == .category) }.map(\.0)
+                .sorted { $0.kind.rawValue < $1.kind.rawValue }
             if search.isEmpty, !unnamed.isEmpty {
                 Section {
                     ForEach(unnamed) { row($0) }

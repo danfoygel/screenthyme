@@ -18,6 +18,7 @@ public struct DayTotal: Sendable, Hashable {
     public init(_ timeline: DayTimeline, items: [UUID: TrackedItem], policy: Policy, mirrored: Set<UUID> = []) {
         let usage = timeline.items.mapValues(\.seconds)
         let resolved = policy.resolved(items: items)
+        let items = CustomCategories(policy: resolved, items: items).categorizing(items)
         let uncounted = resolved.uncountedSeconds(items: items, usage: usage, mirrored: mirrored)
         let apps = EnforcementPlanner.totalSeconds(items: items, usage: usage, excluding: mirrored.union(resolved.uncounted))
         appMinutes = Int((apps / 60).rounded())

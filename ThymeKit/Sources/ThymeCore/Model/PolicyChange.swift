@@ -51,6 +51,11 @@ public enum PolicyEdit: Sendable, Hashable {
     case groupAdded(ItemGroup)
     case groupRemoved(ItemGroup)
     case groupChanged(from: ItemGroup, to: ItemGroup)
+    /// Custom categories set up for Apple's (`Policy.withCustomCategories`), by name.
+    case categoriesAdded([String])
+    /// An app or website moved between custom categories (PLAN.md §15.14): the groups it left and joined, nil for the
+    /// one of Apple's own category for it.
+    case categoryMove(item: UUID, from: UUID?, to: UUID?)
     case alwaysAllowed(added: Set<UUID>, removed: Set<UUID>)
     case uncounted(added: Set<UUID>, removed: Set<UUID>)
     case blocked(added: Set<UUID>, removed: Set<UUID>)
@@ -67,8 +72,9 @@ public enum PolicyEdit: Sendable, Hashable {
                          changed: PolicyEdit.downtimeChanged)
         edits += changes(old.limits, new.limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
                          changed: PolicyEdit.limitChanged)
-        edits += changes(old.groups, new.groups, added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved,
-                         changed: PolicyEdit.groupChanged)
+        edits += changes(old.groups.filter { !$0.isCategory }, new.groups.filter { !$0.isCategory },
+                         added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved, changed: PolicyEdit.groupChanged)
+        edits += categoryChanges(old.groups.filter(\.isCategory), new.groups.filter(\.isCategory))
         if (old.breaks?.enabled == true ? old.breaks : nil) != (new.breaks?.enabled == true ? new.breaks : nil) {
             edits.append(.breaks(from: old.breaks, to: new.breaks))
         }
@@ -94,6 +100,23 @@ public enum PolicyEdit: Sendable, Hashable {
             if !added.isEmpty || !removed.isEmpty { edits.append(.websites(list: list, added: added, removed: removed)) }
         }
         return edits
+    }
+
+    /// Custom categories added, and each app or website that changed category. Apple's category items joining one
+    /// (scanned ones matched later) aren't edits of the parents'.
+    private static func categoryChanges(_ old: [ItemGroup], _ new: [ItemGroup]) -> [PolicyEdit] {
+        let oldIDs = Set(old.map(\.id))
+        let added = new.filter { !oldIDs.contains($0.id) }.map(\.name).sorted()
+        func homes(_ groups: [ItemGroup]) -> [UUID: UUID] {
+            var homes: [UUID: UUID] = [:]
+            for group in groups { for item in group.moved { homes[item] = group.id } }
+            return homes
+        }
+        let (before, after) = (homes(old), homes(new))
+        let moves = Set(before.keys).union(after.keys).filter { before[$0] != after[$0] }
+            .sorted { $0.uuidString < $1.uuidString }
+            .map { PolicyEdit.categoryMove(item: $0, from: before[$0], to: after[$0]) }
+        return (added.isEmpty ? [] : [.categoriesAdded(added)]) + moves
     }
 
     private static func changes<T: Identifiable & Equatable>(
@@ -162,6 +185,12 @@ public enum PolicyEdit: Sendable, Hashable {
             if old.name != new.name { details.append("Renamed from \u{201C}\(old.name)\u{201D}") }
             details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
             return ("Changed group \u{201C}\(new.name)\u{201D}", details)
+        case let .categoriesAdded(names):
+            return (names.count == 1 ? "Added category \u{201C}\(names[0])\u{201D}" : "Set up categories",
+                    names.count == 1 ? [] : [names.joined(separator: ", ")])
+        case let .categoryMove(item, from, to):
+            let home = "Apple's category"
+            return ("Moved \(name(item)) to \(to.map(name) ?? home)", ["From \(from.map(name) ?? home)"])
         case let .breaks(old, new):
             func rule(_ rule: BreakRule?) -> String {
                 guard let rule, rule.enabled else { return "Off" }

@@ -62,11 +62,11 @@ public struct Policy: Codable, Sendable, Hashable {
         breaks = try container.decodeIfPresent(BreakRule.self, forKey: .breaks)
     }
 
-    /// `ids` with each group's id replaced by its items.
+    /// `ids` with each group's id replaced by its items (a category's moved-in apps too).
     public func expandingGroups(_ ids: Set<UUID>) -> Set<UUID> {
         guard !groups.isEmpty else { return ids }
         var result = ids
-        for group in groups where result.remove(group.id) != nil { result.formUnion(group.items) }
+        for group in groups where result.remove(group.id) != nil { result.formUnion(group.members) }
         return result
     }
 
@@ -83,9 +83,25 @@ public struct Policy: Codable, Sendable, Hashable {
         return policy
     }
 
-    /// `resolved`, following new tokens first (`followingNewTokens`).
+    /// `resolved`, following new tokens first (`followingNewTokens`). An Apple category named anywhere (a group of the
+    /// parents' own, say) stands for its custom category: the apps moved into it come along, with the scanned items
+    /// that hold their tokens (`CustomCategories`).
     public func resolved(items: [UUID: TrackedItem]) -> Policy {
-        followingNewTokens(items: items).resolved
+        var policy = followingNewTokens(items: items).resolved
+        let custom = CustomCategories(policy: policy, items: items)
+        guard !custom.moved.isEmpty else { return policy }
+        func withMovedIn(_ ids: Set<UUID>) -> Set<UUID> {
+            ids.union(custom.movedIn(to: EnforcementPlanner.categoryNames(policy.expandingGroups(ids), items: items)))
+        }
+        let uncounted = withMovedIn(policy.uncounted)
+        policy.alwaysAllowed = withMovedIn(policy.alwaysAllowed)
+        policy.uncounted = uncounted
+        policy.blocked = withMovedIn(policy.blocked)
+        for index in policy.limits.indices { policy.limits[index].items = withMovedIn(policy.limits[index].items) }
+        for index in policy.downtime.indices where !policy.downtime[index].isWholePhone {
+            policy.downtime[index].items = withMovedIn(policy.downtime[index].items)
+        }
+        return policy
     }
 
     /// The policy with each scanned item that lost its token replaced by the scanned items with a token matched to the
@@ -183,17 +199,41 @@ public struct Policy: Codable, Sendable, Hashable {
 
 /// A parent's own category: apps, websites and Apple's categories under one name, like "Games" or "Homework
 /// distractions". An app may be in several groups. Groups don't contain groups.
+///
+/// A custom category (`category` set, PLAN.md §15.14) is one of Apple's categories as the parents sort it: `items` are
+/// Apple's category items (its own and scanned ones), `moved` the apps and websites moved into it from another.
 public struct ItemGroup: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
     /// `TrackedItem` ids.
     public var items: Set<UUID>
+    /// For a custom category: Apple's category name it starts from ("Games"); nil for a group of the parents' own.
+    public var category: String?
+    /// For a custom category: apps and websites (Apple's items, from its data) moved into it from another category.
+    public var moved: Set<UUID>
 
-    public init(id: UUID = UUID(), name: String, items: Set<UUID> = []) {
+    public init(id: UUID = UUID(), name: String, items: Set<UUID> = [], category: String? = nil, moved: Set<UUID> = []) {
         self.id = id
         self.name = name
         self.items = items
+        self.category = category
+        self.moved = moved
     }
+
+    /// Groups saved before a field existed still load.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        items = try container.decode(Set<UUID>.self, forKey: .items)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        moved = try container.decodeIfPresent(Set<UUID>.self, forKey: .moved) ?? []
+    }
+
+    public var isCategory: Bool { category != nil }
+
+    /// What the group stands for: its items, and a custom category's moved-in apps and websites.
+    public var members: Set<UUID> { items.union(moved) }
 }
 
 /// A break the kid must take after a stretch of use (PLAN.md §15.13): after `useMinutes` of use with no rest of

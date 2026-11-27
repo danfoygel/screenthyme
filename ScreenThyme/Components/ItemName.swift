@@ -71,7 +71,7 @@ struct GroupName: View {
     let group: ItemGroup
 
     var body: some View {
-        Label(group.name, systemImage: "square.stack.3d.up.fill")
+        Label(group.name, systemImage: group.isCategory ? "square.grid.2x2.fill" : "square.stack.3d.up.fill")
     }
 }
 

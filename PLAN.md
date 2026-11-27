@@ -721,6 +721,26 @@ A parent can make the kid take breaks (`Policy.breaks`, a `BreakRule`; the polic
 - Changes show in the change history and go back with temporary changes. Parents' phones don't see the kid's breaks
   yet: the state stays on the kid's phone.
 
+### 15.14 Custom categories
+
+- Apple's categories, as the parents sort them (`CustomCategories`): a group per Apple category (`ItemGroup.category`),
+  holding Apple's category items for it (`items`, its own and scanned ones) and the apps and websites moved into it
+  from another (`moved`, Apple's items). Ids are stable (kid + name), so parents' phones agree. A parent's phone sets
+  them up at launch for kids with a policy, and when Screen Time › Categories opens (`Policy.withCustomCategories`):
+  one per category the kid's phone has seen, and every use of an Apple category in Downtime, limits, Always Allowed,
+  Uncounted and Blocked (and what temporary changes change back to) then names its custom category. The parents' own
+  groups keep Apple's categories (groups don't nest); those stand for the custom ones anyway.
+- Screen Time › Categories lists each with its last 7 days' use (a browser's time on websites is the sites'), opening
+  to its apps and websites, most used first; a tap moves one to another category, saved at once. Moves are in the
+  change history (`PolicyEdit.categoryMove`). Pickers offer the custom categories, not Apple's.
+- Enforcement never goes by Apple's categories alone. A moved app counts with its new category (`categorizing`),
+  is shielded by its token with it (`Policy.resolved(items:)` adds the moved-in apps and the scanned items holding
+  their tokens wherever their category is named), and is let through its Apple category's shields (`movedOut`, as
+  `.specific(except:)`). iOS's threshold event can't leave an app out of a category, so a limit whose categories lost
+  an app gets none: the wakes end it from our own count, up to a minute late (`EnforcementPlanner.eventMiscounts`).
+- A kid's phone on an older build sees the groups as plain groups of Apple's categories: what it enforced before,
+  without the moves.
+
 ## 16. Losing data access, and iOS's count restarting
 
 **Apple's Screen Time settings take data access back silently.** When a parent's device sends the kid's Screen Time
