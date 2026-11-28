@@ -14,7 +14,7 @@ struct ItemName: View {
             if item.nickname == nil, let label = tokenLabel(item) {
                 label
             } else {
-                let name = item.nickname ?? AppCatalog.shared.entries[item.identifier]?.name ?? item.displayName
+                let name = Self.plainName(for: item)
                 if showIcon, let icon = AppCatalog.shared.icon(for: item) {
                     Label {
                         Text(name)
@@ -28,6 +28,11 @@ struct ItemName: View {
         } else {
             Text("Unknown app").foregroundStyle(.secondary)
         }
+    }
+
+    /// The name as text: a nickname, the App Store's name or a readable form of the bundle ID or domain.
+    static func plainName(for item: TrackedItem) -> String {
+        item.nickname ?? AppCatalog.shared.entries[item.identifier]?.name ?? item.displayName
     }
 
     @ViewBuilder

@@ -369,9 +369,12 @@ struct AlertsView: View {
                             Label("Self-approved, no parent answered", systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption.bold()).foregroundStyle(.orange)
                         }
-                        Text(alert.title).font(.headline)
+                        // The caption above already marks a self-approval, so its title's ⚠️ isn't shown twice.
+                        Text(selfApproved == nil ? alert.title : alert.listTitle).font(.headline)
                         // What it's about: older kid builds' requests name only the limit, not what the time is for.
-                        if let item = alert.itemID.flatMap({ model.data.items[$0] }) { ItemName(item: item) }
+                        if let item = alert.itemID.flatMap({ model.data.items[$0] }), !alert.namesItem(ItemName.plainName(for: item)) {
+                            ItemName(item: item)
+                        }
                         Text(alert.body)
                         if let request = TimeRequest.sent(with: alert, from: model.data.requests.values) {
                             let answer = model.data.grants[request.id]
