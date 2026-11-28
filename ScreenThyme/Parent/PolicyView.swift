@@ -448,6 +448,26 @@ struct LimitEditor: View {
                     }
                 }
                 Section {
+                    // By position, checked: a swipe's delete can redraw a row whose index is gone.
+                    ForEach(Array(limit.warningPercents.enumerated()), id: \.offset) { index, percent in
+                        Stepper(value: Binding(get: { percent }, set: { new in
+                            if limit.warningPercents.indices.contains(index) { limit.warningPercents[index] = new }
+                        }), in: 5...95, step: 5) {
+                            LabeledContent("At \(percent)%", value: "\(Format.minutes(minutesLeft(at: percent))) left")
+                        }
+                        .swipeActions {
+                            Button("Delete", role: .destructive) {
+                                if limit.warningPercents.indices.contains(index) { limit.warningPercents.remove(at: index) }
+                            }
+                        }
+                    }
+                    Button("Add a warning") { limit.warningPercents.append(nextWarning) }
+                } header: {
+                    Text("Warnings")
+                } footer: {
+                    Text("A notification on your kid's phone once this much of the day's time is used. Minutes left are for \(Format.minutes(limit.minutes)) a day.")
+                }
+                Section {
                     Toggle("All apps and websites", isOn: $limit.allApps)
                     if !limit.allApps {
                         NavigationLink {
@@ -474,6 +494,7 @@ struct LimitEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         if limit.name.isEmpty { limit.name = suggestedName }
+                        limit.warningPercents = Set(limit.warningPercents).sorted()
                         onSave(limit)
                         dismiss()
                     }
@@ -481,6 +502,15 @@ struct LimitEditor: View {
                 }
             }
         }
+    }
+
+    /// What's left of the time a day when the kid's phone warns at `percent` (`LimitWarning`).
+    private func minutesLeft(at percent: Int) -> Int {
+        limit.minutes - (percent * limit.minutes + 99) / 100
+    }
+
+    private var nextWarning: Int {
+        [75, 90, 50].first { !limit.warningPercents.contains($0) } ?? min((limit.warningPercents.max() ?? 0) + 5, 95)
     }
 
     /// A scanned app goes by the app it's matched to; an unmatched one has no name, so it only counts.

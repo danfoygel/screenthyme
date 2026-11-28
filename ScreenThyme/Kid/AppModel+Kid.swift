@@ -126,6 +126,13 @@ extension AppModel {
         }
     }
 
+    /// Limit warnings are the kid phone's own notifications (`LimitWarning`): asked for once a limit has them, with
+    /// the app open, where iOS can ask. A no-op once answered.
+    func askForLimitWarnings() async {
+        guard isKid, AppGroup.load(Policy.self, from: AppGroup.policyURL)?.hasLimitWarnings == true else { return }
+        await Notifier.requestPermission()
+    }
+
     func flush() async {
         guard isKid, config.family != nil else { return }
         EnergyMeter.record(.app, isCallback: false)
@@ -174,6 +181,7 @@ extension AppModel {
                          localNetwork: DevicePermissions.localNetwork,
                          iCloud: DevicePermissions.iCloud,
                          location: DevicePermissions.location,
+                         notifications: DevicePermissions.limitWarnings,
                          lowPowerMode: DevicePermissions.lowPowerMode,
                          lastTokenPairing: InventoryRefresh.load().appsAt,
                          lastParentUnlock: lastParentUnlock)

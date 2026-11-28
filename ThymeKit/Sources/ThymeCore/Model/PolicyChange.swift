@@ -194,6 +194,7 @@ public enum PolicyEdit: Sendable, Hashable {
             details += limit.weekdayMinutes.sorted { $0.key < $1.key }.map {
                 "\(calendar.weekdaySymbols[$0.key - 1]): \(Self.minutes($0.value))"
             }
+            if !limit.warningPercents.isEmpty { details.append(Self.warnings(limit.warningPercents)) }
             details.append(names(limit.items))
             return ("Added limit \u{201C}\(limit.name)\u{201D}", details)
         case let .limitRemoved(limit):
@@ -207,6 +208,9 @@ public enum PolicyEdit: Sendable, Hashable {
                 let (from, to) = (old.weekdayMinutes[weekday].map(Self.minutes) ?? "same",
                                   new.weekdayMinutes[weekday].map(Self.minutes) ?? "same")
                 details.append("\(calendar.weekdaySymbols[weekday - 1]): \(from) → \(to)")
+            }
+            if old.warningPercents != new.warningPercents {
+                details.append(new.warningPercents.isEmpty ? "No warnings" : Self.warnings(new.warningPercents))
             }
             details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
             return ("Changed limit \u{201C}\(new.name)\u{201D}", details)
@@ -266,6 +270,11 @@ public enum PolicyEdit: Sendable, Hashable {
 
     static func minutes(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
+    }
+
+    /// "Warns at 75%, 90%".
+    static func warnings(_ percents: [Int]) -> String {
+        "Warns at " + percents.sorted().map { "\($0)%" }.joined(separator: ", ")
     }
 }
 

@@ -83,6 +83,7 @@ final class AppModel {
             await sendHeartbeat(.launch)
             await refresh()
             await KidSync.refreshIfDue(config: config, force: true)
+            await askForLimitWarnings()
             PlaceWatcher.shared.reloadFamilyPlaces()
         case .parent:
             await refresh()

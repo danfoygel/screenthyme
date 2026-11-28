@@ -28,6 +28,8 @@ extension ScreenHelp {
                 "Screen Time",
                 "The top shows the rules in effect now: Downtime, breaks, each limit with the time you've used, and "
                     + "the apps that are **Always Allowed**, **Uncounted** or **Blocked**. Tap a list to see its apps.",
+                "Your parents can have a limit warn you with a notification before it runs out, such as when 75% of "
+                    + "its time is used.",
                 "**Ask for more time** shows up while something is blocked. **Ask to always allow an app** asks for "
                     + "an app to work during Downtime and not count toward limits.",
                 "Your requests show here while they wait, then your parents' answers. In a real emergency with no "

@@ -318,9 +318,11 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
     /// Per-weekday budgets (Calendar numbering) that replace `minutes` on those days.
     public var weekdayMinutes: [Int: Int]
     public var enabled: Bool
+    /// Percentages of the day's budget at which the kid's phone posts a notification (`LimitWarning`), ascending.
+    public var warningPercents: [Int]
 
     public init(id: UUID = UUID(), name: String, items: Set<UUID>, allApps: Bool = false, minutes: Int,
-                weekdayMinutes: [Int: Int] = [:], enabled: Bool = true) {
+                weekdayMinutes: [Int: Int] = [:], enabled: Bool = true, warningPercents: [Int] = []) {
         self.id = id
         self.name = name
         self.items = items
@@ -328,6 +330,7 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
         self.minutes = minutes
         self.weekdayMinutes = weekdayMinutes
         self.enabled = enabled
+        self.warningPercents = warningPercents
     }
 
     /// Policies saved before a field existed still load.
@@ -340,6 +343,7 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
         minutes = try container.decode(Int.self, forKey: .minutes)
         weekdayMinutes = try container.decodeIfPresent([Int: Int].self, forKey: .weekdayMinutes) ?? [:]
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        warningPercents = try container.decodeIfPresent([Int].self, forKey: .warningPercents) ?? []
     }
 
     public func minutes(on weekday: Int) -> Int {

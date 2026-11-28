@@ -56,6 +56,8 @@ public struct EnforcementDayState: Codable, Sendable, Hashable {
     public var extraMinutes: [ExtraMinute] = []
     /// Mandatory breaks: today's stretch of use and the break that's on (PLAN.md §15.13).
     public var breaks = BreakTracker()
+    /// Limit id → the last warning its use set off today (`LimitWarning`).
+    public var limitWarnings: [UUID: LimitWarning.Sent] = [:]
 
     public init(day: DayKey) {
         self.day = day
@@ -69,6 +71,7 @@ public struct EnforcementDayState: Codable, Sendable, Hashable {
         grants = try container.decodeIfPresent([AppliedGrant].self, forKey: .grants) ?? []
         extraMinutes = try container.decodeIfPresent([ExtraMinute].self, forKey: .extraMinutes) ?? []
         breaks = try container.decodeIfPresent(BreakTracker.self, forKey: .breaks) ?? BreakTracker()
+        limitWarnings = try container.decodeIfPresent([UUID: LimitWarning.Sent].self, forKey: .limitWarnings) ?? [:]
     }
 
     /// One more minute is once a day per app, or with no app (a Downtime or all-apps limit shield, which names only a

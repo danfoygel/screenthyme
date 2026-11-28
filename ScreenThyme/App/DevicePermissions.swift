@@ -14,6 +14,8 @@ import UserNotifications
     private static let telephony = CTCellularData()
     /// iCloud's last answer: it comes asynchronously, and heartbeats are made synchronously (`makeHeartbeat`).
     private(set) static var iCloud: PermissionState?
+    /// Notifications' last answer, while some limit warns (`Policy.hasLimitWarnings`); asynchronous like iCloud's.
+    private(set) static var limitWarnings: PermissionState?
     private static let localNetworkKey = "localNetworkPermission"
 
     /// Called at launch, so the cellular answer is in by the first heartbeat.
@@ -28,6 +30,8 @@ import UserNotifications
         case .noAccount, .restricted: .denied
         default: nil
         }
+        let warns = AppGroup.load(Policy.self, from: AppGroup.policyURL)?.hasLimitWarnings == true
+        limitWarnings = warns ? await notifications : nil
     }
 
     /// This phone's answer now; nil when iOS can't say (or, for Photos, never asks; for Location, places aren't watched).
@@ -35,12 +39,7 @@ import UserNotifications
         if permission == .iCloud { await refresh() }
         return switch permission {
         case .screenTime: screenTime
-        case .notifications:
-            switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
-            case .authorized, .provisional, .ephemeral: .allowed
-            case .notDetermined: .notAsked
-            default: .denied
-            }
+        case .notifications: await notifications
         case .backgroundRefresh: backgroundRefresh
         case .cellularData: cellularData
         case .localNetwork: localNetwork
@@ -57,6 +56,16 @@ import UserNotifications
         case .approvedWithDataAccess: .allowed
         case .notDetermined: .notAsked
         default: .denied
+        }
+    }
+
+    static var notifications: PermissionState {
+        get async {
+            switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+            case .authorized, .provisional, .ephemeral: .allowed
+            case .notDetermined: .notAsked
+            default: .denied
+            }
         }
     }
 

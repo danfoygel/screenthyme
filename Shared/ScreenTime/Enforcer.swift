@@ -2,6 +2,7 @@ import DeviceActivity
 import Foundation
 import ManagedSettings
 import ThymeCore
+import UserNotifications
 
 /// Applies ScreenThyme's policy on the kid's phone (PLAN.md §15.2): ManagedSettings stores for restrictions, Downtime
 /// and limits, and DeviceActivity activities whose callbacks call `reconcile`. Runs in the app and the extension,
@@ -43,10 +44,15 @@ enum Enforcer {
                                               exempt: exempt), let until = state.breaks.breakUntil {
                 try? AppGroup.journal.append(.note("break until \(until.formatted(date: .omitted, time: .shortened))"))
             }
-            AppGroup.save(state, to: AppGroup.enforcementStateURL)
             clearRetiredStores(now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows, exempt: exempt)
+            let warnings = LimitWarning.due(in: plan, limits: policy.limits, sent: &state.limitWarnings)
+            AppGroup.save(state, to: AppGroup.enforcementStateURL)
+            for warning in warnings {
+                post(warning)
+                try? AppGroup.journal.append(.note("limit warning: \(warning.name) at \(warning.percent)%"))
+            }
             let unshielded = apply(plan, policy: policy, items: items, use: UsageSnapshot.todayUse(kid: kid, now: now))
             let applied = loadApplied()
             if unshielded.count != applied?.unshielded?.count ?? 0 {
@@ -62,6 +68,16 @@ enum Enforcer {
             registerActivities(policy: policy, plan: plan, items: items, now: now)
             return plan
         }
+    }
+
+    /// A limit warning on this phone; a newer one for the same limit replaces it. Not posted without permission.
+    private static func post(_ warning: LimitWarning) {
+        let content = UNMutableNotificationContent()
+        content.title = warning.title
+        content.body = warning.body
+        content.sound = .default
+        let id = "limit-warning.\(warning.limitID.uuidString)"
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
     }
 
     static func loadState(now: Date = Date()) -> EnforcementDayState {
