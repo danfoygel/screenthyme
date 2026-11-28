@@ -447,7 +447,8 @@ the data back (§16). So ScreenThyme rebuilds the limits. Nothing usage-based st
 | Downtime windows | name, start/end minute (may wrap midnight), weekdays (of the day the window starts), and optionally items: none means the whole phone (§15.8) |
 | Always Allowed | apps, websites, categories or groups exempt from Downtime and limits |
 | Uncounted | some of Always Allowed whose use is left out of the day's total (below); leaving Always Allowed leaves it too |
-| App limits | name, items (apps, websites, categories, groups) or **all apps**, minutes per day, optional per-weekday minutes, warnings (percentages of the day's budget) |
+| App limits | name, items (apps, websites, categories, groups) or **all apps**, minutes per day, optional per-weekday minutes |
+| Limit warnings | percentages of a limit's day, for every limit in every ruleset |
 | Blocked | items never allowed |
 | Groups | the parents' own categories (§15.8) |
 | Rulesets | Downtime windows, App limits and Blocked come in rulesets, one in effect each day (§15.15) |
@@ -502,10 +503,11 @@ approves the amount asked or changes it, saved as `TimeGrant.<request id>`.
   (`EnforcementPlanner.categoryNames`). `.all(except:)` takes apps only, so an allowed category lets through the
   scanned apps matched to its apps; unmatched ones stay shielded.
 - **Limit warnings:** each reconcile (so every wake) gives the kid's phone a local notification ("15 min left: Social")
-  for a limit not yet used up whose use reached one of its percentages of today's budget (`LimitWarning`): the highest
-  reached, once a day, remembered with the budget in `EnforcementDayState.limitWarnings`, so more time starts them
-  over. The kid app asks for notifications at launch once a limit has warnings; heartbeats then carry the answer, and
-  parents are alerted when it's off.
+  for a limit not yet used up whose use reached one of the policy's percentages of today's budget (`LimitWarning`,
+  `Policy.limitWarningPercents`, the same for every limit and ruleset): the highest reached, once a day, remembered
+  with the budget in `EnforcementDayState.limitWarnings`, so more time starts them over. The kid app asks for
+  notifications at launch once the policy has warnings and a limit; heartbeats then carry the answer, and parents are
+  alerted when it's off.
 - The block page (ShieldConfiguration extension) reads App Group `enforcement.json` to say why: "Downtime until 7:00",
   "Time limit: Social (1 h)", "Not allowed". iOS 26 draws the primary button much lighter than the color given, so
   its label is dark. The secondary button opens ScreenThyme (§15.4), or while one more minute is left, a submenu

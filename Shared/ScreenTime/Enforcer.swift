@@ -47,7 +47,8 @@ enum Enforcer {
             clearRetiredStores(now: now)
             let plan = EnforcementPlanner.plan(policy: policy, items: items, usage: usage, state: state, now: now,
                                                endingWindows: endingWindows, exempt: exempt)
-            let warnings = LimitWarning.due(in: plan, limits: policy.limits, sent: &state.limitWarnings)
+            let warnings = LimitWarning.due(in: plan, limits: policy.limits, percents: policy.limitWarningPercents,
+                                             sent: &state.limitWarnings)
             AppGroup.save(state, to: AppGroup.enforcementStateURL)
             for warning in warnings {
                 post(warning)

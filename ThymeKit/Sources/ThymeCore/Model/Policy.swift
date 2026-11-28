@@ -29,6 +29,9 @@ public struct Policy: Codable, Sendable, Hashable {
     public var temporary: [TemporaryChange]
     /// Mandatory breaks (PLAN.md §15.13); nil when never set up.
     public var breaks: BreakRule?
+    /// Percentages of a limit's day at which the kid's phone posts a notification (`LimitWarning`): for every limit, in
+    /// every ruleset.
+    public var limitWarningPercents: [Int]
     /// Downtime, limits and Blocked for some days each (PLAN.md §15.15); empty for a policy saved before rulesets, whose
     /// own `downtime`, `limits` and `blocked` are then in effect every day.
     public var ruleSets: [PolicyRuleSet]
@@ -38,7 +41,8 @@ public struct Policy: Codable, Sendable, Hashable {
     public init(kidID: UUID, updatedAt: Date = Date(), enabled: Bool = true, downtime: [DowntimeWindow] = [],
                 alwaysAllowed: Set<UUID> = [], uncounted: Set<UUID> = [], limits: [AppLimit] = [], blocked: Set<UUID> = [],
                 restrictions: Restrictions = Restrictions(), groups: [ItemGroup] = [], temporary: [TemporaryChange] = [],
-                breaks: BreakRule? = nil, ruleSets: [PolicyRuleSet] = [], ruleSetChoice: RuleSetChoice? = nil) {
+                breaks: BreakRule? = nil, limitWarningPercents: [Int] = [], ruleSets: [PolicyRuleSet] = [],
+                ruleSetChoice: RuleSetChoice? = nil) {
         self.kidID = kidID
         self.updatedAt = updatedAt
         self.enabled = enabled
@@ -51,6 +55,7 @@ public struct Policy: Codable, Sendable, Hashable {
         self.groups = groups
         self.temporary = temporary
         self.breaks = breaks
+        self.limitWarningPercents = limitWarningPercents
         self.ruleSets = ruleSets
         self.ruleSetChoice = ruleSetChoice
     }
@@ -70,6 +75,7 @@ public struct Policy: Codable, Sendable, Hashable {
         groups = try container.decodeIfPresent([ItemGroup].self, forKey: .groups) ?? []
         temporary = try container.decodeIfPresent([TemporaryChange].self, forKey: .temporary) ?? []
         breaks = try container.decodeIfPresent(BreakRule.self, forKey: .breaks)
+        limitWarningPercents = try container.decodeIfPresent([Int].self, forKey: .limitWarningPercents) ?? []
         ruleSets = try container.decodeIfPresent([PolicyRuleSet].self, forKey: .ruleSets) ?? []
         ruleSetChoice = try container.decodeIfPresent(RuleSetChoice.self, forKey: .ruleSetChoice)
     }
@@ -318,11 +324,9 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
     /// Per-weekday budgets (Calendar numbering) that replace `minutes` on those days.
     public var weekdayMinutes: [Int: Int]
     public var enabled: Bool
-    /// Percentages of the day's budget at which the kid's phone posts a notification (`LimitWarning`), ascending.
-    public var warningPercents: [Int]
 
     public init(id: UUID = UUID(), name: String, items: Set<UUID>, allApps: Bool = false, minutes: Int,
-                weekdayMinutes: [Int: Int] = [:], enabled: Bool = true, warningPercents: [Int] = []) {
+                weekdayMinutes: [Int: Int] = [:], enabled: Bool = true) {
         self.id = id
         self.name = name
         self.items = items
@@ -330,7 +334,6 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
         self.minutes = minutes
         self.weekdayMinutes = weekdayMinutes
         self.enabled = enabled
-        self.warningPercents = warningPercents
     }
 
     /// Policies saved before a field existed still load.
@@ -343,7 +346,6 @@ public struct AppLimit: Codable, Sendable, Hashable, Identifiable {
         minutes = try container.decode(Int.self, forKey: .minutes)
         weekdayMinutes = try container.decodeIfPresent([Int: Int].self, forKey: .weekdayMinutes) ?? [:]
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        warningPercents = try container.decodeIfPresent([Int].self, forKey: .warningPercents) ?? []
     }
 
     public func minutes(on weekday: Int) -> Int {

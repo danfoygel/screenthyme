@@ -16,8 +16,8 @@ extension ScreenHelp {
                     + "days (in orange, with who chose it).",
                 "**Rules of** picks which ruleset's **Downtime**, **App Limits** and **Blocked** the sections below "
                     + "show and change. The note under it says which days that ruleset is for.",
-                "**Breaks**, **Categories**, **Groups**, **Always Allowed**, **Uncounted** and **Content & Privacy** "
-                    + "are the same in every ruleset.",
+                "**Limit warnings**, **Breaks**, **Categories**, **Groups**, **Always Allowed**, **Uncounted** and "
+                    + "**Content & Privacy** are the same in every ruleset.",
                 "A limit can show extra time a parent gave today, when your kid asked for more."
             ),
             topic(
@@ -27,6 +27,11 @@ extension ScreenHelp {
                 "**Blocked** apps never open. **Always Allowed** apps work during Downtime and breaks and don't count "
                     + "toward limits. ScreenThyme and Phone always work.",
                 "**Uncounted** apps, chosen from Always Allowed, are also left out of the day's total.",
+                "**Limit warnings** show a notification on your kid's phone once a share of any limit's time is used, "
+                    + "such as 75%. **Add a warning**, set its share with the stepper, 5% a tap, and swipe it left to "
+                    + "delete it. Each comes once a day per limit; more time you give starts them over. Your kid's "
+                    + "phone asks to allow notifications the next time ScreenThyme is opened there, and you get an "
+                    + "alert if they're turned off.",
                 "**Breaks** block everything but Always Allowed apps after a stretch of use, for as long as the "
                     + "break. Your phone doesn't show when a break is running."
             ),
@@ -46,7 +51,7 @@ extension ScreenHelp {
                     + "Privacy included.",
                 "Don't set up Screen Time for your kid in the iPhone's Settings: it would take back the usage data "
                     + "ScreenThyme needs.",
-                "Swipe a Downtime, limit or group left to delete it."
+                "Swipe a Downtime, limit, group or limit warning left to delete it."
             ),
         ]
     )
@@ -122,14 +127,6 @@ extension ScreenHelp {
                 "Set the time a day with the stepper, 5 minutes a tap; hold **+** or **−** to go faster.",
                 "Under **Other days**, give a weekday its own time. Swipe a day left and tap **Same** to go back to "
                     + "the time a day."
-            ),
-            topic(
-                "Warnings",
-                "**Add a warning** to have your kid's phone show a notification once a share of the day's time is "
-                    + "used, such as 75%. Set the share with its stepper, 5% a tap; swipe it left to delete it.",
-                "Each warning comes once a day. More time you give starts them over for the new total.",
-                "Your kid's phone asks to allow notifications the next time ScreenThyme is opened there. If they're "
-                    + "turned off, you get an alert."
             ),
             topic(
                 "What it limits",

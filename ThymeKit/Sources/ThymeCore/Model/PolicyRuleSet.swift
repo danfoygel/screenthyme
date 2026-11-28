@@ -3,7 +3,7 @@ import Foundation
 /// One of a kid's rulesets (PLAN.md §15.15): the Downtime, App Limits and Blocked apps in effect on some days, like
 /// school days, weekends or a trip. Exactly one is in effect on each day (`Policy.ruleSet(on:)`): the one a parent chose
 /// for some days (`Policy.ruleSetChoice`), else the one for the weekday, else the first. Groups, custom categories,
-/// Always Allowed, Uncounted, breaks and Content & Privacy are the same under every ruleset.
+/// Always Allowed, Uncounted, breaks, limit warnings and Content & Privacy are the same under every ruleset.
 public struct PolicyRuleSet: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
