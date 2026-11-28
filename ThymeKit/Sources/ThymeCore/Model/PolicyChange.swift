@@ -63,6 +63,7 @@ public enum PolicyEdit: Sendable, Hashable {
     case restriction(name: String, from: String, to: String)
     case websites(list: String, added: [String], removed: [String])
     case breaks(from: BreakRule?, to: BreakRule?)
+    case limitWarnings(from: [Int], to: [Int])
     /// The default rulesets set up (`Policy.withDefaultRuleSets`), by name.
     case ruleSetsSetUp([String])
     case ruleSetAdded(PolicyRuleSet)
@@ -101,6 +102,9 @@ public enum PolicyEdit: Sendable, Hashable {
         edits += categoryChanges(old.groups.filter(\.isCategory), new.groups.filter(\.isCategory))
         if (old.breaks?.enabled == true ? old.breaks : nil) != (new.breaks?.enabled == true ? new.breaks : nil) {
             edits.append(.breaks(from: old.breaks, to: new.breaks))
+        }
+        if Set(old.limitWarningPercents) != Set(new.limitWarningPercents) {
+            edits.append(.limitWarnings(from: old.limitWarningPercents, to: new.limitWarningPercents))
         }
         if old.alwaysAllowed != new.alwaysAllowed {
             edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
@@ -194,7 +198,6 @@ public enum PolicyEdit: Sendable, Hashable {
             details += limit.weekdayMinutes.sorted { $0.key < $1.key }.map {
                 "\(calendar.weekdaySymbols[$0.key - 1]): \(Self.minutes($0.value))"
             }
-            if !limit.warningPercents.isEmpty { details.append(Self.warnings(limit.warningPercents)) }
             details.append(names(limit.items))
             return ("Added limit \u{201C}\(limit.name)\u{201D}", details)
         case let .limitRemoved(limit):
@@ -208,9 +211,6 @@ public enum PolicyEdit: Sendable, Hashable {
                 let (from, to) = (old.weekdayMinutes[weekday].map(Self.minutes) ?? "same",
                                   new.weekdayMinutes[weekday].map(Self.minutes) ?? "same")
                 details.append("\(calendar.weekdaySymbols[weekday - 1]): \(from) → \(to)")
-            }
-            if old.warningPercents != new.warningPercents {
-                details.append(new.warningPercents.isEmpty ? "No warnings" : Self.warnings(new.warningPercents))
             }
             details += listChange(new.items.subtracting(old.items), old.items.subtracting(new.items))
             return ("Changed limit \u{201C}\(new.name)\u{201D}", details)
@@ -237,6 +237,11 @@ public enum PolicyEdit: Sendable, Hashable {
             guard let new, new.enabled else { return ("Turned breaks off", ["Was \(rule(old))"]) }
             return (old?.enabled == true ? "Changed breaks" : "Turned breaks on",
                     [rule(new)] + (old?.enabled == true ? ["Was \(rule(old))"] : []))
+        case let .limitWarnings(old, new):
+            func warnings(_ percents: [Int]) -> String {
+                percents.isEmpty ? "None" : percents.sorted().map { "\($0)%" }.joined(separator: ", ")
+            }
+            return ("Changed limit warnings", [warnings(new)] + (old.isEmpty ? [] : ["Was \(warnings(old))"]))
         case let .alwaysAllowed(added, removed):
             return ("Changed Always Allowed", listChange(added, removed))
         case let .uncounted(added, removed):
@@ -270,11 +275,6 @@ public enum PolicyEdit: Sendable, Hashable {
 
     static func minutes(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
-    }
-
-    /// "Warns at 75%, 90%".
-    static func warnings(_ percents: [Int]) -> String {
-        "Warns at " + percents.sorted().map { "\($0)%" }.joined(separator: ", ")
     }
 }
 

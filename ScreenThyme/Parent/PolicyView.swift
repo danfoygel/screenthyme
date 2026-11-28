@@ -129,6 +129,31 @@ struct PolicyView: View {
                 Text("Blocked apps never open. Always Allowed apps, below, are allowed in every ruleset.")
             }
             Section {
+                let warnings = policy.limitWarningPercents
+                // By position, checked: a swipe's delete can redraw a row whose index is gone.
+                ForEach(Array(warnings.enumerated()), id: \.offset) { index, percent in
+                    Stepper {
+                        Text("When \(percent)% is used")
+                    } onIncrement: {
+                        stepWarning(policy, index, up: true)
+                    } onDecrement: {
+                        stepWarning(policy, index, up: false)
+                    }
+                    .swipeActions {
+                        Button("Delete", role: .destructive) {
+                            update(policy) { if $0.limitWarningPercents.indices.contains(index) { $0.limitWarningPercents.remove(at: index) } }
+                        }
+                    }
+                }
+                if let next = policy.nextLimitWarning {
+                    Button("Add a warning") { update(policy) { $0.limitWarningPercents.append(next) } }
+                }
+            } header: {
+                Text("Limit warnings")
+            } footer: {
+                Text("A notification on \(kid.displayName)'s phone once that much of a limit's time is used today, for every limit in every ruleset. Each comes once a day; more time starts them over.")
+            }
+            Section {
                 let breaks = Binding(get: { policy.breaks ?? BreakRule(enabled: false) },
                                      set: { rule in update(policy) { $0.breaks = rule } })
                 Toggle("Take breaks", isOn: breaks.enabled)
@@ -287,6 +312,11 @@ struct PolicyView: View {
         }
             + (policy.alwaysAllowed.contains(id) ? ["Always Allowed"] : [])
             + (policy.uncounted.contains(id) ? ["Uncounted"] : [])
+    }
+
+    private func stepWarning(_ policy: Policy, _ index: Int, up: Bool) {
+        guard let percent = policy.steppingLimitWarning(index, up: up) else { return }
+        update(policy) { $0.limitWarningPercents[index] = percent }
     }
 
     private func update(_ policy: Policy, _ change: (inout Policy) -> Void) {
@@ -448,26 +478,6 @@ struct LimitEditor: View {
                     }
                 }
                 Section {
-                    // By position, checked: a swipe's delete can redraw a row whose index is gone.
-                    ForEach(Array(limit.warningPercents.enumerated()), id: \.offset) { index, percent in
-                        Stepper(value: Binding(get: { percent }, set: { new in
-                            if limit.warningPercents.indices.contains(index) { limit.warningPercents[index] = new }
-                        }), in: 5...95, step: 5) {
-                            LabeledContent("At \(percent)%", value: "\(Format.minutes(minutesLeft(at: percent))) left")
-                        }
-                        .swipeActions {
-                            Button("Delete", role: .destructive) {
-                                if limit.warningPercents.indices.contains(index) { limit.warningPercents.remove(at: index) }
-                            }
-                        }
-                    }
-                    Button("Add a warning") { limit.warningPercents.append(nextWarning) }
-                } header: {
-                    Text("Warnings")
-                } footer: {
-                    Text("A notification on your kid's phone once this much of the day's time is used. Minutes left are for \(Format.minutes(limit.minutes)) a day.")
-                }
-                Section {
                     Toggle("All apps and websites", isOn: $limit.allApps)
                     if !limit.allApps {
                         NavigationLink {
@@ -494,7 +504,6 @@ struct LimitEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         if limit.name.isEmpty { limit.name = suggestedName }
-                        limit.warningPercents = Set(limit.warningPercents).sorted()
                         onSave(limit)
                         dismiss()
                     }
@@ -502,15 +511,6 @@ struct LimitEditor: View {
                 }
             }
         }
-    }
-
-    /// What's left of the time a day when the kid's phone warns at `percent` (`LimitWarning`).
-    private func minutesLeft(at percent: Int) -> Int {
-        limit.minutes - (percent * limit.minutes + 99) / 100
-    }
-
-    private var nextWarning: Int {
-        [75, 90, 50].first { !limit.warningPercents.contains($0) } ?? min((limit.warningPercents.max() ?? 0) + 5, 95)
     }
 
     /// A scanned app goes by the app it's matched to; an unmatched one has no name, so it only counts.
