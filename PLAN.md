@@ -358,7 +358,9 @@ Replay).
 ## 8. Operations (family-only)
 
 - Builds are Xcode development builds on registered devices; kid phones need Developer Mode. Development profiles
-  expire after about a year: rebuild and reinstall.
+  expire after about a year (each install starts a new one): rebuild and install over the app. Don't delete it
+  first: an update keeps the App Group, the app's data and the Screen Time authorization, and deleting loses them.
+  An expired build's extensions don't run, so a kid phone captures nothing until it's reinstalled.
 - **Install only from a branch that contains the latest `main`**: several sessions install on the kid phones, and an
   older build silently undoes `main`'s work there.
 - Bumping the mirror's snapshot version, or changing a stored type, needs every phone updated: old builds ignore new
