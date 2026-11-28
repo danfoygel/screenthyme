@@ -251,8 +251,8 @@ p.node("replay", 3, 9, "Replay", "ReplayView")
 p.node("toKid", 3, 10, "Kid mode  ›", kind="mode")
 
 p.node("popover", 4, 0, "Block details", "UsageCalendar popover", kind="popover")
-p.node("ruleSets", 4, 2, "Rulesets", "RuleSetsView", "names and weekdays, in the draft")
-p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "ruleset in effect; a ruleset's\nDowntime, limits, Blocked;\nSave asks how long", h=72)
+p.node("ruleSetView", 4, 0.95, "‹ruleset›", "RuleSetView", "its days, Downtime, limits,\nBlocked, warnings, breaks", h=72)
+p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "ruleset in effect, rulesets;\nwhat every ruleset shares;\nSave asks how long", h=72)
 p.node("apps", 4, 5, "‹kid›'s apps", "TrackedItemsView", "every app and site seen")
 p.node("raw", 4, 6, "Raw usage", "RawUsageView")
 p.node("matches", 4, 7, "App matches", "TokenMatchesView", "also Website, Category matches")
@@ -301,16 +301,17 @@ p.edge("kidSettings", "raw", "Raw usage")
 p.edge("kidSettings", "matches", "‹Kind› matches")
 p.edge("kidSettings", "battery", "Earlier days")
 p.edge("kidSettings", "rule", "a rule, or Add rule ▾", kind="sheet")
-p.edge("policy", "downtime", "a window, Add Downtime", kind="sheet")
-p.edge("policy", "limit", "a limit, Add limit", kind="sheet")
+p.edge("policy", "ruleSet", "Add ruleset", kind="sheet")
 p.edge("policy", "group", "a group, Add group", kind="sheet")
 p.edge("policy", "allowed", "Always Allowed,\nUncounted")
-p.edge("policy", "blocked", "Blocked")
 p.edge("policy", "content", "Content & Privacy")
 p.edge("policy", "save", "Save", kind="sheet")
 p.edge("policy", "switchRuleSet", "Switch ruleset…", kind="sheet")
-p.edge("policy", "ruleSets", "Rulesets")
-p.edge("ruleSets", "ruleSet", "a ruleset, Add ruleset", kind="sheet")
+p.edge("ruleSetView", "ruleSet", "Name and days", kind="sheet")
+p.edge("ruleSetView", "downtime", "a window, Add Downtime", kind="sheet")
+p.edge("ruleSetView", "limit", "a limit, Add limit", kind="sheet")
+p.edge("ruleSetView", "blocked", "Blocked")
+p.edge("ruleSetView", "save", "Save", kind="sheet")
 p.edge("rule", "what", "What")
 for src, lab in (("downtime", "Included · Some apps"), ("limit", "Included · not all apps"), ("group", "Included"),
                  ("allowed", "Edit"), ("blocked", "Edit")):
@@ -335,6 +336,12 @@ bx = pol["x"] + 30
 hy = p.cy("history")
 p.edge("policy", "history", "Change history",
        pts=[(bx, pol["y"]), (bx, hy), (his["x"] + W, hy)], lpos=(his["x"] + W + 14, hy - 6, "start"))
+
+# Screen Time's rulesets: straight up into the ruleset's screen, above it in the same column
+rs = p.nodes["ruleSetView"]
+rx = pol["x"] + W / 2
+p.edge("policy", "ruleSetView", "a ruleset", pts=[(rx, pol["y"]), (rx, rs["y"] + rs["h"])],
+       lpos=(rx + 8, (pol["y"] + rs["y"] + rs["h"]) / 2 + 4, "start"))
 
 # Boxes with no Simulator screenshot, and why (shown on hover instead)
 LIMITS = "Shows only while a parent's limits are in force on the kid's phone, which the Simulator can't do."

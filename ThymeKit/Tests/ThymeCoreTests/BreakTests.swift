@@ -135,10 +135,47 @@ struct BreakTests {
     @Test func theHistoryNamesBreakChanges() {
         let old = Policy(kidID: kid, alwaysAllowed: [messages.id])
         let edits = PolicyEdit.between(old, policy)
-        #expect(edits == [.breaks(from: nil, to: policy.breaks)])
+        #expect(edits == [.breaks(from: BreakRule(enabled: false), to: policy.breaks)])
         #expect(edits[0].describe { _ in "" } == ("Turned breaks on", ["15 min after 45 min of use"]))
         var later = policy
         later.breaks?.enabled = false
         #expect(PolicyEdit.between(policy, later)[0].describe { _ in "" }.title == "Turned breaks off")
+    }
+
+    /// Each ruleset takes its own breaks: the one in effect's are the policy's for the day, and are saved with it for
+    /// older kid builds. `at(0, 0)` is a Saturday.
+    @Test func theRulesetInEffectTakesBreaks() {
+        var rules = policy.withDefaultRuleSets()
+        #expect(rules.ruleSets.allSatisfy { $0.breaks == BreakRule(useMinutes: 45, breakMinutes: 15) })
+        rules.editRuleSet(rules.ruleSets[1].id) { $0.breaks.enabled = false }
+        #expect(rules.current(at: at(12, 0), calendar: utc).breaks?.enabled == false)   // Weekend
+        #expect(rules.current(at: at(2 * 24 + 12, 0), calendar: utc).breaks?.enabled == true)   // Monday
+        #expect(rules.saving(at: at(12, 0), calendar: utc).breaks?.enabled == false)
+        #expect(rules.ruleSets[1].copy(name: "Trip").breaks.enabled == false)
+        // Off on Saturday: a stretch of use brings no break.
+        #expect(use([(0, 60)], policy: rules.current(at: at(12, 0), calendar: utc)).breakAt == nil)
+    }
+
+    /// Saved when breaks were the policy's, for every ruleset: each ruleset gets them. Saved since, each keeps its own,
+    /// off included.
+    @Test func breaksSavedForEveryRulesetGoToEachOne() throws {
+        var rules = policy.withDefaultRuleSets()
+        rules.editRuleSet(rules.ruleSets[1].id) { $0.breaks.enabled = false }
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(rules)) as? [String: Any])
+        let encoded = try #require(json["ruleSets"] as? [[String: Any]])
+        json["ruleSets"] = encoded.map { var set = $0; set["breaks"] = nil; return set }
+        let old = try JSONDecoder().decode(Policy.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.ruleSets.map(\.breaks.enabled) == [true, true, true])
+        let new = try JSONDecoder().decode(Policy.self, from: JSONEncoder().encode(rules))
+        #expect(new.ruleSets.map(\.breaks.enabled) == [true, false, true])
+    }
+
+    @Test func historyAndTemporaryChangesTakeTheRulesetsBreaks() {
+        let old = policy.withDefaultRuleSets()
+        var new = old
+        new.editRuleSet(old.ruleSets[1].id) { $0.breaks.useMinutes = 30 }
+        #expect(PolicyEdit.between(old, new).map { $0.describe { _ in "" }.title } == ["Weekend: Changed breaks"])
+        let change = TemporaryChange(id: UUID(), until: at(24, 0), before: old, after: new)
+        #expect(new.reverting(change).ruleSets.map(\.breaks.useMinutes) == [45, 45, 45])
     }
 }

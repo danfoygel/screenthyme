@@ -80,9 +80,15 @@ public enum PolicyEdit: Sendable, Hashable {
         var edits: [PolicyEdit] = []
         if old.enabled != new.enabled { edits.append(.enforcement(on: new.enabled)) }
         if new.ruleSets.isEmpty {
-            edits += ruleChanges(old.downtime, old.limits, old.blocked, new.downtime, new.limits, new.blocked)
+            func rules(_ policy: Policy) -> PolicyRuleSet {
+                PolicyRuleSet(name: "", downtime: policy.downtime, limits: policy.limits, blocked: policy.blocked,
+                              limitWarningPercents: policy.limitWarningPercents,
+                              breaks: policy.breaks ?? BreakRule(enabled: false))
+            }
+            edits += ruleChanges(rules(old), rules(new))
         } else {
-            // With rulesets, the policy's own Downtime, limits and Blocked are only the ruleset in effect's.
+            // With rulesets, the policy's own Downtime, limits, warnings, breaks and Blocked are only the ruleset in
+            // effect's.
             var old = old
             if old.ruleSets.isEmpty {
                 old = old.withDefaultRuleSets()
@@ -93,19 +99,12 @@ public enum PolicyEdit: Sendable, Hashable {
                              changed: { $0.name == $1.name && $0.weekdays == $1.weekdays ? nil : .ruleSetChanged(from: $0, to: $1) })
             for set in new.ruleSets {
                 let previous = old.ruleSet(set.id) ?? PolicyRuleSet(id: set.id, name: set.name)
-                edits += ruleChanges(previous.downtime, previous.limits, previous.blocked, set.downtime, set.limits,
-                                     set.blocked).map { .inRuleSet(set.name, $0) }
+                edits += ruleChanges(previous, set).map { .inRuleSet(set.name, $0) }
             }
         }
         edits += changes(old.groups.filter { !$0.isCategory }, new.groups.filter { !$0.isCategory },
                          added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved, changed: PolicyEdit.groupChanged)
         edits += categoryChanges(old.groups.filter(\.isCategory), new.groups.filter(\.isCategory))
-        if (old.breaks?.enabled == true ? old.breaks : nil) != (new.breaks?.enabled == true ? new.breaks : nil) {
-            edits.append(.breaks(from: old.breaks, to: new.breaks))
-        }
-        if Set(old.limitWarningPercents) != Set(new.limitWarningPercents) {
-            edits.append(.limitWarnings(from: old.limitWarningPercents, to: new.limitWarningPercents))
-        }
         if old.alwaysAllowed != new.alwaysAllowed {
             edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
                                         removed: old.alwaysAllowed.subtracting(new.alwaysAllowed)))
@@ -127,15 +126,21 @@ public enum PolicyEdit: Sendable, Hashable {
         return edits
     }
 
-    /// Downtime, limits and Blocked: the policy's own, or a ruleset's.
-    private static func ruleChanges(_ oldDowntime: [DowntimeWindow], _ oldLimits: [AppLimit], _ oldBlocked: Set<UUID>,
-                                    _ downtime: [DowntimeWindow], _ limits: [AppLimit], _ blocked: Set<UUID>) -> [PolicyEdit] {
-        var edits = changes(oldDowntime, downtime, added: PolicyEdit.downtimeAdded, removed: PolicyEdit.downtimeRemoved,
-                            changed: PolicyEdit.downtimeChanged)
-        edits += changes(oldLimits, limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
+    /// Downtime, limits, Blocked, limit warnings and breaks, as a ruleset's screen shows them: the policy's own, or a
+    /// ruleset's.
+    private static func ruleChanges(_ old: PolicyRuleSet, _ new: PolicyRuleSet) -> [PolicyEdit] {
+        var edits = changes(old.downtime, new.downtime, added: PolicyEdit.downtimeAdded,
+                            removed: PolicyEdit.downtimeRemoved, changed: PolicyEdit.downtimeChanged)
+        edits += changes(old.limits, new.limits, added: PolicyEdit.limitAdded, removed: PolicyEdit.limitRemoved,
                          changed: PolicyEdit.limitChanged)
-        if oldBlocked != blocked {
-            edits.append(.blocked(added: blocked.subtracting(oldBlocked), removed: oldBlocked.subtracting(blocked)))
+        if old.blocked != new.blocked {
+            edits.append(.blocked(added: new.blocked.subtracting(old.blocked), removed: old.blocked.subtracting(new.blocked)))
+        }
+        if Set(old.limitWarningPercents) != Set(new.limitWarningPercents) {
+            edits.append(.limitWarnings(from: old.limitWarningPercents, to: new.limitWarningPercents))
+        }
+        if (old.breaks.enabled ? old.breaks : nil) != (new.breaks.enabled ? new.breaks : nil) {
+            edits.append(.breaks(from: old.breaks, to: new.breaks))
         }
         return edits
     }
