@@ -197,6 +197,8 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
     public var iCloud: PermissionState?
     /// Always and Precise Location, while the location test watches places (PLAN.md §19); nil when it doesn't.
     public var location: PermissionState?
+    /// For limit warnings (`LimitWarning`), while some limit has them; nil when none does.
+    public var notifications: PermissionState?
     public var lowPowerMode: Bool?
     /// When the phone last matched scanned apps to Apple's data, from Apple's lists (`FamilyInventory`): parents tell
     /// apps not installed from those that turned up since (`TokenMatching.unmatched`). Nil before the first import, and
@@ -211,8 +213,8 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
                 backlogCount: Int, lastFireAt: Date?, batteryLevel: Double? = nil,
                 backgroundRefresh: PermissionState? = nil, cellularData: PermissionState? = nil,
                 bluetooth: PermissionState? = nil, localNetwork: PermissionState? = nil, iCloud: PermissionState? = nil,
-                location: PermissionState? = nil, lowPowerMode: Bool? = nil, lastTokenPairing: Date? = nil,
-                lastParentUnlock: ParentUnlock? = nil) {
+                location: PermissionState? = nil, notifications: PermissionState? = nil, lowPowerMode: Bool? = nil,
+                lastTokenPairing: Date? = nil, lastParentUnlock: ParentUnlock? = nil) {
         self.id = id
         self.kidID = kidID
         self.at = at
@@ -230,6 +232,7 @@ public struct Heartbeat: Codable, Sendable, Hashable, Identifiable {
         self.localNetwork = localNetwork
         self.iCloud = iCloud
         self.location = location
+        self.notifications = notifications
         self.lowPowerMode = lowPowerMode
         self.lastTokenPairing = lastTokenPairing
         self.lastParentUnlock = lastParentUnlock

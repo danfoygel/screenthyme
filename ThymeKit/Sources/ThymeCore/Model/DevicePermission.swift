@@ -6,7 +6,7 @@ import Foundation
 public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
     /// Family Controls. Heartbeats carry it as `Heartbeat.authStatus`, checked on its own (`HealthIssue.notAuthorized`).
     case screenTime
-    /// Parents' alerts. The kid app neither asks for nor posts any.
+    /// Parents' alerts; on a kid's phone, limit warnings and answers to bug reports.
     case notifications
     /// Pings and background heartbeats. Capture and shields run in the extensions and don't need it.
     case backgroundRefresh
@@ -42,6 +42,7 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         switch (self, onKidPhone) {
         case (.screenTime, true): "Usage data, and Downtime and limits"
         case (.notifications, false): "Alerts and requests for more time"
+        case (.notifications, true): "Warnings before a limit runs out, while a limit has them"
         case (.backgroundRefresh, true): "Answers parents' pings, and sends updates while ScreenThyme is closed"
         case (.backgroundRefresh, false): "Checks kids' phones' health while ScreenThyme is closed"
         case (.cellularData, _): "Syncs away from Wi-Fi"
@@ -94,7 +95,8 @@ public enum DevicePermission: String, Sendable, Hashable, CaseIterable {
         case .bluetooth: heartbeat.bluetooth
         case .iCloud: heartbeat.iCloud
         case .location: heartbeat.location
-        case .screenTime, .notifications, .photos: nil
+        case .notifications: heartbeat.notifications
+        case .screenTime, .photos: nil
         }
     }
 }

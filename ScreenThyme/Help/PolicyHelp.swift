@@ -124,6 +124,14 @@ extension ScreenHelp {
                     + "the time a day."
             ),
             topic(
+                "Warnings",
+                "**Add a warning** to have your kid's phone show a notification once a share of the day's time is "
+                    + "used, such as 75%. Set the share with its stepper, 5% a tap; swipe it left to delete it.",
+                "Each warning comes once a day. More time you give starts them over for the new total.",
+                "Your kid's phone asks to allow notifications the next time ScreenThyme is opened there. If they're "
+                    + "turned off, you get an alert."
+            ),
+            topic(
                 "What it limits",
                 "**All apps and websites** counts everything but Always Allowed apps, ScreenThyme and Phone.",
                 "Otherwise, tap **Included** to choose apps, websites, categories and groups. Their time adds up "

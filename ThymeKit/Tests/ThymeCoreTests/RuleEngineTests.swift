@@ -159,7 +159,7 @@ struct HealthEvaluatorTests {
         let heartbeat = Heartbeat(kidID: testKid.id, at: at(10, 0), source: .launch, authStatus: "", activeActivities: [],
                                   expectedActivities: [], appVersion: "", backlogCount: 0, lastFireAt: nil,
                                   backgroundRefresh: all, cellularData: all, bluetooth: all, localNetwork: all, iCloud: all,
-                                  location: all)
+                                  location: all, notifications: all)
         let reported = DevicePermission.allCases.filter { $0.state(in: heartbeat) != nil }
         let kidNeeds = DevicePermission.allCases.filter { $0.purpose(onKidPhone: true) != nil && $0 != .screenTime }
         #expect(reported == kidNeeds)
