@@ -141,7 +141,7 @@ xcrun devicectl device process launch --device <udid> --terminate-existing com.d
   minute's length, Debug) are locked once it has the family's link key; a parent's phone nearby unlocks them for 15
   minutes (Settings › Kids › the kid), and they lock when the app leaves the foreground (`ParentUnlock`, PLAN.md
   §4.9). A new kid-side setup or debugging control belongs behind `parentControlsOpen`.
-- **Rulesets** (PLAN.md §15.15): a policy's Downtime, limits and Blocked live in `Policy.ruleSets` (`PolicyRuleSet`, not
+- **Rulesets** (PLAN.md §15.15): a policy's Downtime, limits, limit warnings and Blocked live in `Policy.ruleSets` (`PolicyRuleSet`, not
   `RuleSet`, which is the alert rules' record). `current(at:)` copies the ruleset in effect into the policy's own
   fields for the planner and screens; edit a ruleset (`editRuleSet`), or `editAllRules` for every one: an edit to the
   policy's own fields is lost at the next load.

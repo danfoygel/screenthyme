@@ -80,6 +80,7 @@ extension Policy {
             set.downtime = revertElements(set.downtime, old.downtime, new.downtime, fields: revertWindow)
             set.limits = revertElements(set.limits, old.limits, new.limits, fields: revertLimit)
             revertSet(&set.blocked, old.blocked, new.blocked)
+            revertValue(&set, \.limitWarningPercents, old, new)
         }
         policy.groups = revertElements(groups, old.groups, new.groups) { group, old, new in
             revertValue(&group, \.name, old, new)

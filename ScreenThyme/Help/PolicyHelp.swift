@@ -14,31 +14,26 @@ extension ScreenHelp {
                 "What you see",
                 "**Ruleset** shows the ruleset in effect today and why: its own days, or chosen by a parent for some "
                     + "days (in orange, with who chose it).",
-                "**Rules of** picks which ruleset's **Downtime**, **App Limits** and **Blocked** the sections below "
-                    + "show and change. The note under it says which days that ruleset is for.",
-                "**Limit warnings**, **Breaks**, **Categories**, **Groups**, **Always Allowed**, **Uncounted** and "
-                    + "**Content & Privacy** are the same in every ruleset.",
-                "A limit can show extra time a parent gave today, when your kid asked for more."
+                "**Rulesets** lists each one with its days and how many rules it has. Tap one for its own "
+                    + "**Downtime**, **App Limits**, **Blocked** and **Limit warnings**.",
+                "Everything below them, **Breaks**, **Categories**, **Groups**, **Always Allowed**, **Uncounted** and "
+                    + "**Content & Privacy**, is the same in every ruleset."
             ),
             topic(
                 "How the rules fit together",
-                "**Downtime** blocks the whole phone, or only some apps, between set times. An **App Limit** blocks "
-                    + "its apps for the rest of the day once they've been used that long.",
-                "**Blocked** apps never open. **Always Allowed** apps work during Downtime and breaks and don't count "
-                    + "toward limits. ScreenThyme and Phone always work.",
+                "A ruleset's **Downtime** blocks the whole phone, or only some apps, between set times. Its **App "
+                    + "Limits** block their apps for the rest of the day once they've been used that long, and its "
+                    + "**Blocked** apps never open.",
+                "**Always Allowed** apps work during Downtime and breaks and don't count toward limits. ScreenThyme "
+                    + "and Phone always work.",
                 "**Uncounted** apps, chosen from Always Allowed, are also left out of the day's total.",
-                "**Limit warnings** show a notification on your kid's phone once a share of any limit's time is used, "
-                    + "such as 75%. **Add a warning**, set its share with the stepper, 5% a tap, and swipe it left to "
-                    + "delete it. Each comes once a day per limit; more time you give starts them over. Your kid's "
-                    + "phone asks to allow notifications the next time ScreenThyme is opened there, and you get an "
-                    + "alert if they're turned off.",
                 "**Breaks** block everything but Always Allowed apps after a stretch of use, for as long as the "
                     + "break. Your phone doesn't show when a break is running."
             ),
             topic(
                 "Saving changes",
-                "Your edits wait until you tap **Save**, which asks whether they're permanent or for some days. "
-                    + "**Revert** throws them away.",
+                "Your edits, here and on a ruleset's screen, wait until you tap **Save** on either, which asks "
+                    + "whether they're permanent or for some days. **Revert** throws them away.",
                 "Saved changes go to iCloud, and your kid's phone picks them up at its next check-in, usually within "
                     + "a minute or two of use; sooner when your phones are near each other with ScreenThyme open.",
                 "Temporary changes are listed under **Temporary changes** until they change back by themselves at "
@@ -51,7 +46,8 @@ extension ScreenHelp {
                     + "Privacy included.",
                 "Don't set up Screen Time for your kid in the iPhone's Settings: it would take back the usage data "
                     + "ScreenThyme needs.",
-                "Swipe a Downtime, limit, group or limit warning left to delete it."
+                "**Add ruleset** makes a new one, empty or a copy of another. Swipe a ruleset left to delete it, with "
+                    + "its rules; the last one can't be deleted. Swipe a group left to delete it."
             ),
         ]
     )
@@ -99,8 +95,7 @@ extension ScreenHelp {
             ),
             topic(
                 "How it works",
-                "This Downtime belongs to the ruleset shown under **Rules of** on the Screen Time screen. Other "
-                    + "rulesets keep their own.",
+                "This Downtime belongs to the ruleset whose screen you added it on. Other rulesets keep their own.",
                 "A Downtime that runs past midnight belongs to the day it starts, and to that day's ruleset: "
                     + "Friday's bedtime runs into Saturday morning as Friday's.",
                 "During Downtime your kid can ask you for more time from the block page, or take one more minute "
@@ -110,7 +105,7 @@ extension ScreenHelp {
                 "Good to know",
                 "**Done** stays off until it has a name, its start and end differ and, for **Some apps**, something "
                     + "is included.",
-                "**Done** adds it to your edits. Tap **Save** on the Screen Time screen to send it to your kid's phone."
+                "**Done** adds it to your edits. Tap **Save** to send it to your kid's phone."
             ),
         ]
     )
@@ -141,8 +136,9 @@ extension ScreenHelp {
                 "Use is counted as it happens, and the limit blocks within about a minute of being reached.",
                 "When it's used up, your kid can ask you for more time from the block page, or take one more minute "
                     + "once a day.",
-                "This limit belongs to the ruleset shown under **Rules of** on the Screen Time screen.",
-                "**Done** adds it to your edits. Tap **Save** on the Screen Time screen to send it to your kid's phone."
+                "This limit belongs to the ruleset whose screen you added it on, and warns as that ruleset's **Limit "
+                    + "warnings** say.",
+                "**Done** adds it to your edits. Tap **Save** to send it to your kid's phone."
             ),
         ]
     )
@@ -272,7 +268,7 @@ extension ScreenHelp {
             ),
             topic(
                 "How it works",
-                "A switch changes only Downtime, App Limits and Blocked. Everything else is the same in every ruleset.",
+                "A switch changes only Downtime, App Limits, Blocked and limit warnings. Everything else is the same in every ruleset.",
                 "At the end, each day goes back to its own ruleset by itself, on your kid's phone too, even without "
                     + "internet. A Downtime that began on the last day, like a bedtime, still runs to its end.",
                 "The Screen Time screen shows the chosen ruleset in orange, with who chose it and until when. Each "
@@ -281,31 +277,34 @@ extension ScreenHelp {
         ]
     )
 
-    static let ruleSets = ScreenHelp(
-        "Rulesets",
-        summary: "Sets of Downtime, App Limits and Blocked apps for different kinds of days, such as school days, "
-            + "weekends and trips. One is in effect each day.",
+    static let ruleSet = ScreenHelp(
+        "Ruleset",
+        summary: "One ruleset's own rules: its Downtime, App Limits, Blocked apps and limit warnings, in effect on "
+            + "its days or when you switch to it.",
         [
             topic(
                 "What you see",
-                "Each ruleset, with how much Downtime, how many limits and how many blocked apps it has, and its days.",
-                "Each weekday belongs to one ruleset at most. A day with none gets the first ruleset. A ruleset with "
-                    + "no days is in effect only when you switch to it."
+                "**Name and days** says which weekdays the ruleset is for, and whether it's in effect today. Tap it "
+                    + "to rename the ruleset or change its days.",
+                "**Downtime**, **App Limits** and **Blocked** are this ruleset's own. A limit can show extra time a "
+                    + "parent gave today, when your kid asked for more.",
+                "Groups, Always Allowed, Uncounted, Breaks, Categories and Content & Privacy are on the Screen Time "
+                    + "screen, the same in every ruleset."
             ),
             topic(
-                "What you can do",
-                "Tap a ruleset to rename it or change its days.",
-                "**Add ruleset** makes a new one, empty or a copy of another.",
-                "Swipe a ruleset left to delete it, with its Downtime, limits and Blocked. The last one can't be "
-                    + "deleted."
+                "Limit warnings",
+                "A notification on your kid's phone once a share of a limit's time is used, such as 75%, for each "
+                    + "limit in this ruleset. Other rulesets have their own.",
+                "**Add a warning**, set its share with the stepper, 5% a tap, and swipe it left to delete it.",
+                "Each comes once a day per limit; more time you give starts them over. Your kid's phone asks to allow "
+                    + "notifications the next time ScreenThyme is opened there, and you get an alert if they're "
+                    + "turned off."
             ),
             topic(
-                "How it works",
-                "To change a ruleset's rules, pick it under **Rules of** on the Screen Time screen.",
-                "Groups, Always Allowed, Uncounted, Breaks, Categories and Content & Privacy are the same in every "
-                    + "ruleset.",
-                "Changes here wait until you tap **Save** on the Screen Time screen, and can be permanent or "
-                    + "temporary like any other."
+                "Saving changes",
+                "Your edits wait until you tap **Save**, here or on the Screen Time screen, which asks whether "
+                    + "they're permanent or for some days. **Revert** throws them away.",
+                "Swipe a Downtime, limit or limit warning left to delete it."
             ),
         ]
     )
@@ -320,15 +319,16 @@ extension ScreenHelp {
                     ? topic(
                         "What you can do",
                         "Give it a **Name**.",
-                        "**Start from** begins with **No rules**, or a copy of another ruleset's Downtime, limits and "
-                            + "Blocked. It starts as a copy of today's.",
+                        "**Start from** begins with **No rules**, or a copy of another ruleset's Downtime, limits, "
+                            + "Blocked and limit warnings. It starts as a copy of today's.",
                         "Under **In effect on**, turn on the days this ruleset is for."
                     )
                     : topic(
                         "What you can do",
                         "Change the **Name**.",
                         "Under **In effect on**, turn on the days this ruleset is for.",
-                        "Its Downtime, limits and Blocked are changed on the Screen Time screen, under **Rules of**."
+                        "Its Downtime, limits, Blocked and limit warnings are changed on its own screen, where you "
+                            + "came from."
                     ),
                 topic(
                     "How it works",
@@ -336,8 +336,7 @@ extension ScreenHelp {
                         + "moves it here (**Moves from …**). A day you turn off goes to the first ruleset.",
                     "With no days, the ruleset is in effect only when you switch to it from the Screen Time screen, "
                         + "as for a trip.",
-                    "**Done** adds this to your edits. Tap **Save** on the Screen Time screen to send it to your kid's "
-                        + "phone."
+                    "**Done** adds this to your edits. Tap **Save** to send it to your kid's phone."
                 ),
             ]
         )

@@ -29,8 +29,9 @@ public struct Policy: Codable, Sendable, Hashable {
     public var temporary: [TemporaryChange]
     /// Mandatory breaks (PLAN.md §15.13); nil when never set up.
     public var breaks: BreakRule?
-    /// Percentages of a limit's day at which the kid's phone posts a notification (`LimitWarning`): for every limit, in
-    /// every ruleset.
+    /// Percentages of a limit's day at which the kid's phone posts a notification (`LimitWarning`), for every limit.
+    /// With rulesets, each has its own (`PolicyRuleSet.limitWarningPercents`) and these are the one in effect's, like
+    /// `downtime`, `limits` and `blocked`.
     public var limitWarningPercents: [Int]
     /// Downtime, limits and Blocked for some days each (PLAN.md §15.15); empty for a policy saved before rulesets, whose
     /// own `downtime`, `limits` and `blocked` are then in effect every day.
@@ -77,6 +78,12 @@ public struct Policy: Codable, Sendable, Hashable {
         breaks = try container.decodeIfPresent(BreakRule.self, forKey: .breaks)
         limitWarningPercents = try container.decodeIfPresent([Int].self, forKey: .limitWarningPercents) ?? []
         ruleSets = try container.decodeIfPresent([PolicyRuleSet].self, forKey: .ruleSets) ?? []
+        // Warnings were the policy's, for every ruleset, before each ruleset had its own: those saved then get them.
+        struct SavedWarnings: Decodable { var limitWarningPercents: [Int]? }
+        let saved = try container.decodeIfPresent([SavedWarnings].self, forKey: .ruleSets) ?? []
+        for (index, set) in saved.enumerated() where set.limitWarningPercents == nil && ruleSets.indices.contains(index) {
+            ruleSets[index].limitWarningPercents = limitWarningPercents
+        }
         ruleSetChoice = try container.decodeIfPresent(RuleSetChoice.self, forKey: .ruleSetChoice)
     }
 

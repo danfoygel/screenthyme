@@ -99,34 +99,38 @@ struct LimitWarningTests {
             .map(\.left) == [6])
     }
 
-    /// The kid's phone asks for notifications only when there's something to warn about, in any ruleset.
+    /// The kid's phone asks for notifications only when some ruleset has warnings and a limit to warn about.
     @Test func hasLimitWarningsNeedsPercentagesAndALimit() {
         let limit = AppLimit(name: "Games", items: [], minutes: 30)
         #expect(!Policy(kidID: testKid.id, limits: [limit]).hasLimitWarnings)
         #expect(!Policy(kidID: testKid.id, limitWarningPercents: [75]).hasLimitWarnings)
         #expect(Policy(kidID: testKid.id, limits: [limit], limitWarningPercents: [75]).hasLimitWarnings)
-        let weekend = PolicyRuleSet(name: "Weekend", weekdays: [1, 7], limits: [limit])
-        #expect(Policy(kidID: testKid.id, limitWarningPercents: [75], ruleSets: [weekend]).hasLimitWarnings)
+        let weekday = PolicyRuleSet(name: "Weekday", weekdays: [2, 3, 4, 5, 6], limitWarningPercents: [75])
+        var weekend = PolicyRuleSet(name: "Weekend", weekdays: [1, 7], limits: [limit])
+        // Weekday warns but has no limit; Weekend has a limit but no warnings.
+        #expect(!Policy(kidID: testKid.id, ruleSets: [weekday, weekend]).hasLimitWarnings)
+        weekend.limitWarningPercents = [90]
+        #expect(Policy(kidID: testKid.id, ruleSets: [weekday, weekend]).hasLimitWarnings)
     }
 
     @Test func addingAndSteppingSkipPercentagesInUse() {
-        var policy = Policy(kidID: testKid.id)
+        var rules = PolicyRuleSet(name: "Weekday")
         var added: [Int] = []
         for _ in 0..<4 {
-            guard let next = policy.nextLimitWarning else { break }
-            policy.limitWarningPercents.append(next)
+            guard let next = rules.nextLimitWarning else { break }
+            rules.limitWarningPercents.append(next)
             added.append(next)
         }
         #expect(added == [75, 90, 50, 5])
         // 75 up skips 90; 90 up stops at 95, then has nowhere to go.
-        #expect(policy.steppingLimitWarning(0, up: true) == 80)
-        policy.limitWarningPercents = [85, 90]
-        #expect(policy.steppingLimitWarning(0, up: true) == 95)
-        policy.limitWarningPercents = [90, 95]
-        #expect(policy.steppingLimitWarning(1, up: true) == nil)
-        #expect(policy.steppingLimitWarning(1, up: false) == 85)
-        policy.limitWarningPercents = Array(stride(from: 5, through: 95, by: 5))
-        #expect(policy.nextLimitWarning == nil)
+        #expect(rules.steppingLimitWarning(0, up: true) == 80)
+        rules.limitWarningPercents = [85, 90]
+        #expect(rules.steppingLimitWarning(0, up: true) == 95)
+        rules.limitWarningPercents = [90, 95]
+        #expect(rules.steppingLimitWarning(1, up: true) == nil)
+        #expect(rules.steppingLimitWarning(1, up: false) == 85)
+        rules.limitWarningPercents = Array(stride(from: 5, through: 95, by: 5))
+        #expect(rules.nextLimitWarning == nil)
     }
 
     @Test func oldPoliciesAndDayStatesLoadWithoutWarnings() throws {
@@ -134,6 +138,33 @@ struct LimitWarningTests {
         #expect(policy.limitWarningPercents.isEmpty)
         let state = try JSONDecoder().decode(EnforcementDayState.self, from: JSONEncoder().encode(EnforcementDayState(day: testDay)))
         #expect(state.limitWarnings.isEmpty)
+    }
+
+    /// Saved when the warnings were the policy's, for every ruleset: each ruleset gets them. Saved since, each keeps
+    /// its own.
+    @Test func warningsSavedForEveryRulesetGoToEachOne() throws {
+        let sets = [PolicyRuleSet(name: "Weekday", limitWarningPercents: [90]), PolicyRuleSet(name: "Weekend")]
+        let policy = Policy(kidID: testKid.id, limitWarningPercents: [75], ruleSets: sets)
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(policy)) as? [String: Any])
+        let encoded = try #require(json["ruleSets"] as? [[String: Any]])
+        json["ruleSets"] = encoded.map { var set = $0; set["limitWarningPercents"] = nil; return set }
+        let old = try JSONDecoder().decode(Policy.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.ruleSets.map(\.limitWarningPercents) == [[75], [75]])
+        let new = try JSONDecoder().decode(Policy.self, from: JSONEncoder().encode(policy))
+        #expect(new.ruleSets.map(\.limitWarningPercents) == [[90], []])
+    }
+
+    /// Each ruleset warns its own way: the one in effect's warnings are the policy's for the day, and are saved
+    /// with it for older kid builds.
+    @Test func theRulesetInEffectWarns() {
+        let limit = AppLimit(name: "Games", items: [], minutes: 60)
+        var policy = Policy(kidID: testKid.id, limits: [limit], limitWarningPercents: [75]).withDefaultRuleSets()
+        #expect(policy.ruleSets.map(\.limitWarningPercents) == [[75], [75], [75]])
+        policy.editRuleSet(policy.ruleSets[1].id) { $0.limitWarningPercents = [50, 90] }
+        #expect(policy.current(at: at(12, 0), calendar: utc).limitWarningPercents == [50, 90])   // Saturday
+        #expect(policy.current(at: at(2 * 24 + 12, 0), calendar: utc).limitWarningPercents == [75])   // Monday
+        #expect(policy.saving(at: at(12, 0), calendar: utc).limitWarningPercents == [50, 90])
+        #expect(policy.ruleSets[1].copy(name: "Trip").limitWarningPercents == [50, 90])
     }
 
     @Test func changeHistoryNamesWarnings() {
@@ -147,12 +178,25 @@ struct LimitWarningTests {
         #expect(PolicyEdit.between(Policy(kidID: testKid.id, limitWarningPercents: [75]), new).isEmpty)
     }
 
-    /// A temporary change to the warnings changes back at its end, like breaks.
+    @Test func changeHistoryNamesTheRulesetsWarnings() {
+        let old = Policy(kidID: testKid.id, limitWarningPercents: [75]).withDefaultRuleSets()
+        var new = old
+        new.editRuleSet(old.ruleSets[1].id) { $0.limitWarningPercents = [] }
+        #expect(PolicyEdit.between(old, new).map { $0.describe(calendar: utc, name: { _ in "" }) }.map(\.title)
+            == ["Weekend: Changed limit warnings"])
+    }
+
+    /// A temporary change to a ruleset's warnings changes back at its end, like its limits.
     @Test func temporaryWarningsChangeBack() {
         let before = Policy(kidID: testKid.id, limitWarningPercents: [75])
         var after = before
         after.limitWarningPercents = [50, 75, 90]
         let change = TemporaryChange(id: UUID(), until: at(24, 0), before: before, after: after)
         #expect(after.reverting(change).limitWarningPercents == [75])
+        let rulesBefore = before.withDefaultRuleSets()
+        var rulesAfter = rulesBefore
+        rulesAfter.editRuleSet(rulesBefore.ruleSets[1].id) { $0.limitWarningPercents = [90] }
+        let ruleChange = TemporaryChange(id: UUID(), until: at(24, 0), before: rulesBefore, after: rulesAfter)
+        #expect(rulesAfter.reverting(ruleChange).ruleSets.map(\.limitWarningPercents) == [[75], [75], [75]])
     }
 }

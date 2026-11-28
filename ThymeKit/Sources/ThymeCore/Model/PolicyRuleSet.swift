@@ -1,9 +1,9 @@
 import Foundation
 
-/// One of a kid's rulesets (PLAN.md §15.15): the Downtime, App Limits and Blocked apps in effect on some days, like
-/// school days, weekends or a trip. Exactly one is in effect on each day (`Policy.ruleSet(on:)`): the one a parent chose
-/// for some days (`Policy.ruleSetChoice`), else the one for the weekday, else the first. Groups, custom categories,
-/// Always Allowed, Uncounted, breaks, limit warnings and Content & Privacy are the same under every ruleset.
+/// One of a kid's rulesets (PLAN.md §15.15): the Downtime, App Limits, limit warnings and Blocked apps in effect on some
+/// days, like school days, weekends or a trip. Exactly one is in effect on each day (`Policy.ruleSet(on:)`): the one a
+/// parent chose for some days (`Policy.ruleSetChoice`), else the one for the weekday, else the first. Groups, custom
+/// categories, Always Allowed, Uncounted, breaks and Content & Privacy are the same under every ruleset.
 public struct PolicyRuleSet: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
@@ -13,15 +13,19 @@ public struct PolicyRuleSet: Codable, Sendable, Hashable, Identifiable {
     public var downtime: [DowntimeWindow]
     public var limits: [AppLimit]
     public var blocked: Set<UUID>
+    /// Percentages of a limit's day at which the kid's phone posts a notification (`LimitWarning`), for each of its
+    /// limits.
+    public var limitWarningPercents: [Int]
 
     public init(id: UUID = UUID(), name: String, weekdays: Set<Int> = [], downtime: [DowntimeWindow] = [],
-                limits: [AppLimit] = [], blocked: Set<UUID> = []) {
+                limits: [AppLimit] = [], blocked: Set<UUID> = [], limitWarningPercents: [Int] = []) {
         self.id = id
         self.name = name
         self.weekdays = weekdays
         self.downtime = downtime
         self.limits = limits
         self.blocked = blocked
+        self.limitWarningPercents = limitWarningPercents
     }
 
     /// Rulesets saved before a field existed still load.
@@ -33,13 +37,14 @@ public struct PolicyRuleSet: Codable, Sendable, Hashable, Identifiable {
         downtime = try container.decodeIfPresent([DowntimeWindow].self, forKey: .downtime) ?? []
         limits = try container.decodeIfPresent([AppLimit].self, forKey: .limits) ?? []
         blocked = try container.decodeIfPresent(Set<UUID>.self, forKey: .blocked) ?? []
+        limitWarningPercents = try container.decodeIfPresent([Int].self, forKey: .limitWarningPercents) ?? []
     }
 
     /// The same rules as a new ruleset: its windows and limits get new ids, so grants and limit fires stay with theirs.
     public func copy(id: UUID = UUID(), name: String, weekdays: Set<Int> = []) -> PolicyRuleSet {
         func newID(_ old: UUID) -> UUID { Replay.stableUUID("rule-set-item", id.uuidString, old.uuidString) }
         var copy = PolicyRuleSet(id: id, name: name, weekdays: weekdays, downtime: downtime, limits: limits,
-                                 blocked: blocked)
+                                 blocked: blocked, limitWarningPercents: limitWarningPercents)
         for index in copy.downtime.indices { copy.downtime[index].id = newID(downtime[index].id) }
         for index in copy.limits.indices { copy.limits[index].id = newID(limits[index].id) }
         return copy
@@ -103,13 +108,14 @@ extension Policy {
         Replay.stableUUID("rule-set", kid.uuidString, name)
     }
 
-    /// The policy with the default rulesets (`defaultRuleSets`), each holding the Downtime, limits and Blocked it had,
-    /// so nothing changes until a parent edits one. Weekday keeps their ids; the others' copies get ids of their own.
-    /// Temporary changes get them too, so they still change back. A policy with rulesets stays as it is.
+    /// The policy with the default rulesets (`defaultRuleSets`), each holding the Downtime, limits, limit warnings and
+    /// Blocked it had, so nothing changes until a parent edits one. Weekday keeps their ids; the others' copies get ids
+    /// of their own. Temporary changes get them too, so they still change back. A policy with rulesets stays as it is.
     public func withDefaultRuleSets() -> Policy {
         guard ruleSets.isEmpty else { return self }
         var policy = self
-        let rules = PolicyRuleSet(name: "", downtime: downtime, limits: limits, blocked: blocked)
+        let rules = PolicyRuleSet(name: "", downtime: downtime, limits: limits, blocked: blocked,
+                                  limitWarningPercents: limitWarningPercents)
         policy.ruleSets = Self.defaultRuleSets.enumerated().map { index, entry in
             let id = Self.ruleSetID(kid: kidID, name: entry.name)
             guard index > 0 else {
@@ -145,8 +151,8 @@ extension Policy {
         return choice
     }
 
-    /// The policy with the Downtime, limits and Blocked of the ruleset in effect at `date`: what the planner, Enforcer,
-    /// block page and screens read. Limits and Blocked are today's ruleset's. A Downtime window that started yesterday
+    /// The policy with the Downtime, limits, limit warnings and Blocked of the ruleset in effect at `date`: what the
+    /// planner, Enforcer, block page and screens read. Limits, warnings and Blocked are today's ruleset's. A Downtime window that started yesterday
     /// is yesterday's ruleset's (a Friday's bedtime runs into Saturday morning), one that starts today today's, so on a
     /// day the ruleset changes each window is kept to the one day it starts. A choice that covers neither day is
     /// dropped. A policy without rulesets stays as it is.
@@ -157,6 +163,7 @@ extension Policy {
         let previous = ruleSet(on: yesterday, calendar: calendar) ?? current
         var policy = self
         policy.limits = current.limits
+        policy.limitWarningPercents = current.limitWarningPercents
         policy.blocked = current.blocked
         if previous.id == current.id {
             policy.downtime = current.downtime
@@ -185,13 +192,14 @@ extension Policy {
         return policy
     }
 
-    /// The policy to save at `now`: in force then (`current(at:)`), but with the Downtime, limits and Blocked of the
-    /// ruleset in effect as they are, not kept to today. A kid's phone on a build from before rulesets enforces those
-    /// every day.
+    /// The policy to save at `now`: in force then (`current(at:)`), but with the Downtime, limits, limit warnings and
+    /// Blocked of the ruleset in effect as they are, not kept to today. A kid's phone on a build from before rulesets
+    /// enforces those every day.
     public func saving(at now: Date, calendar: Calendar = .current) -> Policy {
         var policy = current(at: now, calendar: calendar)
         if let set = policy.ruleSet(on: now, calendar: calendar) {
             (policy.downtime, policy.limits, policy.blocked) = (set.downtime, set.limits, set.blocked)
+            policy.limitWarningPercents = set.limitWarningPercents
         }
         return policy
     }

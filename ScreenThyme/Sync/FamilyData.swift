@@ -120,7 +120,7 @@ final class FamilyData {
     private struct Snapshot: Codable {
         /// Bump when stored types change: a snapshot of another version (or an unreadable one) is rebuilt from the
         /// raw records (`rebuildLocally`), or when those aren't whole, fetched again from scratch, shown meanwhile.
-        static let currentVersion = 15
+        static let currentVersion = 16
         var version = currentVersion
         var kids: [UUID: Kid] = [:]
         var items: [UUID: TrackedItem] = [:]

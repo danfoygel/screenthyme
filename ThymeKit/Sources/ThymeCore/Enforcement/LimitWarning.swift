@@ -43,12 +43,16 @@ public struct LimitWarning: Codable, Sendable, Hashable {
 }
 
 extension Policy {
-    /// Limits warn the kid before they run out, and there's a limit to warn about in some ruleset: the kid's phone then
-    /// asks to post notifications.
+    /// Some ruleset (or a policy without rulesets) warns before a limit of its runs out: the kid's phone then asks to
+    /// post notifications.
     public var hasLimitWarnings: Bool {
-        !limitWarningPercents.isEmpty && (limits + ruleSets.flatMap(\.limits)).contains(where: \.enabled)
+        let sets = ruleSets.isEmpty ? [PolicyRuleSet(name: "", limits: limits, limitWarningPercents: limitWarningPercents)]
+            : ruleSets
+        return sets.contains { !$0.limitWarningPercents.isEmpty && $0.limits.contains(where: \.enabled) }
     }
+}
 
+extension PolicyRuleSet {
     /// The next warning to add: 75%, 90% and 50% first, then the lowest free one; nil when every 5% is set.
     public var nextLimitWarning: Int? {
         let taken = Set(limitWarningPercents)

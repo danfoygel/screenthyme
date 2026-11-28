@@ -1,14 +1,12 @@
 import SwiftUI
 import ThymeCore
 
-/// The top of a kid's policy screen (PLAN.md §15.15): the ruleset in effect today, how it came to be, a switch for some
-/// days, and the rulesets themselves.
+/// The top of a kid's policy screen (PLAN.md §15.15): the ruleset in effect today, how it came to be, and a switch for
+/// some days.
 struct RuleSetInEffectSection: View {
-    let kid: Kid
     let policy: Policy
     /// The draft has unsaved changes: a switch saves at once, and a draft saved after it would undo it.
     let dirty: Bool
-    @Binding var editing: Policy
     @Binding var choosing: Bool
 
     var body: some View {
@@ -29,13 +27,10 @@ struct RuleSetInEffectSection: View {
             }
             Button("Switch ruleset…") { choosing = true }
                 .disabled(dirty)
-            NavigationLink { RuleSetsView(kidName: kid.displayName, policy: $editing) } label: {
-                LabeledContent("Rulesets", value: "\(editing.ruleSets.count)")
-            }
         } header: {
             Text("Ruleset")
         } footer: {
-            Text("Downtime, App Limits and Blocked apps belong to a ruleset; one is in effect each day, by its weekdays or chosen for some days. Everything else applies in every ruleset." + (dirty ? " Save or revert your changes to switch." : ""))
+            Text("One ruleset is in effect each day, by its weekdays or chosen for some days." + (dirty ? " Save or revert your changes to switch." : ""))
         }
     }
 }
@@ -111,55 +106,194 @@ struct ChooseRuleSetSheet: View {
     private var until: Date { TemporaryChange.until(days: days, from: Date()) }
 }
 
-/// A kid's rulesets: their names and weekdays. Edits the policy screen's draft, saved with it.
-struct RuleSetsView: View {
-    let kidName: String
-    @Binding var policy: Policy
-    @State private var editing: PolicyRuleSet?
-    @State private var adding = false
+/// One ruleset's own rules (PLAN.md §15.15): its name and days, Downtime, App Limits, Blocked and limit warnings. Edits
+/// the Screen Time screen's draft, saved from either screen.
+struct RuleSetView: View {
+    @Environment(AppModel.self) private var model
+    let kid: Kid
+    let ruleSetID: UUID
+    @Binding var draft: Policy?
+    @State private var editingWindow: DowntimeWindow?
+    @State private var editingLimit: AppLimit?
+    @State private var editingRuleSet = false
 
     var body: some View {
-        List {
-            Section {
-                ForEach(policy.ruleSets) { set in
-                    Button { editing = set } label: {
-                        LabeledContent {
-                            Text(set.days())
-                        } label: {
-                            Text(set.name).foregroundStyle(.primary)
-                            Text(Self.summary(set))
-                        }
-                    }
-                    .swipeActions {
-                        if policy.ruleSets.count > 1 {
-                            Button("Delete", role: .destructive) { policy.removeRuleSet(set.id) }
+        let stored = model.data.policy(for: kid.id).withDefaultRuleSets()
+        let policy = draft ?? stored
+        let items = model.data.items(for: kid.id)
+        let rules = policy.ruleSet(ruleSetID)
+        Form {
+            if let rules {
+                sections(rules, policy: policy, stored: stored, items: items)
+            } else {
+                // Reverted (a new one) or deleted elsewhere.
+                Text("This ruleset is gone.").foregroundStyle(.secondary)
+            }
+        }
+        // A draft started from a mirror being re-fetched would replace the kid's policy when saved.
+        .disabled(model.editsBlocked)
+        .navigationTitle(rules?.name ?? "Ruleset")
+        .bugButton(help: .ruleSet)
+        .modifier(PolicyDraftToolbar(kid: kid, stored: stored, draft: $draft))
+        .sheet(isPresented: $editingRuleSet) {
+            if let rules {
+                RuleSetEditor(ruleSet: rules, isNew: false, policy: policy) { saved in
+                    update(draft ?? policy) { $0.save(saved) }
+                }
+            }
+        }
+        .sheet(item: $editingWindow) { window in
+            DowntimeEditor(window: window, items: items, groups: policy.groups) { saved in
+                update(draft ?? policy) { policy in
+                    policy.editRuleSet(ruleSetID) { set in
+                        if let index = set.downtime.firstIndex(where: { $0.id == saved.id }) {
+                            set.downtime[index] = saved
+                        } else {
+                            set.downtime.append(saved)
                         }
                     }
                 }
-                Button("Add ruleset") { adding = true }
-            } footer: {
-                let free = policy.unscheduledWeekdays
-                Text("Each weekday has one ruleset; a ruleset with no days is in effect only when you switch to it."
-                     + (free.isEmpty || policy.ruleSets.isEmpty ? ""
-                        : " \(PolicyRuleSet.days(free)) \(free.count == 1 ? "has" : "have") none, so \(free.count == 1 ? "it gets" : "they get") \u{201C}\(policy.ruleSets[0].name)\u{201D}."))
             }
         }
-        .navigationTitle("Rulesets")
-        .bugButton(help: .ruleSets)
-        .sheet(item: $editing) { set in
-            RuleSetEditor(ruleSet: set, isNew: false, policy: policy) { policy.save($0) }
-        }
-        .sheet(isPresented: $adding) {
-            RuleSetEditor(ruleSet: PolicyRuleSet(name: ""), isNew: true, policy: policy) { policy.save($0) }
+        .sheet(item: $editingLimit) { limit in
+            LimitEditor(limit: limit, items: items, groups: policy.groups) { saved in
+                update(draft ?? policy) { policy in
+                    policy.editRuleSet(ruleSetID) { set in
+                        if let index = set.limits.firstIndex(where: { $0.id == saved.id }) {
+                            set.limits[index] = saved
+                        } else {
+                            set.limits.append(saved)
+                        }
+                    }
+                }
+            }
         }
     }
 
-    /// "1 Downtime · 2 limits · 3 blocked".
+    @ViewBuilder
+    private func sections(_ rules: PolicyRuleSet, policy: Policy, stored: Policy, items: [UUID: TrackedItem]) -> some View {
+        Section {
+            Button { editingRuleSet = true } label: {
+                LabeledContent("Name and days", value: rules.days())
+            }
+        } footer: {
+            Text((rules.id == stored.ruleSet(on: Date())?.id ? "In effect today. " : "")
+                 + "Downtime, App Limits, Blocked and limit warnings here are \(rules.name)'s own. Everything else on the Screen Time screen is the same in every ruleset.")
+        }
+        Section("Downtime") {
+            ForEach(rules.downtime) { window in
+                Button { editingWindow = window } label: {
+                    LabeledContent {
+                        Text(window.schedule())
+                    } label: {
+                        Text(window.name)
+                        if !window.isWholePhone { Text(PolicyView.names(window.items, items: items, groups: policy.groups)) }
+                    }
+                }
+                .swipeActions {
+                    Button("Delete", role: .destructive) {
+                        update(policy) { $0.editRuleSet(rules.id) { $0.downtime.removeAll { $0.id == window.id } } }
+                    }
+                }
+            }
+            Button("Add Downtime") {
+                editingWindow = DowntimeWindow(name: "Bedtime", startMinute: 21 * 60 + 30, endMinute: 7 * 60)
+            }
+        }
+        Section {
+            let today = model.data.grants.values.filter { $0.kidID == kid.id && Calendar.current.isDateInToday($0.at) }
+            ForEach(rules.limits) { limit in
+                Button { editingLimit = limit } label: {
+                    LabeledContent {
+                        Text(limit.enabled ? Format.minutes(limit.minutes) + " a day" : "Off")
+                    } label: {
+                        Text(limit.name)
+                        if limit.enabled {
+                            switch EnforcementPlanner.extraMinutes(for: limit.id, grants: today) {
+                            case 0?: EmptyView()
+                            case let extra?: Text("\(Format.minutes(extra)) extra today")
+                            case nil: Text("No limit for the rest of today")
+                            }
+                            let forApps = Set(today.filter { $0.approved && $0.reason == .limit(limit.id) }.compactMap(\.itemID))
+                            if !forApps.isEmpty {
+                                Text("More time today for \(PolicyView.names(forApps, items: items, groups: []))")
+                            }
+                        }
+                    }
+                }
+                .swipeActions {
+                    Button("Delete", role: .destructive) {
+                        update(policy) { $0.editRuleSet(rules.id) { $0.limits.removeAll { $0.id == limit.id } } }
+                    }
+                }
+            }
+            Button("Add limit") { editingLimit = AppLimit(name: "", items: [], minutes: 60) }
+        } header: {
+            Text("App Limits")
+        } footer: {
+            Text("Always Allowed apps, ScreenThyme and Phone don't count toward limits. Extra time is what a parent gave today, when \(kid.displayName) asked for more; time asked from one app is for that app only.")
+        }
+        Section {
+            NavigationLink {
+                SelectedItemsView(title: "Blocked", items: items, footer: "These never open while \u{201C}\(rules.name)\u{201D} is in effect.",
+                                  groups: policy.groups, selection: Binding(get: { rules.blocked }, set: { blocked in
+                                      update(draft ?? policy) { $0.editRuleSet(rules.id) { $0.blocked = blocked } }
+                                  }))
+            } label: {
+                LabeledContent("Blocked", value: "\(rules.blocked.count)")
+            }
+        } header: {
+            Text("Blocked")
+        } footer: {
+            Text("Blocked apps never open. Always Allowed apps, on the Screen Time screen, are allowed in every ruleset.")
+        }
+        Section {
+            // By position, checked: a swipe's delete can redraw a row whose index is gone.
+            ForEach(Array(rules.limitWarningPercents.enumerated()), id: \.offset) { index, percent in
+                Stepper {
+                    Text("When \(percent)% is used")
+                } onIncrement: {
+                    stepWarning(rules, policy, index, up: true)
+                } onDecrement: {
+                    stepWarning(rules, policy, index, up: false)
+                }
+                .swipeActions {
+                    Button("Delete", role: .destructive) {
+                        update(policy) { policy in
+                            policy.editRuleSet(rules.id) {
+                                if $0.limitWarningPercents.indices.contains(index) { $0.limitWarningPercents.remove(at: index) }
+                            }
+                        }
+                    }
+                }
+            }
+            if let next = rules.nextLimitWarning {
+                Button("Add a warning") { update(policy) { $0.editRuleSet(rules.id) { $0.limitWarningPercents.append(next) } } }
+            }
+        } header: {
+            Text("Limit warnings")
+        } footer: {
+            Text("A notification on \(kid.displayName)'s phone once that much of a limit's time is used today, for each limit in \(rules.name). Each comes once a day; more time starts them over.")
+        }
+    }
+
+    /// "1 Downtime · 2 limits · 3 blocked · 2 warnings".
     static func summary(_ set: PolicyRuleSet) -> String {
         let parts = [(set.downtime.count, "Downtime", "Downtime"), (set.limits.count, "limit", "limits"),
-                     (set.blocked.count, "blocked", "blocked")]
+                     (set.blocked.count, "blocked", "blocked"), (set.limitWarningPercents.count, "warning", "warnings")]
             .filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
         return parts.isEmpty ? "No rules" : parts.joined(separator: " · ")
+    }
+
+    private func stepWarning(_ rules: PolicyRuleSet, _ policy: Policy, _ index: Int, up: Bool) {
+        guard let percent = rules.steppingLimitWarning(index, up: up) else { return }
+        update(policy) { $0.editRuleSet(rules.id) { $0.limitWarningPercents[index] = percent } }
+    }
+
+    private func update(_ policy: Policy, _ change: (inout Policy) -> Void) {
+        var policy = policy
+        change(&policy)
+        draft = policy
     }
 }
 
