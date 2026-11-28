@@ -26,6 +26,12 @@ final class AppModel {
     private(set) var isRefreshing = false
     @ObservationIgnored private var isLaunching = false
     var lastUploadAt: Date?
+    /// The last family fetch that succeeded, kept across launches, and whether the latest one failed for want of a
+    /// network: the Kids screen then says what it shows is from then (`OfflineNotice`).
+    private(set) var lastSyncAt = UserDefaults.standard.object(forKey: "lastFamilySyncAt") as? Date {
+        didSet { UserDefaults.standard.set(lastSyncAt, forKey: "lastFamilySyncAt") }
+    }
+    private(set) var isOffline = false
     var lastHeartbeatAt: Date?
     var authorizationStatus = AuthorizationCenter.shared.authorizationStatus
 
@@ -142,6 +148,8 @@ final class AppModel {
                 newAlerts = data.ingest(batch)
             }
             data.fetched(token: ChangeFetcher.tokenData(for: store))
+            lastSyncAt = Date()
+            isOffline = false
             if data.linkKey == nil, let key = try? await LinkKeyService.fetchOrCreate(store: store) {
                 data.ingest(IngestBatch(linkKeys: [key]))
                 updateNearby()
@@ -173,6 +181,7 @@ final class AppModel {
                 notifyHealthIssues()
             }
         } catch {
+            isOffline = (error as? CKError)?.isOffline == true
             showUnlessOffline(error)
         }
     }

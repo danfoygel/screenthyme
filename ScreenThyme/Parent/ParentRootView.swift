@@ -30,6 +30,7 @@ struct ParentHomeView: View {
         NavigationStack {
             List {
                 RebuildingNotice()
+                OfflineNoticeView()
                 if model.config.family == nil {
                     Section {
                         Text("Set up your family in Settings, then send the invite to each kid's Apple Account.")
@@ -64,6 +65,31 @@ struct RebuildingNotice: View {
                     Text("Syncing with iCloud. Kids, limits and history may be missing until it finishes; changes to Screen Time, rules and places wait until then.")
                 } icon: {
                     ProgressView()
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// Shown while iCloud can't be reached: the cards are from the last sync, except for kids connected nearby.
+struct OfflineNoticeView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let notice = SyncStatus.notice(syncedAt: model.lastSyncAt, isOffline: model.isOffline,
+                                          kids: Set(model.data.kids.keys),
+                                          nearby: Set(model.nearby.peers.compactMap(\.hello.kidID)),
+                                          bluetoothOn: model.nearby.bluetoothProblem == nil) {
+            Section {
+                Label {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(notice.headline(time: Format.time))
+                        if let hint = notice.hint { Text(hint) }
+                    }
+                } icon: {
+                    Image(systemName: "icloud.slash")
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
