@@ -15,9 +15,9 @@ extension ScreenHelp {
                 "**Ruleset** shows the ruleset in effect today and why: its own days, or chosen by a parent for some "
                     + "days (in orange, with who chose it).",
                 "**Rulesets** lists each one with its days and how many rules it has. Tap one for its own "
-                    + "**Downtime**, **App Limits**, **Blocked** and **Limit warnings**.",
-                "Everything below them, **Breaks**, **Categories**, **Groups**, **Always Allowed**, **Uncounted** and "
-                    + "**Content & Privacy**, is the same in every ruleset."
+                    + "**Downtime**, **App Limits**, **Blocked**, **Limit warnings** and **Breaks**.",
+                "Everything below them, **Categories**, **Groups**, **Always Allowed**, **Uncounted** and **Content & "
+                    + "Privacy**, is the same in every ruleset."
             ),
             topic(
                 "How the rules fit together",
@@ -27,8 +27,8 @@ extension ScreenHelp {
                 "**Always Allowed** apps work during Downtime and breaks and don't count toward limits. ScreenThyme "
                     + "and Phone always work.",
                 "**Uncounted** apps, chosen from Always Allowed, are also left out of the day's total.",
-                "**Breaks** block everything but Always Allowed apps after a stretch of use, for as long as the "
-                    + "break. Your phone doesn't show when a break is running."
+                "A ruleset's **Breaks** block everything but Always Allowed apps after a stretch of use, for as long "
+                    + "as the break. Your phone doesn't show when a break is running."
             ),
             topic(
                 "Saving changes",
@@ -268,7 +268,8 @@ extension ScreenHelp {
             ),
             topic(
                 "How it works",
-                "A switch changes only Downtime, App Limits, Blocked and limit warnings. Everything else is the same in every ruleset.",
+                "A switch changes only Downtime, App Limits, Blocked, limit warnings and breaks. Everything else is "
+                    + "the same in every ruleset.",
                 "At the end, each day goes back to its own ruleset by itself, on your kid's phone too, even without "
                     + "internet. A Downtime that began on the last day, like a bedtime, still runs to its end.",
                 "The Screen Time screen shows the chosen ruleset in orange, with who chose it and until when. Each "
@@ -279,8 +280,8 @@ extension ScreenHelp {
 
     static let ruleSet = ScreenHelp(
         "Ruleset",
-        summary: "One ruleset's own rules: its Downtime, App Limits, Blocked apps and limit warnings, in effect on "
-            + "its days or when you switch to it.",
+        summary: "One ruleset's own rules: its Downtime, App Limits, Blocked apps, limit warnings and breaks, in "
+            + "effect on its days or when you switch to it.",
         [
             topic(
                 "What you see",
@@ -288,8 +289,8 @@ extension ScreenHelp {
                     + "to rename the ruleset or change its days.",
                 "**Downtime**, **App Limits** and **Blocked** are this ruleset's own. A limit can show extra time a "
                     + "parent gave today, when your kid asked for more.",
-                "Groups, Always Allowed, Uncounted, Breaks, Categories and Content & Privacy are on the Screen Time "
-                    + "screen, the same in every ruleset."
+                "Groups, Always Allowed, Uncounted, Categories and Content & Privacy are on the Screen Time screen, "
+                    + "the same in every ruleset."
             ),
             topic(
                 "Limit warnings",
@@ -299,6 +300,14 @@ extension ScreenHelp {
                 "Each comes once a day per limit; more time you give starts them over. Your kid's phone asks to allow "
                     + "notifications the next time ScreenThyme is opened there, and you get an alert if they're "
                     + "turned off."
+            ),
+            topic(
+                "Breaks",
+                "**Take breaks** blocks everything but Always Allowed apps after a stretch of use, for as long as the "
+                    + "break, on the days this ruleset is in effect. Other rulesets have their own.",
+                "Set how much use comes before a break and how long the break is with the steppers.",
+                "A pause shorter than the break doesn't start the count over. Your kid can ask for more time or take "
+                    + "one more minute, as in Downtime. Your phone doesn't show when a break is running."
             ),
             topic(
                 "Saving changes",
@@ -320,15 +329,15 @@ extension ScreenHelp {
                         "What you can do",
                         "Give it a **Name**.",
                         "**Start from** begins with **No rules**, or a copy of another ruleset's Downtime, limits, "
-                            + "Blocked and limit warnings. It starts as a copy of today's.",
+                            + "Blocked, limit warnings and breaks. It starts as a copy of today's.",
                         "Under **In effect on**, turn on the days this ruleset is for."
                     )
                     : topic(
                         "What you can do",
                         "Change the **Name**.",
                         "Under **In effect on**, turn on the days this ruleset is for.",
-                        "Its Downtime, limits, Blocked and limit warnings are changed on its own screen, where you "
-                            + "came from."
+                        "Its Downtime, limits, Blocked, limit warnings and breaks are changed on its own screen, "
+                            + "where you came from."
                     ),
                 topic(
                     "How it works",

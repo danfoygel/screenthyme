@@ -251,7 +251,7 @@ p.node("replay", 3, 9, "Replay", "ReplayView")
 p.node("toKid", 3, 10, "Kid mode  ›", kind="mode")
 
 p.node("popover", 4, 0, "Block details", "UsageCalendar popover", kind="popover")
-p.node("ruleSetView", 4, 0.95, "‹ruleset›", "RuleSetView", "its days, Downtime, limits,\nBlocked, limit warnings", h=72)
+p.node("ruleSetView", 4, 0.95, "‹ruleset›", "RuleSetView", "its days, Downtime, limits,\nBlocked, warnings, breaks", h=72)
 p.node("policy", 4, 3.5, "Screen Time", "PolicyView", "ruleset in effect, rulesets;\nwhat every ruleset shares;\nSave asks how long", h=72)
 p.node("apps", 4, 5, "‹kid›'s apps", "TrackedItemsView", "every app and site seen")
 p.node("raw", 4, 6, "Raw usage", "RawUsageView")

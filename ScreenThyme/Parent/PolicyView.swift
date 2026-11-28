@@ -3,7 +3,7 @@ import ThymeCore
 
 /// ScreenThyme's replacement for Apple's Screen Time settings for one kid (PLAN.md §15): the ruleset in effect and a
 /// switch (§15.15), the rulesets, each with a screen of its own (`RuleSetView`), then what's the same in every ruleset:
-/// breaks, categories, groups, Always Allowed and Content & Privacy. Edits a draft; Save asks whether it's for good or
+/// categories, groups, Always Allowed and Content & Privacy. Edits a draft; Save asks whether it's for good or
 /// for some days (PLAN.md §15.10), then sends it to the kid's phone.
 struct PolicyView: View {
     @Environment(AppModel.self) private var model
@@ -48,7 +48,7 @@ struct PolicyView: View {
                 Text("Rulesets")
             } footer: {
                 let free = policy.unscheduledWeekdays
-                Text("Each has its own Downtime, App Limits, Blocked and limit warnings. Each weekday has one ruleset; a ruleset with no days is in effect only when you switch to it."
+                Text("Each has its own Downtime, App Limits, Blocked, limit warnings and breaks. Each weekday has one ruleset; a ruleset with no days is in effect only when you switch to it."
                      + (free.isEmpty ? "" : " \(PolicyRuleSet.days(free)) \(free.count == 1 ? "has" : "have") none, so \(free.count == 1 ? "it gets" : "they get") \u{201C}\(policy.ruleSets[0].name)\u{201D}."))
             }
             let reverts = stored.reverts(through: .distantFuture).filter { !$0.edits.isEmpty }
@@ -68,21 +68,6 @@ struct PolicyView: View {
                 } footer: {
                     Text("Each changes back by itself at midnight, on \(kid.displayName)'s phone too. What's changed again before then stays.")
                 }
-            }
-            Section {
-                let breaks = Binding(get: { policy.breaks ?? BreakRule(enabled: false) },
-                                     set: { rule in update(policy) { $0.breaks = rule } })
-                Toggle("Take breaks", isOn: breaks.enabled)
-                if breaks.wrappedValue.enabled {
-                    MinutesStepper("After \(Format.minutes(breaks.wrappedValue.useMinutes)) of use",
-                                   minutes: breaks.useMinutes, range: 5...240)
-                    MinutesStepper("A break of \(Format.minutes(breaks.wrappedValue.breakMinutes))",
-                                   minutes: breaks.breakMinutes, range: 5...120)
-                }
-            } header: {
-                Text("Breaks")
-            } footer: {
-                Text("After that much use with no rest as long as the break, everything but Always Allowed apps is blocked for the break. A shorter pause doesn't start the count over. Always Allowed apps, ScreenThyme and Phone don't count. \(kid.displayName) can ask for more time or take one more minute, as in Downtime.")
             }
             Section {
                 let categories = policy.groups.filter(\.isCategory).count

@@ -82,11 +82,13 @@ public enum PolicyEdit: Sendable, Hashable {
         if new.ruleSets.isEmpty {
             func rules(_ policy: Policy) -> PolicyRuleSet {
                 PolicyRuleSet(name: "", downtime: policy.downtime, limits: policy.limits, blocked: policy.blocked,
-                              limitWarningPercents: policy.limitWarningPercents)
+                              limitWarningPercents: policy.limitWarningPercents,
+                              breaks: policy.breaks ?? BreakRule(enabled: false))
             }
             edits += ruleChanges(rules(old), rules(new))
         } else {
-            // With rulesets, the policy's own Downtime, limits, warnings and Blocked are only the ruleset in effect's.
+            // With rulesets, the policy's own Downtime, limits, warnings, breaks and Blocked are only the ruleset in
+            // effect's.
             var old = old
             if old.ruleSets.isEmpty {
                 old = old.withDefaultRuleSets()
@@ -103,9 +105,6 @@ public enum PolicyEdit: Sendable, Hashable {
         edits += changes(old.groups.filter { !$0.isCategory }, new.groups.filter { !$0.isCategory },
                          added: PolicyEdit.groupAdded, removed: PolicyEdit.groupRemoved, changed: PolicyEdit.groupChanged)
         edits += categoryChanges(old.groups.filter(\.isCategory), new.groups.filter(\.isCategory))
-        if (old.breaks?.enabled == true ? old.breaks : nil) != (new.breaks?.enabled == true ? new.breaks : nil) {
-            edits.append(.breaks(from: old.breaks, to: new.breaks))
-        }
         if old.alwaysAllowed != new.alwaysAllowed {
             edits.append(.alwaysAllowed(added: new.alwaysAllowed.subtracting(old.alwaysAllowed),
                                         removed: old.alwaysAllowed.subtracting(new.alwaysAllowed)))
@@ -127,7 +126,8 @@ public enum PolicyEdit: Sendable, Hashable {
         return edits
     }
 
-    /// Downtime, limits, Blocked and limit warnings, as a ruleset's screen shows them: the policy's own, or a ruleset's.
+    /// Downtime, limits, Blocked, limit warnings and breaks, as a ruleset's screen shows them: the policy's own, or a
+    /// ruleset's.
     private static func ruleChanges(_ old: PolicyRuleSet, _ new: PolicyRuleSet) -> [PolicyEdit] {
         var edits = changes(old.downtime, new.downtime, added: PolicyEdit.downtimeAdded,
                             removed: PolicyEdit.downtimeRemoved, changed: PolicyEdit.downtimeChanged)
@@ -138,6 +138,9 @@ public enum PolicyEdit: Sendable, Hashable {
         }
         if Set(old.limitWarningPercents) != Set(new.limitWarningPercents) {
             edits.append(.limitWarnings(from: old.limitWarningPercents, to: new.limitWarningPercents))
+        }
+        if (old.breaks.enabled ? old.breaks : nil) != (new.breaks.enabled ? new.breaks : nil) {
+            edits.append(.breaks(from: old.breaks, to: new.breaks))
         }
         return edits
     }

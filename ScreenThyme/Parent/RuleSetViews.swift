@@ -106,8 +106,8 @@ struct ChooseRuleSetSheet: View {
     private var until: Date { TemporaryChange.until(days: days, from: Date()) }
 }
 
-/// One ruleset's own rules (PLAN.md §15.15): its name and days, Downtime, App Limits, Blocked and limit warnings. Edits
-/// the Screen Time screen's draft, saved from either screen.
+/// One ruleset's own rules (PLAN.md §15.15): its name and days, Downtime, App Limits, Blocked, limit warnings and breaks.
+/// Edits the Screen Time screen's draft, saved from either screen.
 struct RuleSetView: View {
     @Environment(AppModel.self) private var model
     let kid: Kid
@@ -178,7 +178,7 @@ struct RuleSetView: View {
             }
         } footer: {
             Text((rules.id == stored.ruleSet(on: Date())?.id ? "In effect today. " : "")
-                 + "Downtime, App Limits, Blocked and limit warnings here are \(rules.name)'s own. Everything else on the Screen Time screen is the same in every ruleset.")
+                 + "Downtime, App Limits, Blocked, limit warnings and breaks here are \(rules.name)'s own. Everything else on the Screen Time screen is the same in every ruleset.")
         }
         Section("Downtime") {
             ForEach(rules.downtime) { window in
@@ -275,13 +275,28 @@ struct RuleSetView: View {
         } footer: {
             Text("A notification on \(kid.displayName)'s phone once that much of a limit's time is used today, for each limit in \(rules.name). Each comes once a day; more time starts them over.")
         }
+        Section {
+            let breaks = Binding(get: { rules.breaks },
+                                 set: { rule in update(draft ?? policy) { $0.editRuleSet(rules.id) { $0.breaks = rule } } })
+            Toggle("Take breaks", isOn: breaks.enabled)
+            if rules.breaks.enabled {
+                MinutesStepper("After \(Format.minutes(rules.breaks.useMinutes)) of use", minutes: breaks.useMinutes,
+                               range: 5...240)
+                MinutesStepper("A break of \(Format.minutes(rules.breaks.breakMinutes))", minutes: breaks.breakMinutes,
+                               range: 5...120)
+            }
+        } header: {
+            Text("Breaks")
+        } footer: {
+            Text("After that much use with no rest as long as the break, everything but Always Allowed apps is blocked for the break. A shorter pause doesn't start the count over. Always Allowed apps, ScreenThyme and Phone don't count. \(kid.displayName) can ask for more time or take one more minute, as in Downtime.")
+        }
     }
 
-    /// "1 Downtime · 2 limits · 3 blocked · 2 warnings".
+    /// "1 Downtime · 2 limits · 3 blocked · 2 warnings · breaks".
     static func summary(_ set: PolicyRuleSet) -> String {
         let parts = [(set.downtime.count, "Downtime", "Downtime"), (set.limits.count, "limit", "limits"),
                      (set.blocked.count, "blocked", "blocked"), (set.limitWarningPercents.count, "warning", "warnings")]
-            .filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
+            .filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" } + (set.breaks.enabled ? ["breaks"] : [])
         return parts.isEmpty ? "No rules" : parts.joined(separator: " · ")
     }
 

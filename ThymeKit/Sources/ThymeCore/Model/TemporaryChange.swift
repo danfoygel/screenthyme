@@ -81,6 +81,7 @@ extension Policy {
             set.limits = revertElements(set.limits, old.limits, new.limits, fields: revertLimit)
             revertSet(&set.blocked, old.blocked, new.blocked)
             revertValue(&set, \.limitWarningPercents, old, new)
+            revertValue(&set, \.breaks, old, new)
         }
         policy.groups = revertElements(groups, old.groups, new.groups) { group, old, new in
             revertValue(&group, \.name, old, new)

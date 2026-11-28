@@ -161,7 +161,7 @@ Apple's Screen Time.
 | `PickupReport` | `kidID`, `day`, `updatedAt`, per hour: pickups without an app, first pickup, and each app's pickups and notifications; one per kid per day, overwritten (§13) |
 | `Alert` | `kidID`, `ruleID?`, `itemID?`, `at`, `title`, `body` |
 | `Rule`, `RuleSet` | a rule's `condition` (§4.6) and `enabled`; `RuleSet.<kid>` holds all of a kid's rules |
-| `Policy` | one per kid: rulesets (Downtime, limits, limit warnings, Blocked) and the one chosen, Always Allowed, Uncounted, restrictions, groups, temporary changes (§15.1, §15.15) |
+| `Policy` | one per kid: rulesets (Downtime, limits, limit warnings, breaks, Blocked) and the one chosen, Always Allowed, Uncounted, restrictions, groups, temporary changes (§15.1, §15.15) |
 | `PolicyChange` | the kid, time, parent's name, the policy before and after, `until?` (§15.7, §15.10) |
 | `TimeRequest`, `TimeGrant` | a request for more time or to always allow (item, reason, minutes, note) and its answer (`TimeGrant.<request id>`) |
 | `ExtraMinuteUse` | one more minute taken on the kid's phone (§15.5) |
@@ -694,7 +694,8 @@ A parent can end any approval that may still be running, theirs, another parent'
 
 ### 15.13 Mandatory breaks
 
-A parent can make the kid take breaks (`Policy.breaks`, a `BreakRule`; the policy screen's Breaks section): after
+A parent can make the kid take breaks (`PolicyRuleSet.breaks`, a `BreakRule`, each ruleset's own; a ruleset screen's
+Breaks section; `current(at:)` copies the one in effect's into `Policy.breaks`): after
 `useMinutes` of use (45 by default) with no rest of `breakMinutes` (15), everything but Always Allowed is blocked for
 `breakMinutes` of the clock.
 - **Counting:** use as all-apps limits count it (Apple's per-app use minus Always Allowed, ScreenThyme, Phone and
@@ -742,11 +743,11 @@ A parent can make the kid take breaks (`Policy.breaks`, a `BreakRule`; the polic
 
 ### 15.15 Rulesets
 
-Downtime, limits and Blocked differ by day (school days, weekends, a trip); the rest doesn't. So a kid's policy holds
-rulesets (`Policy.ruleSets`, `PolicyRuleSet`): a name, weekdays, and its own Downtime windows, limits, limit warnings
-and Blocked. Warnings saved before rulesets had their own (the policy's, for every ruleset) load into each ruleset.
-Groups, custom categories, Always Allowed, Uncounted, breaks and Content & Privacy are the policy's, the same in every
-ruleset.
+Downtime, limits, breaks and Blocked differ by day (school days, weekends, a trip); the rest doesn't. So a kid's
+policy holds rulesets (`Policy.ruleSets`, `PolicyRuleSet`): a name, weekdays, and its own Downtime windows, limits,
+limit warnings, breaks and Blocked. Warnings and breaks saved before rulesets had their own (the policy's, for every
+ruleset) load into each ruleset. Groups, custom categories, Always Allowed, Uncounted and Content & Privacy are the
+policy's, the same in every ruleset.
 - **Which is in effect:** exactly one each day (`Policy.ruleSet(on:)`): the one a parent chose for that day
   (`ruleSetChoice`), else the one whose weekdays hold it, else the first. A weekday is in one ruleset at most (saving
   one's days takes them from the others); one with no days is in effect only when chosen.
@@ -760,16 +761,16 @@ ruleset.
   change history entry. The kid's phone goes back by itself at the end, offline too. It's disabled while the screen
   has unsaved edits, which would undo it.
 - **Enforcing:** `Policy.current(at:)` (the kid's `AppGroup.loadPolicy`, parents' `FamilyData.policy(for:)`) sets the
-  policy's own Downtime, limits, limit warnings and Blocked to the ruleset in effect's, so the planner, Enforcer, block
-  page, details and screens are unchanged. Limits, warnings and Blocked are today's ruleset's. A Downtime window that started yesterday is
-  yesterday's ruleset's (Friday's bedtime runs into Saturday morning by Weekday's), one that starts today today's: on a
+  policy's own Downtime, limits, limit warnings, breaks and Blocked to the ruleset in effect's, so the planner,
+  Enforcer, block page, details and screens are unchanged. Limits, warnings, breaks and Blocked are today's ruleset's.
+  A Downtime window that started yesterday is yesterday's ruleset's (Friday's bedtime runs into Saturday morning by Weekday's), one that starts today today's: on a
   day the ruleset changes, each window is kept to the one weekday it starts. The midnight restart reconciles, as for
   temporary changes. A choice is kept a day past its end, for the Downtime that began on its last day.
 - **Older builds:** saves (`Policy.saving(at:)`) keep the ruleset in effect's rules, as they are, in the policy's own
   fields, so a kid's phone on a build from before rulesets enforces the ruleset in effect at the last save, every day.
 - **Editing:** Screen Time shows the ruleset in effect prominently (and the kid's card on Home, and the kid's Screen
   Time section), then the rulesets, then what every ruleset shares. Each ruleset has a screen of its own
-  (`RuleSetView`): its name and weekdays, Downtime, App Limits, Blocked and limit warnings. Screen Time adds one (empty
+  (`RuleSetView`): its name and weekdays, Downtime, App Limits, Blocked, limit warnings and breaks. Screen Time adds one (empty
   or a copy, with new ids) and deletes one (not the last). These are draft edits of the one draft, saved with Save on
   either screen, permanent or temporary like any other.
 - **History:** a ruleset's edits are named with it ("Weekend: Changed Blocked"); setting up, adding, removing,
