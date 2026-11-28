@@ -100,8 +100,9 @@ final class ScreenTour: XCTestCase {
     }
 
     /// Waits for `find` while the screen is still changing (up to `wait`), then pages down to the list's end and back
-    /// up to its top, or up first when `above` says so: lists build rows only as they scroll into view.
-    func scrollTo(_ what: String, wait: TimeInterval = 1.5, above: () -> Bool = { false },
+    /// up to its top, or up first when `above` says so: lists build rows only as they scroll into view. A page can leave
+    /// `near` (what `find` looks for) just outside the band, under a bar: a short drag then brings it in.
+    func scrollTo(_ what: String, wait: TimeInterval = 1.5, above: () -> Bool = { false }, near: XCUIElement? = nil,
                   _ find: () -> XCUIElement?) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(wait)
         var shown = fingerprint()
@@ -118,6 +119,7 @@ final class ScreenTour: XCTestCase {
             for _ in 0..<15 {
                 page(up: up)
                 if let el = find() { return el }
+                if let near, let el = nudge(toward: near, find) { return el }
                 let now = fingerprint()
                 if now == last { break }
                 last = now
@@ -127,12 +129,27 @@ final class ScreenTour: XCTestCase {
         return nil
     }
 
+    /// Drags the list a little at a time until `el`, on screen but outside the band, is inside it and `find` finds it.
+    func nudge(toward el: XCUIElement, _ find: () -> XCUIElement?) -> XCUIElement? {
+        for _ in 0..<3 {
+            guard el.exists else { return nil }
+            let band = band()
+            let midY = el.frame.midY
+            guard !band.contains(midY), midY > band.lowerBound - 200, midY < band.upperBound + 200 else { return nil }
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let to = from.withOffset(CGVector(dx: 0, dy: midY < band.lowerBound ? 150 : -150))
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+            if let found = find() { return found }
+        }
+        return nil
+    }
+
     /// Taps a button by label (see `reachable`), scrolling to it if need be.
     @discardableResult
     func tap(_ label: String, wait: TimeInterval = 1.5) -> Bool {
         let any = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", label)).firstMatch
         let above = { any.exists && any.frame.midY < self.band().lowerBound }
-        guard let el = scrollTo(label, wait: wait, above: above, { reachable(label) }) else { return false }
+        guard let el = scrollTo(label, wait: wait, above: above, near: any, { reachable(label) }) else { return false }
         el.tap()
         return true
     }
