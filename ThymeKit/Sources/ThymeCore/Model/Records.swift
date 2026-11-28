@@ -262,6 +262,21 @@ public struct AlertRecord: Codable, Sendable, Hashable, Identifiable {
         self.title = title
         self.body = body
     }
+
+    /// The title without a leading ⚠️, for lists that mark the alert in their own way (a self-approval's caption).
+    /// The title itself keeps it, since it's also the push notification's.
+    public var listTitle: String {
+        var scalars = Substring(title).unicodeScalars
+        guard scalars.first == "\u{26A0}" else { return title }
+        scalars.removeFirst()
+        if scalars.first == "\u{FE0F}" { scalars.removeFirst() }
+        return String(String.UnicodeScalarView(scalars).drop { $0 == " " })
+    }
+
+    /// Whether the body already names this app or website, so a list needn't show its name again.
+    public func namesItem(_ name: String) -> Bool {
+        !name.isEmpty && body.localizedCaseInsensitiveContains(name)
+    }
 }
 
 /// A parent-initiated liveness check; the kid device answers with a `Heartbeat`.

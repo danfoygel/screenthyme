@@ -91,4 +91,26 @@ struct MoreTimeTests {
         later.at = request.at.addingTimeInterval(60)
         #expect(TimeRequest.sent(with: later, from: [request]) == nil)
     }
+
+    @Test func listTitleDropsOnlyALeadingWarning() {
+        func title(_ text: String) -> String {
+            AlertRecord(kidID: testKid.id, ruleID: nil, itemID: nil, at: at(16, 41), title: text, body: "").listTitle
+        }
+        #expect(title("\u{26A0}\u{FE0F} Kid self-approved more time") == "Kid self-approved more time")
+        #expect(title("\u{26A0} Kid self-approved more time") == "Kid self-approved more time")
+        #expect(title("Kid asked for more time") == "Kid asked for more time")
+        #expect(title("Kid \u{26A0}\u{FE0F} self-approved") == "Kid \u{26A0}\u{FE0F} self-approved")
+    }
+
+    @Test func alertsBodyNamesTheItemOrNot() {
+        func alert(_ body: String) -> AlertRecord {
+            AlertRecord(kidID: testKid.id, ruleID: nil, itemID: UUID(), at: at(16, 41), title: "", body: body)
+        }
+        let named = alert("Asked for 1 more hour for sound555 during Downtime.")
+        #expect(named.namesItem("sound555"))
+        #expect(named.namesItem("Sound555"))
+        #expect(!named.namesItem("Maps"))
+        #expect(!named.namesItem(""))
+        #expect(!alert("Asked for 1 more hour for this app during Downtime.").namesItem("sound555"))
+    }
 }
